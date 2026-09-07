@@ -101,10 +101,17 @@ export function findCurrentTask(projectDir) {
 /**
  * List all project directories under projectsRoot with their pending/completed task counts.
  * Returns an array of { project, projectDir, todos: string[], inFlight: Array<{file, state}>, dones: string[] }
- * 
+ *
  * - todos: files in todo state only (auto-dispatchable)
  * - inFlight: files in intermediate states (in-progress, ready-for-review, ready-for-qa, changes-requested, qa-passed) with state token
  * - dones: files in done state (terminal)
+ *
+ * Shape-agnostic per file: a repo-files-shaped file (state-token
+ * filename infix present) is classified from that infix, unchanged from
+ * before. A vault-shaped file (no infix -- `task_<id>_<slug>.md`) is
+ * classified from its `status:` frontmatter via the same status->bucket
+ * mapping `changeTaskStatus`'s `stateToToken` already encodes, so vault-tier
+ * projects are never left entirely uncategorized.
  */
 export function listAllTasks(projectsRoot) {
 	if (!fs.existsSync(projectsRoot)) return [];
@@ -113,25 +120,43 @@ export function listAllTasks(projectsRoot) {
 		.sort((a, b) => a.name.localeCompare(b.name))
 		.map(e => {
 			const projectDir = path.join(projectsRoot, e.name);
-			const rootFiles = listMdFiles(projectDir);
-			const doneFiles = listMdFiles(doneTasksDir(projectDir));
-			const todos = rootFiles
-				.filter(f => f.match(/^task_\d+_todo_/))
-				.sort((a, b) => taskNum(a) - taskNum(b));
-			const dones = [
-				...rootFiles.filter(f => f.match(/^task_\d+_done_/)),
-				...doneFiles.filter(f => f.match(/^task_\d+_done_/)),
-			].sort((a, b) => taskNum(a) - taskNum(b));
+			const doneDir = doneTasksDir(projectDir);
+			const rootFiles = listMdFiles(projectDir).filter(f => f.match(/^task_\d+_.+$/));
+			const doneFiles = listMdFiles(doneDir).filter(f => f.match(/^task_\d+_.+$/));
 
-			// Collect intermediate states with state token
-			const intermediateStates = ['in-progress', 'ready-for-review', 'ready-for-qa', 'changes-requested', 'qa-passed'];
+			const todos = [];
+			const dones = [];
 			const inFlight = [];
-			for (const state of intermediateStates) {
-				const matches = rootFiles.filter(f => f.includes(`_${state}_`));
-				for (const file of matches) {
-					inFlight.push({ file, state });
+
+			const classify = (file, dir) => {
+				let token = hasStateTokenInfix(file) ? filenameInfix(file) : null;
+				if (!token) {
+					// Vault-shaped (no valid infix): derive the bucket token from the
+					// `status:` frontmatter field instead. An unrecognized/malformed
+					// status leaves the file uncategorized (consistent with the
+					// existing repo-files behavior of ignoring non-matching filenames).
+					try {
+						const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
+						const { meta } = parseFrontmatter(raw);
+						token = stateToToken(meta.status);
+					} catch {
+						return;
+					}
 				}
-			}
+				if (token === 'todo') {
+					todos.push(file);
+				} else if (token === 'done') {
+					dones.push(file);
+				} else {
+					inFlight.push({ file, state: token });
+				}
+			};
+
+			for (const file of rootFiles) classify(file, projectDir);
+			for (const file of doneFiles) classify(file, doneDir);
+
+			todos.sort((a, b) => taskNum(a) - taskNum(b));
+			dones.sort((a, b) => taskNum(a) - taskNum(b));
 			inFlight.sort((a, b) => taskNum(a.file) - taskNum(b.file));
 
 			return {
@@ -146,14 +171,18 @@ export function listAllTasks(projectsRoot) {
 
 /**
  * Find a specific task by number or slug.
- * Matches any state token (todo, in-progress, ready-for-review, ready-for-qa, changes-requested, qa-passed, done).
- * e.g. query "6" matches "task_<id>_in-progress_feature.md" where <id> is 6
+ * Matches both repo-files-shaped filenames (any state-token infix -- todo,
+ * in-progress, ready-for-review, ready-for-qa, changes-requested, qa-passed,
+ * done) and vault-shaped filenames with no infix at all
+ * (`task_<id>_<slug>.md`). e.g. query "6" matches
+ * "task_6_in-progress_feature.md" as well as a vault-shaped
+ * "task_6_feature.md".
  * Returns the absolute file path, or null if not found.
  */
 export function findTaskByQuery(projectDir, query) {
 	if (!fs.existsSync(projectDir)) return null;
 	const files = fs.readdirSync(projectDir)
-		.filter(f => f.match(/^task_\d+_(todo|in-progress|ready-for-review|ready-for-qa|changes-requested|qa-passed|done)_/));
+		.filter(f => f.match(/^task_\d+_.+\.md$/));
 
 	const num = parseInt(query, 10);
 	if (!Number.isNaN(num)) {
@@ -197,6 +226,68 @@ function stateToToken(state) {
 	return map[state];
 }
 
+// ── Per-file shape detection (repo-files vs. vault) ─────────────────────────
+//
+// A task file either carries a state-token filename infix (repo-files shape,
+// e.g. `task_137_todo_slug.md`) or it doesn't (vault shape, e.g.
+// `task_521_slug.md` -- see storage/obsidian.md's rename-free `transition-state`
+// convention). This is decided per file, not via a global tier flag or a
+// plugin-file presence check, so behavior stays correct even if a projects
+// root ever mixed both shapes. `ticket-drift.js` proved this exact detection
+// pattern first for its own drift-check purposes; these two functions are
+// the single shared implementation -- `ticket-drift.js` imports them from
+// here rather than keeping its own local copies.
+
+/**
+ * Extract the filename state infix (e.g. "todo", "qa-passed", "done") from
+ * a task filename like "task_137_todo_slug.md". Returns null when the
+ * filename carries no infix at all (vault-shaped, e.g. "task_521_slug.md")
+ * or otherwise doesn't match the pattern.
+ */
+export function filenameInfix(filename) {
+	const match = filename.match(/^task_\d+_([a-z-]+)_/);
+	return match ? match[1] : null;
+}
+
+/**
+ * Map a `status:` frontmatter value to the equivalent filename infix used by
+ * repo-files-style task files. Used by ticket-drift.js as a fallback when the
+ * filename carries no infix (vault-shaped files, where filenames are
+ * `task_<id>_<slug>.md` with no embedded state token).
+ *
+ * Returns null for status values that have no direct infix equivalent (legacy
+ * or non-canonical values); those are never flagged by infix-based shapes.
+ *
+ * @param {string|undefined} status
+ * @returns {string|null}
+ */
+export function statusToInfix(status) {
+	const map = {
+		'closed': 'done',
+		'state:qa-passed': 'qa-passed',
+		'state:ready-for-qa': 'ready-for-qa',
+		'state:changes-requested': 'changes-requested',
+		'state:ready-for-review': 'ready-for-review',
+		'state:in-progress': 'in-progress',
+		'state:ready-for-implementation': 'ready-for-implementation',
+		'state:todo': 'todo',
+		'todo': 'todo',
+	};
+	return map[status] ?? null;
+}
+
+/**
+ * Whether `filename` carries a valid state-token filename infix (repo-files
+ * shape) as opposed to no infix at all (vault shape). Built on `filenameInfix`
+ * above, validated against the canonical `TASK_STATE_TOKENS` list so an
+ * incidental hyphen segment in a vault slug is never mistaken for a real
+ * state token.
+ */
+function hasStateTokenInfix(filename) {
+	const infix = filenameInfix(filename);
+	return infix !== null && TASK_STATE_TOKENS.includes(infix);
+}
+
 /**
  * Serialize frontmatter object to YAML-like string.
  */
@@ -229,8 +320,23 @@ export function serializeFrontmatter(meta) {
  * New behavior:
  * - changeTaskStatus(path, 'state:in-progress') → renames to _in-progress_ and updates frontmatter status
  * - changeTaskStatus(path, 'state:ready-for-qa', { 'fail-count': 1 }) → updates both status and fail-count
+ *
+ * Vault-shaped behavior: when `taskPath`'s filename carries no
+ * state-token infix (per `hasStateTokenInfix` above), per
+ * storage/obsidian.md's `transition-state` contract this performs a single
+ * write of the `status:` frontmatter (plus any `frontmatterUpdates`) and does
+ * NOT rename the file -- the returned path equals the input path. Repo-files-
+ * shaped files (infix present) are unaffected: rename + status write exactly
+ * as before.
  */
 export function changeTaskStatus(taskPath, targetState = 'closed', frontmatterUpdates = {}) {
+	// Validate targetState before touching anything -- on both the vault-shaped
+	// and repo-files-shaped paths. An unknown state must throw here, before any
+	// frontmatter mutation or disk write, so a typo'd state name fails loud
+	// with the file left byte-for-byte untouched, matching the "no silent
+	// success" contract this codebase already establishes elsewhere.
+	const token = stateToToken(targetState);
+
 	const projectDir = projectDirFromTaskPath(taskPath);
 	const raw = fs.readFileSync(taskPath, 'utf-8');
 	const { meta, body, hadFrontmatter } = parseFrontmatter(raw);
@@ -242,9 +348,16 @@ export function changeTaskStatus(taskPath, targetState = 'closed', frontmatterUp
 		meta[key] = String(value);
 	}
 
-	// Determine new filename token
-	const token = stateToToken(targetState);
 	const basename = path.basename(taskPath);
+
+	if (!hasStateTokenInfix(basename)) {
+		// Vault-shaped: single write, no rename.
+		const newContent = `---\n${serializeFrontmatter(meta)}\n---\n${newBody}`;
+		fs.writeFileSync(taskPath, newContent, 'utf-8');
+		return taskPath;
+	}
+
+	// Determine new filename token
 	const match = basename.match(/^(task_\d+)_(todo|in-progress|ready-for-review|ready-for-qa|changes-requested|qa-passed|done)_(.+)$/);
 	if (!match) {
 		throw new Error(`Task filename does not match expected pattern: ${basename}`);

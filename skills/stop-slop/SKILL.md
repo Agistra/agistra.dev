@@ -10,13 +10,14 @@ Adapted from [hardikpandya/stop-slop](https://github.com/hardikpandya/stop-slop)
 
 ## When to Apply
 
-Always-on for Architect and Router when producing or reviewing:
+Always-on for Architect, Router, and CAO when producing or reviewing:
 
 - ADR context and consequences sections
 - Planner-mode client drafts and proposal wording
 - GitHub issue and PR comments intended for external audiences
 - Telegram or relay messages to the remote team
 - Cover letters, recruiter replies, or stakeholder communications
+- Blog posts, articles, and marketing or campaign copy
 
 Do not apply to internal memory files, ticket descriptions, or code comments — those optimise for precision, not prose.
 

@@ -681,7 +681,14 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 	}
 
 	if (problems.length > 0) {
-		return fail(21, 'langgraph compile target', problems.join('; '), 'run: npm run compile:langgraph');
+		// This check only detects a stale compiled artifact on
+		// disk — it cannot (and does not try to) detect whether the runtime
+		// *process* has picked up a fresh artifact from a prior redeploy (the
+		// deploy pipeline is file-sync only, never an auto-restart — see the
+		// runbook below). Point remediation at both: regenerate the artifact,
+		// then restart the runtime process per the documented lifecycle.
+		return fail(21, 'langgraph compile target', problems.join('; '),
+			'run: npm run compile:langgraph, then restart the runtime process — see docs/langgraph-runtime-lifecycle.md');
 	}
 	return pass(21, 'langgraph compile target', `compiled prompt artifact(s) present and fresh: ${fresh.join(', ')}`);
 }
