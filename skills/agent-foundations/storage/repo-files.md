@@ -115,14 +115,46 @@ at the end of the file before appending.
 
 ## Document store
 
-Documents live under `docs/<collection>/`. Common collections: `decisions` (ADRs),
-`architecture`, `reports`, `proposals`.
+Documents live in one of two places, depending on whether the collection is hub-wide
+or project-scoped. There is no caller-supplied flag — `create-document`/`read-document`
+resolve which one applies from the `collection` argument alone.
+
+### Path resolution rule
+
+- `collection` ∈ `{decisions, architecture, reports, proposals}` → **hub-wide**:
+  `docs/<collection>/<name>`.
+- Any other `collection` value → **project-scoped**: `projects/<collection>/docs/<name>`
+  (the `collection` argument is the project id in this case). If `projects/<collection>/`
+  does not yet exist (a brand-new project's first document), create it — never silently
+  fall back to a hub-wide path.
+
+`read-document` resolves by the identical rule.
+
+### Filename convention
+
+- **Hub-wide** (`docs/<collection>/<name>`): `<name>` includes the file extension, e.g.
+  `ADR-NNN-foo.md`. No project-id prefix applies here — these collections aren't
+  project-scoped.
+- **Project-scoped** (`projects/<collection>/docs/<name>`): `<name>` is bare,
+  kebab-case, and carries **no project-name prefix** — the project folder is already
+  the namespace. Use `open-questions.md`, not `<project>-open-questions.md`.
+
+### Evidence (re-verified against the live `agistra.dev-graph` hub)
+
+| Path | Real content found | Interpretation |
+| --- | --- | --- |
+| `docs/decisions/` | 2 files following the `ADR-<n>-<slug>.md` pattern | Hub-wide collection, real usage confirmed |
+| `docs/reports/` | 1 report (the handover doc for this exact fix — genuinely hub-wide content, not scoped to any one project) | Hub-wide collection, real usage confirmed |
+| `docs/architecture/` | Does not exist on this hub | Hub-wide collection, documented but currently unused — kept, since a one-hub audit doesn't justify removing an available option |
+| `docs/proposals/` | Does not exist on this hub | Hub-wide collection, documented but currently unused — kept, same reasoning as `architecture` |
+| `projects/<project>/docs/` (present for 7 of 11 projects checked) | Every file found is bare kebab-case with no project-name prefix, e.g. `projects/<project>/docs/proj-stack.md`, `projects/<project>/docs/open-questions.md`, `projects/<project>/docs/lift-and-shift-plan.md` | Project-scoped rule and no-prefix filename convention confirmed across every project checked |
 
 ### create-document(collection, name, content)
 
-Write a new file at `docs/<collection>/<name>`. The `name` argument includes the
-file extension (e.g. `ADR-NNN-foo.md`). Create the directory if it does not exist.
+Resolve the path per the rule above, then write a new file at the resolved path. The
+`name` argument includes the file extension. Create the containing directory
+(`docs/<collection>/` or `projects/<collection>/docs/`) if it does not already exist.
 
 ### read-document(collection, name)
 
-Read `docs/<collection>/<name>` from the hub root.
+Resolve the path per the identical rule, then read the file from the hub root.

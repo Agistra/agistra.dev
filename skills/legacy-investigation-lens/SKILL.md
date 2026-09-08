@@ -194,15 +194,18 @@ or a chat transcript.
 ### Location
 
 Create the document via the active storage plugin's `create-document` operation (see
-`agent-foundations`' Storage Plugin Contract), never a hardcoded vault-only or repo-only path:
+`agent-foundations`' Storage Plugin Contract), never a hardcoded vault-only or repo-only path.
+This Open Questions doc is project-scoped content, not a hub-wide report — pass the project id
+as the `collection` argument and a bare, un-prefixed filename:
 
 ```
-create-document("reports", "<project>-open-questions.md", content)
+create-document("<project>", "open-questions.md", content)
 ```
 
-The plugin resolves the concrete path (e.g. `docs/reports/<project>-open-questions.md` on a
-repo-files-backed hub, `Docs/reports/<project>-open-questions.md` on a vault-backed hub) — this
-skill does not assume either location directly.
+On a repo-files-backed hub this resolves to `projects/<project>/docs/open-questions.md` (see
+`storage/repo-files.md`'s Document store section for the full project-scoped path rule) — not
+`docs/reports/...`. This skill does not assume the resolved path beyond what the active plugin's
+contract defines.
 
 ### Required Sections
 
