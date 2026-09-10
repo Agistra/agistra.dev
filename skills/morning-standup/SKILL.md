@@ -36,7 +36,7 @@ Read your agent identity and follow the section below that matches.
 
 **Step 2 — Dispatch subagents**
 
-Run Builder, Tester, and Router as subagents simultaneously with the morning-standup prompt. Also dispatch the coordination agent (CAO) as a subagent with the same morning-standup prompt when and only when CAO's own profile file exists in the hub — probe the adapter-matching path (e.g. `.claude/agents/cao.md` for Claude Code); skip silently if absent. Collect their reports. When dispatching Router, set `model: 'haiku'` — Router is economy-tier per its manifest.
+Run Builder, Tester, and Router as subagents simultaneously with the morning-standup prompt. Also dispatch the coordination agent (CAO) as a subagent with the same morning-standup prompt when and only when CAO's own profile file exists in the hub — probe the adapter-matching path (e.g. `.claude/agents/cao.md` for Claude Code); skip silently if absent. Collect their reports. When dispatching Router, use the fastest/economy-tier model your runtime offers for the dispatch — Router is economy-tier per its manifest. This skill file ships identically to every adapter, so it never asserts one runtime's literal model-selection syntax; see ROUTING.md's "Dispatch Builder" model-selection guidance for how each adapter's own generated instructions resolve this to a concrete identifier.
 
 **Step 3 — Compile and deliver briefing**
 

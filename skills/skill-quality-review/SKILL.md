@@ -129,7 +129,7 @@ Every skill change needs a validation story.
 
 Minimum validation:
 
-- frontmatter parses — run `grep -c '^---' skills/<name>/SKILL.md` and confirm the result is exactly `2` (opening and closing fence markers)
+- frontmatter parses — parse the leading `---`-delimited YAML block itself (e.g. `node -e "import('./pipelines/deploy/lib/skills.js').then(({parseSkillFrontmatter}) => console.log(parseSkillFrontmatter('agents/skills', '<name>')))"`) and confirm `name` and `description` come back populated. Do not count `---` line occurrences in the file — ordinary Markdown rules and examples in the body legitimately add more than the two frontmatter fence markers, and a raw count produces false positives against real skill files. This check applies to `SKILL.md` files specifically — skills are always packaged as Markdown+YAML frontmatter regardless of target adapter (Codex's per-agent `.toml` composition and Copilot's `.agent.md` are agent-profile formats, not skill formats; every deploy target still writes skill discovery stubs as `SKILL.md`, so this parsing approach is adapter-agnostic for skills). It does not apply as-is to agent profile validation, which is adapter-specific and out of scope here.
 - `npm run validate:manifests` passes when manifests change
 - relevant deploy or composition test passes when generated output changes
 - docs or README references resolve

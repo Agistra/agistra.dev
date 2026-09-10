@@ -143,7 +143,7 @@ my-hub/
 
 ## Project health scanner
 
-`scan` scores your project across five perspectives, each 0.0–1.0:
+`scan` scores your project across six perspectives, each 0.0–1.0:
 
 | ID  | Perspective | What it measures                                       |
 | --- | ----------- | ------------------------------------------------------ |
@@ -152,6 +152,7 @@ my-hub/
 | USR | User        | README quality, package description, changelog         |
 | ANL | Analytics   | CI/CD automation, commit fix-rate, uncommitted changes |
 | DBG | Debug       | TODO/FIXME density, console.log hygiene                |
+| CTX | Context     | Deployed agent profile size, merged skill count        |
 
 ```text
 Perspective Scores
@@ -161,8 +162,9 @@ Perspective Scores
   USR  User         ████████░░  0.80 ▲0.05
   ANL  Analytics    ██████░░░░  0.60
   DBG  Debug        █████░░░░░  0.55 →
+  CTX  Context      ███████░░░  0.70
 ──────────────────────────────────────────────────
-       Overall      ██████░░░░  0.64 ▲0.01
+       Overall      ██████░░░░  0.65 ▲0.01
 ```
 
 Scores and trends (▲ up ▼ down → unchanged) are saved to `projects/<project>/health.json` after every scan. Re-run scan any time — it skips findings that already have task files.

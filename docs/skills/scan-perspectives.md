@@ -4,11 +4,11 @@
 
 # scan perspectives
 
-Five health lenses the project scanner uses to score your codebase from 0.0–1.0. Architect uses these when reviewing project health — either via `npm run scan` (automated) or manually during an architecture session.
+Six health lenses the project scanner uses to score your codebase from 0.0–1.0. Architect uses these when reviewing project health — either via `npm run scan` (automated) or manually during an architecture session.
 
 ---
 
-## The five perspectives
+## The six perspectives
 
 ### SYS — System
 
@@ -77,6 +77,19 @@ Code hygiene health.
 | console.log hygiene | Count of `console.log` calls in production source paths |
 
 **Findings generated:** high TODO/FIXME density (medium), console.log in production paths (low)
+
+---
+
+### CTX — Context Budget
+
+How much context a deployed agent pays every session before real work starts. Scoped to this repo's own `agents/profiles/<id>-workspace/` authoring layout — pre-composition Markdown source, not any adapter's composed/deployed profile format (Codex composes TOML, for example). A project without this layout has no ctx signal to measure and scores a neutral 1.0.
+
+| Dimension | What it measures |
+| --- | --- |
+| File size | Lines summed across a workspace's `AGENTS.md`, `IDENTITY.md`, `ROUTING.md`, `SOUL.md`, `TOOLS.md` (`MEMORY.md` excluded — per-session state, not fixed startup cost) |
+| Skill count | Number of entries in that workspace's `agent.manifest.json` `skills` array |
+
+**Findings generated:** oversized composed profile (high above 800 lines, medium above 300), high merged-skill count (medium above 8)
 
 ---
 

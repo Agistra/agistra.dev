@@ -51,7 +51,7 @@ The full QA execution flow (handoff check, pre-test setup, step execution, repor
 - ask pre-flight clarifying questions before starting
 - read tickets and post structured test report comments
 - align ticket state labels after verdict
-- notify Builder via subagent dispatch (preferred) or `memory/builder.md` HOT update when defects are found
+- notify Builder via subagent dispatch (preferred) or a HOT update to Builder's memory file (`memory/builder.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`) when defects are found
 
 **Ask the team lead before proceeding:**
 
@@ -116,7 +116,7 @@ Live HOT/WARM/COLD state: `memory/tester.md` on free-tier hubs (tracked in repo)
 
 When defects are found, follow the notification options defined in `qa-ticket-workflow`.
 
-**End-of-dispatch write (non-negotiable):** Before returning results from any dispatch — subagent spawn or direct session, including narrowly-scoped one-shot QA dispatches — write a HOT-section entry to `memory/tester.md` summarising what was tested, the verdict, ticket/PR references, and any carry-forward items. See the "Before returning results from any dispatch" trigger in `skills/agent-foundations/SKILL.md` WAL section for the full rule and rationale.
+**End-of-dispatch write (non-negotiable):** Before returning results from any dispatch — subagent spawn or direct session, including narrowly-scoped one-shot QA dispatches — write a HOT-section entry to your memory file (`memory/tester.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`) summarising what was tested, the verdict, ticket/PR references, and any carry-forward items. See the "Before returning results from any dispatch" trigger in `skills/agent-foundations/SKILL.md` WAL section for the full rule and rationale.
 
 ---
 
@@ -783,7 +783,7 @@ The following rules apply whenever Tester is operating inside a `task-automation
 
 ### WAL Enforcement
 
-Write to `memory/tester.md` HOT section before every response during an automation run. Record at minimum: current ticket, current state, fail count, and verdict. This is non-negotiable — an agent that has not updated its memory file has not completed its turn.
+Write to your memory file's HOT section (`memory/tester.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`) before every response during an automation run. Record at minimum: current ticket, current state, fail count, and verdict. This is non-negotiable — an agent that has not updated its memory file has not completed its turn.
 
 ### Fail Counter Logic
 
@@ -801,7 +801,7 @@ When applying a fail label to GitHub (if configured), remove any previous fail l
 1. Update the local task file first: increment `fail-count:` frontmatter, update `status:` to `state:changes-requested`, rename file to `task_N_changes-requested_slug.md`
 2. If a tracker is configured, mirror the transition: apply `state:changes-requested` label (remove previous state label), apply or update `qa-fail-*` label
 3. Call TaskUpdate (if available)
-4. Update `memory/tester.md` HOT
+4. Update your memory file's HOT section (`memory/tester.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`)
 
 ### On Pass
 
@@ -810,7 +810,7 @@ When all ACs pass:
 1. **Update the local task file first**: set `status:` frontmatter to `state:qa-passed`, rename file to `task_N_qa-passed_slug.md` (or `task_N_done_slug.md` if terminal)
 2. **If a tracker is configured**, mirror the transition: apply `state:qa-passed` label to the GitHub issue (remove previous state label)
 3. Call TaskUpdate (if available) with verdict: `qa-passed`
-4. Update `memory/tester.md` HOT
+4. Update your memory file's HOT section (`memory/tester.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`)
 5. Notify Architect
 
 ## Subagent Dispatch
@@ -827,7 +827,7 @@ See `qa-ticket-workflow` for the fallback path when dispatch is unavailable.
 
 Dispatch Router after a state transition that warrants an inter-team notification — typically `state:ready-for-qa` → `state:qa-passed` or `state:changes-requested` on a ticket that originated from the remote team.
 
-Use the dispatch prompt format defined in the relay skill. Router validates the message against information-classification rules before posting; on validation failure, append a retry note to `memory/tester.md` HOT.
+Use the dispatch prompt format defined in the relay skill. Router validates the message against information-classification rules before posting; on validation failure, append a retry note to your memory file's HOT section (`memory/tester.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`).
 
 Only relevant if a remote team is configured.
 

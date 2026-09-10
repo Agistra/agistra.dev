@@ -479,3 +479,105 @@ export function analyzeDbg(root) {
 
 	return { id: 'dbg', name: 'Debug', score: r((todoScore + logScore + errorScore + typesafeScore + observableScore) / 5), findings };
 }
+
+// ── CTX: Context Budget ──────────────────────────────────────────────────────
+//
+// Measures how much context a deployed agent consumes before real work
+// starts. Scoped to this repo's own agent-profile authoring layout
+// (`agents/profiles/<id>-workspace/`) — every agent's composed profile is
+// assembled at deploy time from a fixed set of Markdown source files
+// (AGENTS.md, IDENTITY.md, ROUTING.md, SOUL.md, TOOLS.md; MEMORY.md is
+// deliberately excluded — memory is per-session state, not fixed startup
+// cost) plus the skills declared in that workspace's agent.manifest.json.
+// Measuring the pre-composition Markdown source is a deliberate scope
+// boundary, not an oversight: composed/deployed profiles are adapter-specific
+// (Claude Code and Cursor emit Markdown, Codex emits TOML via
+// compose-codex.js) and this perspective does not parse or score any of
+// those composed formats. A project with no `agents/profiles/` directory
+// (i.e. not this repo's own layout) has no ctx signal to measure and scores
+// a neutral 1.0 rather than being penalized for a structure it was never
+// expected to have.
+
+const CTX_PROFILE_FILES = ['AGENTS.md', 'IDENTITY.md', 'ROUTING.md', 'SOUL.md', 'TOOLS.md'];
+const CTX_FILE_SIZE_BASE = 300;
+const CTX_FILE_SIZE_RANGE = 1500;
+const CTX_FILE_SIZE_HIGH_THRESHOLD = 800;
+const CTX_SKILL_COUNT_BASE = 5;
+const CTX_SKILL_COUNT_RANGE = 10;
+const CTX_SKILL_COUNT_MEDIUM_THRESHOLD = 8;
+
+function ctxFileSizeScore(lines) {
+	return Math.min(1, Math.max(0, 1 - (lines - CTX_FILE_SIZE_BASE) / CTX_FILE_SIZE_RANGE));
+}
+
+function ctxSkillCountScore(skillCount) {
+	return Math.min(1, Math.max(0, 1 - (skillCount - CTX_SKILL_COUNT_BASE) / CTX_SKILL_COUNT_RANGE));
+}
+
+export function analyzeCtx(root) {
+	const findings = [];
+	const profilesDir = path.join(root, 'agents', 'profiles');
+
+	if (!fs.existsSync(profilesDir)) {
+		return { id: 'ctx', name: 'Context', score: 1.0, findings };
+	}
+
+	const workspaceDirs = fs.readdirSync(profilesDir, { withFileTypes: true })
+		.filter(d => d.isDirectory())
+		.map(d => d.name);
+
+	if (workspaceDirs.length === 0) {
+		return { id: 'ctx', name: 'Context', score: 1.0, findings };
+	}
+
+	const fileSizeScores = [];
+	const skillCountScores = [];
+
+	for (const workspace of workspaceDirs) {
+		const workspaceDir = path.join(profilesDir, workspace);
+		const agentId = workspace.replace(/-workspace$/, '');
+
+		let totalLines = 0;
+		for (const file of CTX_PROFILE_FILES) {
+			const filePath = path.join(workspaceDir, file);
+			if (fs.existsSync(filePath)) totalLines += countLines(filePath);
+		}
+		fileSizeScores.push(ctxFileSizeScore(totalLines));
+
+		if (totalLines > CTX_FILE_SIZE_BASE) {
+			findings.push({
+				id: `ctx-large-profile-${agentId}`,
+				priority: totalLines > CTX_FILE_SIZE_HIGH_THRESHOLD ? 'high' : 'medium',
+				title: `Reduce ${agentId}'s profile size (${totalLines} lines)`,
+				description: `${agentId}'s composed profile (${CTX_PROFILE_FILES.join(', ')}) totals ${totalLines} lines. Every session pays this as a fixed context cost before real work starts — move incident history and conditional protocols behind explicit references, keep the always-loaded contract short.`,
+				skill: 'scan-ctx', agent: 'architect', mode: 'architecture',
+			});
+		}
+
+		let skillCount = 0;
+		const manifestPath = path.join(workspaceDir, 'agent.manifest.json');
+		if (fs.existsSync(manifestPath)) {
+			try {
+				const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+				skillCount = Array.isArray(manifest.skills) ? manifest.skills.length : 0;
+			} catch {}
+		}
+		skillCountScores.push(ctxSkillCountScore(skillCount));
+
+		if (skillCount > CTX_SKILL_COUNT_MEDIUM_THRESHOLD) {
+			findings.push({
+				id: `ctx-high-skill-count-${agentId}`,
+				priority: 'medium',
+				title: `Reduce ${agentId}'s merged skill count (${skillCount})`,
+				description: `${agentId}'s manifest declares ${skillCount} skills. Each merged skill adds to the context an agent must read or route through — consolidate overlapping skills or narrow routing for rarely-used ones.`,
+				skill: 'scan-ctx', agent: 'architect', mode: 'architecture',
+			});
+		}
+	}
+
+	const avg = arr => arr.reduce((s, n) => s + n, 0) / arr.length;
+	const fileSizeScore = r(avg(fileSizeScores));
+	const skillCountScore = r(avg(skillCountScores));
+
+	return { id: 'ctx', name: 'Context', score: r((fileSizeScore + skillCountScore) / 2), findings };
+}

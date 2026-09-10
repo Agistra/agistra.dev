@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { TASK_STATE_TOKENS } from './tasks.js';
-import { analyzeSys, analyzeTst, analyzeUsr, analyzeAnl, analyzeDbg } from './perspectives.js';
+import { analyzeSys, analyzeTst, analyzeUsr, analyzeAnl, analyzeDbg, analyzeCtx } from './perspectives.js';
 
 const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2 };
 
 // ── public API ────────────────────────────────────────────────────────────────
 
 /**
- * Run all 5 perspectives against a project directory.
+ * Run all 6 perspectives against a project directory.
  *
  * Options:
  *   projectDir     string  absolute or relative path to the project repo to scan
@@ -42,6 +42,7 @@ export function scanProject({ projectDir, graphJsonPath }) {
 		analyzeUsr(root),
 		analyzeAnl(root),
 		analyzeDbg(root),
+		analyzeCtx(root),
 	];
 
 	const overall = round(perspectives.reduce((s, p) => s + p.score, 0) / perspectives.length);

@@ -976,7 +976,7 @@ Verifier field is mandatory. Do not dispatch a ticket that does not have the ver
 | Simple | Single-file edit, config field, call-site wiring, straightforward test addition | `haiku` |
 | Complex | New abstraction, multi-file design, injectable test seams, cross-module wiring (3+ files), debugging work | `sonnet` |
 
-Set `model:` on the Agent tool call accordingly. When in doubt, lean sonnet — a retry cycle costs more than the model difference.
+Set the dispatch model accordingly — the identifier above is resolved per adapter when this profile is generated for your runtime, never a literal Claude alias forwarded unchanged into another runtime's instructions. When in doubt, lean toward the more capable tier — a retry cycle costs more than the model difference.
 
 ### Dispatch Tester
 
@@ -1068,6 +1068,7 @@ Loaded when reviewing project health analysis output.
 - `scan-usr` — user experience: missing UI states, accessibility, empty/error/loading coverage
 - `scan-anl` — delivery health: CI/CD automation, commit patterns, and working tree state
 - `scan-dbg` — debugging and error handling: exception handling, stack trace quality, debug tooling
+- `scan-ctx` — context budget: deployed agent profile size and merged skill count, before real work starts
 
 ### Optional Skills
 
@@ -1088,7 +1089,7 @@ Before dispatching a ticket to Builder, confirm:
 
 ## Lifecycle Role Bindings
 
-- Architect binds to `Technical Lead` for design and review decisions.
+- Architect binds to `Developer Lead` for design and review decisions.
 - Architect relies on `ticket-lifecycle-mode` (loaded by Builder and Tester) for canonical state transitions.
 - Architect is not the `Team Lead` — merge, close, and post-QA direction decisions remain with the team lead unless explicitly delegated.
 
@@ -1137,6 +1138,7 @@ Skills for this agent live in `skills/`. Read the relevant file before entering 
 | scan-usr | Project directory or product area to assess | `skills/scan-usr/SKILL.md` |
 | scan-anl | Project directory or recent git history to assess | `skills/scan-anl/SKILL.md` |
 | scan-dbg | Project directory or specific module to assess | `skills/scan-dbg/SKILL.md` |
+| scan-ctx | Agent id, workspace directory, or project to assess | `skills/scan-ctx/SKILL.md` |
 | task-automation-flow | Trigger phrase, ticket reference, verifier type, or fail counter question | `skills/task-automation-flow/SKILL.md` |
 | ticket-lifecycle-mode | Ticket reference, current state, role, handoff, or lifecycle question | `skills/ticket-lifecycle-mode/SKILL.md` |
 | documentation-and-adrs | documentation question, ADR format, README review, or comment discipline question | `skills/documentation-and-adrs/SKILL.md` |

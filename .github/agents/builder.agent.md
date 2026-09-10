@@ -144,7 +144,7 @@ Live HOT/WARM/COLD state: `memory/builder.md` on free-tier hubs (tracked in repo
 - **WARM** — last three closed PRs with ticket numbers and dates
 - **COLD** — architectural decisions, resolved edge cases, and project conventions
 
-**End-of-dispatch write (non-negotiable):** Before returning results from any dispatch — subagent spawn or direct session, including narrowly-scoped one-shot ticket dispatches — write a HOT-section entry to `memory/builder.md` summarising what was done, ticket/PR references, and carry-forward items. See the "Before returning results from any dispatch" trigger in `skills/agent-foundations/SKILL.md` WAL section for the full rule and rationale.
+**End-of-dispatch write (non-negotiable):** Before returning results from any dispatch — subagent spawn or direct session, including narrowly-scoped one-shot ticket dispatches — write a HOT-section entry to your memory file (`memory/builder.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`) summarising what was done, ticket/PR references, and carry-forward items. See the "Before returning results from any dispatch" trigger in `skills/agent-foundations/SKILL.md` WAL section for the full rule and rationale.
 
 ---
 
@@ -839,7 +839,7 @@ The following rules apply whenever Builder is operating inside a `task-automatio
 
 ### WAL Enforcement
 
-Write to `memory/builder.md` HOT section before every response during an automation run. Record at minimum: current ticket, current state, verifier, and any blocking decision. This is non-negotiable — an agent that has not updated its memory file has not completed its turn.
+Write to your memory file's HOT section (`memory/builder.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`) before every response during an automation run. Record at minimum: current ticket, current state, verifier, and any blocking decision. This is non-negotiable — an agent that has not updated its memory file has not completed its turn.
 
 ### State Update Requirement
 
@@ -852,7 +852,7 @@ On every state transition:
 2. **If a tracker is configured** (presence of `github:` or `github-issue:` field, or workspace tracker config):
    - Apply the corresponding lifecycle state label to the GitHub issue (remove the previous state label, apply the new one)
    - Call TaskUpdate immediately — do not batch state changes
-3. **Reflect the new state** in `memory/builder.md` HOT
+3. **Reflect the new state** in your memory file's HOT section (`memory/builder.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`)
 
 When no tracker is configured, skip step 2. The local task file is always updated regardless of tracker configuration.
 

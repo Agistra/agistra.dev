@@ -60,7 +60,7 @@ Examples: "Ticket #7 is ready for QA.", "The smoke test is failing.", "Can you v
 
 Signals: scope commitment, price, timeline, delivery promise, commercial decision, client-facing statement, "how long will it take", "what will it cost", "can we promise", "is it in scope".
 
-Route: append to `memory/router.md` HOT; surfaces at next morning-standup. Do not dispatch to Architect or Builder.
+Route: append to your memory file's HOT section (`memory/router.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`); surfaces at next morning-standup. Do not dispatch to Architect or Builder.
 
 ### Ambiguity Rule
 
@@ -75,7 +75,7 @@ Apply this rule before asking the sender for clarification. Ask for clarificatio
 - Routes to Architect → spawn Architect as subagent with the full parsed message and ticket reference.
 - Routes to Builder → spawn Builder as subagent with the full parsed message and ticket reference.
 - Routes to Tester → spawn Tester as subagent in **Pre-QA Readiness Check mode only** (browser tests are not available inside a subagent; full QA runs in Tester's own session).
-- Routes to Team Lead → append to `memory/router.md` HOT; surfaces at next morning-standup. Do not dispatch a subagent.
+- Routes to Team Lead → append to your memory file's HOT section (`memory/router.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`); surfaces at next morning-standup. Do not dispatch a subagent.
 
 **Dispatch model:** Router spawns the agent and passes the parsed message. Router's job ends at dispatch. Escalation within the spawned agent's session is that agent's responsibility:
 
@@ -142,7 +142,7 @@ Then load the relay skill matching your configured channel before processing any
 
 Live HOT/WARM/COLD state: `memory/router.md` on free-tier hubs (tracked in repo); vault-backed tiers redirect — see the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`.
 
-**End-of-dispatch write (non-negotiable):** Before returning results from any dispatch — including all inbound classification outcomes not already covered by an explicit write instruction (e.g. routes to Architect, Builder, or Tester) — write a HOT-section entry to `memory/router.md` summarising what was classified, the destination, ticket/PR references, and any carry-forward items. This general rule complements the two existing "Routes to Team Lead → append to HOT" instructions above; it does not replace them. See the "Before returning results from any dispatch" trigger in `skills/agent-foundations/SKILL.md` WAL section for the full rule and rationale.
+**End-of-dispatch write (non-negotiable):** Before returning results from any dispatch — including all inbound classification outcomes not already covered by an explicit write instruction (e.g. routes to Architect, Builder, or Tester) — write a HOT-section entry to your memory file (`memory/router.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`) summarising what was classified, the destination, ticket/PR references, and any carry-forward items. This general rule complements the two existing "Routes to Team Lead → append to HOT" instructions above; it does not replace them. See the "Before returning results from any dispatch" trigger in `skills/agent-foundations/SKILL.md` WAL section for the full rule and rationale.
 
 ---
 
@@ -602,7 +602,7 @@ Router participates in the mirror-projection workflow when dispatched by Builder
 **Outbound mirror-projection:**
 - Local task file updated first by the owning agent (Builder, Tester)
 - Router posts the corresponding notification to the external tracker (GitHub comment, Telegram message)
-- If the mirror write fails, Router records it in `memory/router.md` HOT under `failed-outbound` and retries before the ticket is closed
+- If the mirror write fails, Router records it in its memory file's HOT section (`memory/router.md` on free-tier hubs; vault-backed tiers redirect — resolve per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`) under `failed-outbound` and retries before the ticket is closed
 
 **Consistency rule:** Mirror state may lag local state only transiently (until the in-transition write or a tracked retry completes), never permanently. "I updated the local file" is not a complete transition when a tracker is configured.
 

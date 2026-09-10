@@ -47,6 +47,50 @@ export function readAgentManifest(profileDir) {
 }
 
 /**
+ * Resolve the setchin-agent-profiles repo root from a `profilesRoot` directory
+ * (`<repoRoot>/agents/profiles` — the shape every deploy target's own `profilesRoot`
+ * argument already assumes; see `discoverProfileDirs`). Two levels up from
+ * `profilesRoot` lands on the repo root, where `profiles.config.json` lives.
+ */
+function repoRootFromProfilesRoot(profilesRoot) {
+	return path.resolve(profilesRoot, '..', '..');
+}
+
+/**
+ * Read `profiles.config.json` from the repo root implied by `profilesRoot`.
+ * Returns `{}` when the file is missing or unparseable — callers apply their own
+ * fallback for whichever field they need, matching the existing "optional config,
+ * optional field" behaviour of the rest of this module.
+ *
+ * @param {string} profilesRoot  Absolute path to the `agents/profiles` directory.
+ * @returns {object}
+ */
+export function readProfilesConfig(profilesRoot) {
+	const filePath = path.join(repoRootFromProfilesRoot(profilesRoot), 'profiles.config.json');
+	try {
+		return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+	} catch {
+		return {};
+	}
+}
+
+/**
+ * Resolve the default model to fall back to when a manifest doesn't set its own
+ * `claude.model` (or a per-target override, e.g. `cursor.model`). Reads
+ * `defaults.model` from `profiles.config.json` at the repo root — the single place
+ * to update for a bulk model-version upgrade across every agent that doesn't
+ * declare its own override (see README's "Bulk model upgrade" section).
+ *
+ * @param {string} profilesRoot  Absolute path to the `agents/profiles` directory.
+ * @returns {string|undefined}  The default model id, or `undefined` when
+ *   `profiles.config.json` is absent or doesn't set `defaults.model`.
+ */
+export function resolveDefaultModel(profilesRoot) {
+	const config = readProfilesConfig(profilesRoot);
+	return config?.defaults?.model;
+}
+
+/**
  * Read the vscode-tools.json list for a profile directory.
  * Returns an empty array if the file is missing or malformed.
  */
