@@ -19,12 +19,12 @@ The task file's **`status:` frontmatter field is authoritative** for lifecycle s
 ## Role Model
 
 - `Developer` - implements scoped work and addresses engineering defects.
-- `Developer Lead` - approves implementation quality, decides when work is ready for QA, and triages engineering returns.
+- `Technical Lead` - approves implementation quality, decides when work is ready for QA, and triages engineering returns.
 - `QA` - verifies acceptance criteria and records pass, fail, or partial pass evidence.
 - `Relay` - classifies workflow signals, routes work to the correct owner, and leaves an audit trail.
 - `Team Lead` - makes scope, approval, merge, close, or post-QA direction decisions.
 
-One profile may bind to multiple roles. For example, a single engineer may act as both `Developer` and `Developer Lead` in the direct lane.
+One profile may bind to multiple roles. For example, a single engineer may act as both `Developer` and `Technical Lead` in the direct lane.
 
 ## Frontmatter Schema (Canonical Fields)
 
@@ -33,13 +33,13 @@ The following fields define the authoritative state and configuration for every 
 | Field                      | Values                                                                                                                                                        | Set by                                     | Notes                                                                                               |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
 | `status`                   | `state:ready-for-implementation` \| `state:in-progress` \| `state:ready-for-review` \| `state:ready-for-qa` \| `state:changes-requested` \| `state:qa-passed` \| `closed` | owning agent on state transition           | **Authoritative** lifecycle state on every tier; `closed` is the terminal value. On the free-tier default the filename infix is derived from this (filename token: `done`) — see State Transition CLI below for the tier-aware rule; vault-backed tiers have no filename infix. |
-| `verifier`                 | `Tester` \| `Architect` \| `Automated`                                                                                                                        | `Developer Lead` at ticket creation        | Drives the post-completion branch in `task-automation-flow`; ticket without verifier is underscoped |
+| `verifier`                 | `Tester` \| `Architect` \| `Automated`                                                                                                                        | `Technical Lead` at ticket creation        | Drives the post-completion branch in `task-automation-flow`; ticket without verifier is underscoped |
 | `fail-count`               | `0` \| `1` \| `2`                                                                                                                                             | active verifier on QA fail                 | Replaces `qa-fail-*` labels; incremented on each fail attempt                                       |
-| `parked`                   | `true` \| `false` (or absent)                                                                                                                                 | `Developer Lead` when fail-count reaches 3 | A parked task is not auto-dispatched; requires team lead direction to resume                        |
-| tracker reference field    | format defined by the active tracker plugin (e.g. `github-issue: <url>` for the GitHub plugin) | `Developer Lead` at ticket creation | **Mandatory when a tracker is configured** (see Tracker Creation Obligation and Tracker Plugin Contract below); its presence signals the mirror-update obligation applies. Only projects with no tracker configured at all are exempt. This field is not retroactively required for existing tickets created before this rule — it applies to newly created tickets going forward. The exact field name and value format are specified by the active tracker plugin (see `trackers/<plugin-name>.md`). |
-| `token-budget`             | integer token count                                                                                                                                            | `Developer Lead` at ticket creation        | **Optional** per-ticket spend ceiling; absent means no budget enforcement applies to the ticket. See `## Token Spend` log convention below and the pre-dispatch check in `task-automation-flow` |
-| `depends_on`               | list of task ids (e.g. `task_<id>`, `<id>`)                                                                                                                       | `Developer Lead` at ticket creation        | **Optional.** Declares a hard ordering constraint: this ticket must not start until every listed id has landed. Backward compatible — absent on existing task files, which continue to parse normally. Consumed by `npm run task -- waves <project>` to exclude conflicting pairs from the same wave and to detect dependency cycles. |
-| `touches`                  | list of glob patterns (e.g. `pipelines/deploy/lib/*.js`)                                                                                                        | `Developer Lead` at ticket creation        | **Optional.** Declares the files/paths this ticket is expected to modify. Backward compatible — absent means no glob-overlap constraint is inferred for this ticket. Consumed by `npm run task -- waves <project>` to exclude tickets with overlapping `touches` from the same wave. |
+| `parked`                   | `true` \| `false` (or absent)                                                                                                                                 | `Technical Lead` when fail-count reaches 3 | A parked task is not auto-dispatched; requires team lead direction to resume                        |
+| tracker reference field    | format defined by the active tracker plugin (e.g. `github-issue: <url>` for the GitHub plugin) | `Technical Lead` at ticket creation | **Mandatory when a tracker is configured** (see Tracker Creation Obligation and Tracker Plugin Contract below); its presence signals the mirror-update obligation applies. Only projects with no tracker configured at all are exempt. This field is not retroactively required for existing tickets created before this rule — it applies to newly created tickets going forward. The exact field name and value format are specified by the active tracker plugin (see `trackers/<plugin-name>.md`). |
+| `token-budget`             | integer token count                                                                                                                                            | `Technical Lead` at ticket creation        | **Optional** per-ticket spend ceiling; absent means no budget enforcement applies to the ticket. See `## Token Spend` log convention below and the pre-dispatch check in `task-automation-flow` |
+| `depends_on`               | list of task ids (e.g. `task_<id>`, `<id>`)                                                                                                                       | `Technical Lead` at ticket creation        | **Optional.** Declares a hard ordering constraint: this ticket must not start until every listed id has landed. Backward compatible — absent on existing task files, which continue to parse normally. Consumed by `npm run task -- waves <project>` to exclude conflicting pairs from the same wave and to detect dependency cycles. |
+| `touches`                  | list of glob patterns (e.g. `pipelines/deploy/lib/*.js`)                                                                                                        | `Technical Lead` at ticket creation        | **Optional.** Declares the files/paths this ticket is expected to modify. Backward compatible — absent means no glob-overlap constraint is inferred for this ticket. Consumed by `npm run task -- waves <project>` to exclude tickets with overlapping `touches` from the same wave. |
 
 Agents update these fields on every lifecycle transition. Whether the filename infix is also kept in sync with `status:` is tier-dependent — see the `transition` operation description under State Transition CLI below.
 
@@ -165,17 +165,17 @@ Every ticket must include the following required field before it may be dispatch
 
 | Field      | Values                                 | Set by                              | Notes                                                                                                                      |
 | ---------- | -------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `verifier` | `Tester` \| `Architect` \| `Automated` | `Developer Lead` at ticket creation | Drives the post-completion branch in `task-automation-flow`. A ticket without a verifier is underscoped — do not dispatch. |
+| `verifier` | `Tester` \| `Architect` \| `Automated` | `Technical Lead` at ticket creation | Drives the post-completion branch in `task-automation-flow`. A ticket without a verifier is underscoped — do not dispatch. |
 
 ## Canonical Ticket States
 
 | State                            | Meaning                                                                                   | Typical owner                        |
 | -------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------ |
-| `state:ready-for-implementation` | Ticket is scoped and ready for implementation handoff or start                            | `Developer Lead`                     |
+| `state:ready-for-implementation` | Ticket is scoped and ready for implementation handoff or start                            | `Technical Lead`                     |
 | `state:in-progress`              | Implementation work is actively underway                                                  | `Developer`                          |
 | `state:ready-for-review`         | Implementation is complete and waiting for accountable engineering review                 | `Developer` or delegated implementer |
-| `state:changes-requested`        | More engineering work is required after review or QA                                      | `Developer Lead` or `QA`             |
-| `state:ready-for-qa`             | Engineering work is accepted and the QA handoff is complete                               | `Developer Lead`                     |
+| `state:changes-requested`        | More engineering work is required after review or QA                                      | `Technical Lead` or `QA`             |
+| `state:ready-for-qa`             | Engineering work is accepted and the QA handoff is complete                               | `Technical Lead`                     |
 | `state:qa-passed`                | QA passed and the work is waiting for team lead approval, merge, close, or next direction | `QA`                                 |
 
 After `state:qa-passed`, the `Team Lead` decides whether the work is closed or moved to another workflow state outside this shared baseline.
@@ -188,7 +188,7 @@ The fail counter is tracked in the task file's `fail-count:` frontmatter field (
 | ------ | ------------------------- | ---------------------------------------------------------- | ---------------- |
 | 1st    | `1`                       | signal fail-1 via plugin update-record                     | active verifier  |
 | 2nd    | `2`                       | remove fail-1 signal, apply fail-2 via plugin update-record | active verifier  |
-| 3rd    | — (task is parked)        | — (no tracker update; local `parked: true` is authoritative) | `Developer Lead` |
+| 3rd    | — (task is parked)        | — (no tracker update; local `parked: true` is authoritative) | `Technical Lead` |
 
 When progressing from fail 1 to fail 2, update the frontmatter `fail-count: 2` and (if a tracker is configured) apply the plugin's fail-counter update procedure. Fail counter and lifecycle state are independent — both are recorded in the task file.
 
@@ -227,20 +227,20 @@ When a tracker is configured for a project — signalled by a tracker reference 
 
 | From                                            | To                               | Allowed role                          | Gate                                                                                                                                  |
 | ----------------------------------------------- | -------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| scoped backlog or planning state                | `state:ready-for-implementation` | `Developer Lead`                      | scope and owner are clear                                                                                                             |
+| scoped backlog or planning state                | `state:ready-for-implementation` | `Technical Lead`                      | scope and owner are clear                                                                                                             |
 | `state:ready-for-implementation`                | `state:in-progress`              | `Developer`                           | implementation has started                                                                                                            |
 | `state:in-progress`                             | `state:ready-for-review`         | `Developer`                           | work is complete and ready for accountable review                                                                                     |
-| `state:ready-for-review`                        | `state:changes-requested`        | `Developer Lead`                      | review found engineering defects or missing requirements                                                                              |
-| `state:ready-for-review`                        | `state:qa-passed`                | `Developer Lead` (acting as verifier) | only when `verifier: Architect` — Developer Lead has reviewed engineering quality and verified all ACs; no separate QA phase required |
-| `state:ready-for-review` or `state:in-progress` | `state:ready-for-qa`             | `Developer Lead`                      | engineering acceptance and QA handoff complete                                                                                        |
-| `state:ready-for-qa`                            | `state:qa-passed`                | `Developer Lead` (acting as verifier) | only when `verifier: Automated` — automated gates pass and Developer Lead spot-check is complete                                      |
+| `state:ready-for-review`                        | `state:changes-requested`        | `Technical Lead`                      | review found engineering defects or missing requirements                                                                              |
+| `state:ready-for-review`                        | `state:qa-passed`                | `Technical Lead` (acting as verifier) | only when `verifier: Architect` — Technical Lead has reviewed engineering quality and verified all ACs; no separate QA phase required |
+| `state:ready-for-review` or `state:in-progress` | `state:ready-for-qa`             | `Technical Lead`                      | engineering acceptance and QA handoff complete                                                                                        |
+| `state:ready-for-qa`                            | `state:qa-passed`                | `Technical Lead` (acting as verifier) | only when `verifier: Automated` — automated gates pass and Technical Lead spot-check is complete                                      |
 | `state:ready-for-qa`                            | `state:qa-passed`                | `QA`                                  | only when `verifier: Tester` — QA PASS with evidence                                                                                  |
 | `state:ready-for-qa`                            | `state:changes-requested`        | `QA`                                  | only when `verifier: Tester` — QA FAIL or PARTIAL PASS requiring engineering work                                                     |
 | `state:qa-passed`                               | closed or next state             | `Team Lead`                           | approval or next-direction decision                                                                                                   |
 
 `Relay` does not own implementation-quality transitions. Relay classifies, routes, and audits — it does not declare engineering acceptance, QA pass, or closure.
 
-`state:qa-passed` is normally reached via `QA`. The sole exception is when the ticket's verifier field is set to `Architect`: in that case the `Developer Lead` (acting as verifier) transitions directly from `state:ready-for-review` to `state:qa-passed` after reviewing engineering quality and verifying all ACs — no separate QA phase is required. In all other verifier paths, a `Developer Lead` completing an engineering review must advance to `state:ready-for-qa`, never directly to `state:qa-passed`.
+`state:qa-passed` is normally reached via `QA`. The sole exception is when the ticket's verifier field is set to `Architect`: in that case the `Technical Lead` (acting as verifier) transitions directly from `state:ready-for-review` to `state:qa-passed` after reviewing engineering quality and verifying all ACs — no separate QA phase is required. In all other verifier paths, a `Technical Lead` completing an engineering review must advance to `state:ready-for-qa`, never directly to `state:qa-passed`.
 
 **On every state transition:** run the state transition CLI — `npm run task -- transition <id> <new-state>` — instead of manually editing the frontmatter, renaming the file, and calling the tracker plugin as separate steps. The CLI performs the local write (frontmatter `status:`, and, on tiers where it applies, the filename infix — see State Transition CLI above) and, when a tracker is configured, the mirror update and post-verify in one atomic, ordered call. See State Transition CLI below and Mirror Update Obligation above.
 
@@ -292,9 +292,9 @@ At least one of these is true:
 
 Before the state is changed, a deterministic review record should exist in the issue, PR, or other required audit trail with the verdict, findings, and implementer next steps.
 
-## Developer Lead Review Output
+## Technical Lead Review Output
 
-When a `Developer Lead` reviews work in `state:ready-for-review`, the review record should include:
+When a `Technical Lead` reviews work in `state:ready-for-review`, the review record should include:
 
 - explicit verdict: `accepted`, `changes requested`, or `blocked`
 - acceptance criteria coverage summary
@@ -337,7 +337,7 @@ When a workflow update arrives, `Relay` should:
 - leave a deterministic audit trail when the workflow requires one
 - ask for clarification if the update is missing owner, state, or requested action
 
-`Relay` may describe the current lifecycle state, but it does not replace `Developer Lead`, `QA`, or `Team Lead` decisions.
+`Relay` may describe the current lifecycle state, but it does not replace `Technical Lead`, `QA`, or `Team Lead` decisions.
 
 ## Tracker Plugin Contract
 

@@ -21,7 +21,7 @@ A ticket without a verifier field is underscoped. Do not dispatch — return to 
 
 ## Verifier
 
-Every ticket has acceptance criteria. Architect specifies the verifier when creating the ticket — in this flow, Architect acts as Developer Lead and is responsible for setting the verifier field at ticket creation, consistent with the Developer Lead role defined in `ticket-lifecycle-mode`. There is no "no QA" — only a question of who verifies.
+Every ticket has acceptance criteria. Architect specifies the verifier when creating the ticket — in this flow, Architect acts as Technical Lead and is responsible for setting the verifier field at ticket creation, consistent with the Technical Lead role defined in `ticket-lifecycle-mode`. There is no "no QA" — only a question of who verifies.
 
 | Verifier    | When Architect assigns it                           | Flow after Builder completes                                                                                                                                                                                                                                |
 | ----------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

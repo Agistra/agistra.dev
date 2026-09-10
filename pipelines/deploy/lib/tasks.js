@@ -209,8 +209,23 @@ export function loadSkillContent(skillsRoot, skillName) {
  * Map lifecycle state to filename token.
  * Per the ticket-lifecycle-mode state vocabulary.
  * Throws on unknown state to prevent silent bugs.
+ *
+ * Exported for two callers that both need the exact filename-infix
+ * vocabulary a given `status:` value maps to, rather than re-deriving a
+ * second copy of the state vocabulary each:
+ *   - `task-cli.js`'s `createTask` reuses this mapping so a freshly created
+ *     task's status and (free-tier) filename infix agree from the start,
+ *     the same mapping `changeTaskStatus` already uses for transitions.
+ *   - `migrate-vault-task-infix-cleanup.js` reuses it for its infix/status-
+ *     match confirmation. Not the same vocabulary as `statusToInfix` below,
+ *     which serves ticket-drift.js's own looser matching needs and
+ *     deliberately keeps `state:ready-for-implementation` distinct from
+ *     `todo` there (see `PRE_DISPATCH_INFIXES` in ticket-drift.js) — this
+ *     function is the one whose output always equals `filenameInfix`'s
+ *     vocabulary for a task file whose status and filename infix genuinely
+ *     agree.
  */
-function stateToToken(state) {
+export function stateToToken(state) {
 	const map = {
 		'state:ready-for-implementation': 'todo',
 		'state:in-progress': 'in-progress',
@@ -282,8 +297,12 @@ export function statusToInfix(status) {
  * above, validated against the canonical `TASK_STATE_TOKENS` list so an
  * incidental hyphen segment in a vault slug is never mistaken for a real
  * state token.
+ *
+ * Exported so `migrate-vault-task-infix-cleanup.js` can reuse this exact
+ * detection predicate instead of re-deriving it from `filenameInfix` +
+ * `TASK_STATE_TOKENS` itself.
  */
-function hasStateTokenInfix(filename) {
+export function hasStateTokenInfix(filename) {
 	const infix = filenameInfix(filename);
 	return infix !== null && TASK_STATE_TOKENS.includes(infix);
 }

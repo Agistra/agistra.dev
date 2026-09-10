@@ -355,7 +355,7 @@ Work moves through defined states with role-based transition permissions:
 
 | State | Owned by |
 | --- | --- |
-| `ready-for-implementation` | Architect / Developer Lead |
+| `ready-for-implementation` | Architect / Technical Lead |
 | `in-progress` | Builder |
 | `ready-for-review` | Builder |
 | `ready-for-qa` | Builder (after self-review) |

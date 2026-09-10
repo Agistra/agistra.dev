@@ -13,7 +13,7 @@ The shared rule set that governs how work moves through the team — who can tra
 | Role | Agent | What they own |
 | --- | --- | --- |
 | Developer | Builder | Implements and addresses defects |
-| Developer Lead | Architect / Builder | Approves implementation quality, decides when work is ready for QA |
+| Technical Lead | Architect / Builder | Approves implementation quality, decides when work is ready for QA |
 | QA | Tester | Verifies acceptance criteria, returns pass/fail/blocked verdicts |
 | Relay | Router | Classifies and routes — never transitions ticket states |
 | Human Approver | You | Final merge, close, and direction decisions |
@@ -38,11 +38,11 @@ ready-for-implementation   ← Architect creates, you approve
 
 | From | To | Who | Gate |
 | --- | --- | --- | --- |
-| backlog | `ready-for-implementation` | Developer Lead | Scope and owner are clear |
+| backlog | `ready-for-implementation` | Technical Lead | Scope and owner are clear |
 | `ready-for-implementation` | `in-progress` | Developer | Implementation has started |
 | `in-progress` | `ready-for-review` | Developer | Work complete, ready for review |
-| `ready-for-review` | `changes-requested` | Developer Lead | Review found defects or missing requirements |
-| `ready-for-review` | `ready-for-qa` | Developer Lead | Engineering accepted, handoff payload complete |
+| `ready-for-review` | `changes-requested` | Technical Lead | Review found defects or missing requirements |
+| `ready-for-review` | `ready-for-qa` | Technical Lead | Engineering accepted, handoff payload complete |
 | `ready-for-qa` | `qa-passed` | QA | PASS verdict with evidence |
 | `ready-for-qa` | `changes-requested` | QA | FAIL or PARTIAL PASS requiring engineering work |
 | `qa-passed` | closed / next | Human Approver | Your decision |
@@ -89,7 +89,7 @@ Tester blocks execution if any required field is missing.
 
 - Builder never declares QA done — only Tester moves to `state:qa-passed`
 - Router classifies and routes but never transitions ticket states
-- `state:qa-passed` is Tester-only — Developer Lead must advance to `state:ready-for-qa`, never skip to `state:qa-passed`
+- `state:qa-passed` is Tester-only — Technical Lead must advance to `state:ready-for-qa`, never skip to `state:qa-passed`
 - You (Human Approver) are the final authority on merge and close
 
 ---

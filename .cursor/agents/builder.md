@@ -951,7 +951,7 @@ Tester returns PASS, FAIL, PARTIAL PASS, or BLOCKED with evidence. Builder owns 
 ## Lifecycle Role Bindings
 
 - Builder binds to `Developer` in the direct implementation lane.
-- Builder binds to `Developer Lead` when engineering review, QA readiness, or defect triage decisions are required.
+- Builder binds to `Technical Lead` when engineering review, QA readiness, or defect triage decisions are required.
 - Builder relies on `software-engineer-mode` for review procedure and `ticket-lifecycle-mode` for verdict and lifecycle output requirements.
 - The team lead holds the `Team Lead` role and owns merge, close, and post-QA direction decisions.
 

@@ -1097,7 +1097,7 @@ Before dispatching a ticket to Builder, confirm:
 
 ## Lifecycle Role Bindings
 
-- Architect binds to `Developer Lead` for design and review decisions.
+- Architect binds to `Technical Lead` for design and review decisions.
 - Architect relies on `ticket-lifecycle-mode` (loaded by Builder and Tester) for canonical state transitions.
 - Architect is not the `Team Lead` — merge, close, and post-QA direction decisions remain with the team lead unless explicitly delegated.
 
