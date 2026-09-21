@@ -25,14 +25,24 @@ function listMdFiles(dir) {
 	return fs.readdirSync(dir).filter(f => f.endsWith('.md'));
 }
 
-/** Project root for a task file (handles tasks already under projects/<name>/done/). */
+/** Project root for a task file (handles tasks already under projects/<name>/done/ or /dropped/). */
 export function projectDirFromTaskPath(taskPath) {
 	const dir = path.dirname(taskPath);
-	return path.basename(dir) === 'done' ? path.dirname(dir) : dir;
+	const base = path.basename(dir);
+	return (base === 'done' || base === 'dropped') ? path.dirname(dir) : dir;
 }
 
 export function doneTasksDir(projectDir) {
 	return path.join(projectDir, 'done');
+}
+
+/**
+ * Dropped-tasks subfolder for a project, mirroring `doneTasksDir` above.
+ * Pairs with the vault-shaped `changeTaskStatus` move support for the
+ * `dropped` terminal state.
+ */
+export function droppedTasksDir(projectDir) {
+	return path.join(projectDir, 'dropped');
 }
 
 /**
@@ -234,6 +244,7 @@ export function stateToToken(state) {
 		'state:changes-requested': 'changes-requested',
 		'state:qa-passed': 'qa-passed',
 		'closed': 'done',
+		'dropped': 'dropped',
 	};
 	if (!map[state]) {
 		throw new Error(`Unknown lifecycle state: ${state}. Valid states: ${Object.keys(map).join(', ')}`);
@@ -307,6 +318,71 @@ export function hasStateTokenInfix(filename) {
 	return infix !== null && TASK_STATE_TOKENS.includes(infix);
 }
 
+// ── Vault-shaped hub-note bookkeeping on move-to-terminal-state ────────────
+//
+// Mirrors task-cli.js's `ensureProjectHubNote` (create-task) pattern: a
+// per-project hub note at `Tasks/<project>/<project>.md` lists every open
+// task under `## Tasks`, and a per-subfolder hub note at
+// `Tasks/<project>/<subfolder>/<project>-<subfolder>.md` lists every task
+// moved into that subfolder under `## Notes` — see storage/obsidian.md's
+// Hierarchical index notes section for the `<project>-<subfolder>` naming
+// convention. Both operations are idempotent: re-running a transition to an
+// already-moved task's terminal state must not duplicate either wikilink.
+
+/** Path to a project's hub note, derived from its project directory. */
+function projectHubNotePath(projectDir) {
+	const project = path.basename(projectDir);
+	return path.join(projectDir, `${project}.md`);
+}
+
+/** Path to a project's `<subfolder>` hub note (e.g. `done`, `dropped`). */
+function subfolderHubNotePath(projectDir, subfolder) {
+	const project = path.basename(projectDir);
+	return path.join(projectDir, subfolder, `${project}-${subfolder}.md`);
+}
+
+/**
+ * Remove a `- [[task_id_slug]]` link line from a hub note, if present.
+ * No-op (idempotent) when the hub note doesn't exist yet or the line is
+ * already absent -- both are valid states, not errors.
+ */
+function removeWikilinkFromHubNote(hubNotePath, taskFilenameNoExt) {
+	if (!fs.existsSync(hubNotePath)) return;
+
+	const raw = fs.readFileSync(hubNotePath, 'utf-8');
+	const linkLine = `- [[${taskFilenameNoExt}]]`;
+	const lines = raw.split(/\r?\n/);
+	const filtered = lines.filter(line => line.trim() !== linkLine);
+	if (filtered.length === lines.length) return; // idempotent no-op: nothing to remove
+
+	fs.writeFileSync(hubNotePath, filtered.join('\n'), 'utf-8');
+}
+
+/**
+ * Append a `- [[task_id_slug]]` link line under a subfolder hub note's
+ * `## Notes` section, creating the hub note with a minimal starter shape
+ * (mirroring `ensureProjectHubNote`'s create-task precedent) if it doesn't
+ * exist yet for this project/subfolder. Idempotent: a link already present
+ * is not duplicated.
+ */
+function appendWikilinkToSubfolderHubNote(projectDir, subfolder, taskFilenameNoExt) {
+	const project = path.basename(projectDir);
+	const hubNotePath = subfolderHubNotePath(projectDir, subfolder);
+	const linkLine = `- [[${taskFilenameNoExt}]]`;
+
+	if (!fs.existsSync(hubNotePath)) {
+		fs.mkdirSync(path.dirname(hubNotePath), { recursive: true });
+		fs.writeFileSync(hubNotePath, `# ${project} — ${subfolder}\n\n## Notes\n\n${linkLine}\n`, 'utf-8');
+		return;
+	}
+
+	const raw = fs.readFileSync(hubNotePath, 'utf-8');
+	if (raw.split(/\r?\n/).some(line => line.trim() === linkLine)) return; // idempotent no-op
+
+	const trimmed = raw.replace(/\s+$/, '');
+	fs.writeFileSync(hubNotePath, `${trimmed}\n${linkLine}\n`, 'utf-8');
+}
+
 /**
  * Serialize frontmatter object to YAML-like string.
  */
@@ -370,10 +446,46 @@ export function changeTaskStatus(taskPath, targetState = 'closed', frontmatterUp
 	const basename = path.basename(taskPath);
 
 	if (!hasStateTokenInfix(basename)) {
-		// Vault-shaped: single write, no rename.
+		// Vault-shaped: filename never changes (Obsidian resolves [[wikilink]]s
+		// by filename, not path). On any target state other than the two
+		// terminal ones this remains a single in-place write, no move -- this
+		// is a real regression boundary and must stay untouched.
 		const newContent = `---\n${serializeFrontmatter(meta)}\n---\n${newBody}`;
+
+		if (token === 'done' || token === 'dropped') {
+			// Terminal state: directory-only move into done/ or dropped/, plus
+			// hub-note membership bookkeeping. Filename stays byte-identical --
+			// only the containing folder changes.
+			const targetDir = token === 'done' ? doneTasksDir(projectDir) : droppedTasksDir(projectDir);
+			fs.mkdirSync(targetDir, { recursive: true });
+			const newPath = path.join(targetDir, basename);
+
+			fs.writeFileSync(taskPath, newContent, 'utf-8');
+			if (taskPath !== newPath) {
+				fs.renameSync(taskPath, newPath);
+			}
+
+			const taskFilenameNoExt = basename.replace(/\.md$/, '');
+			const subfolder = path.basename(targetDir);
+			removeWikilinkFromHubNote(projectHubNotePath(projectDir), taskFilenameNoExt);
+			appendWikilinkToSubfolderHubNote(projectDir, subfolder, taskFilenameNoExt);
+
+			return newPath;
+		}
+
 		fs.writeFileSync(taskPath, newContent, 'utf-8');
 		return taskPath;
+	}
+
+	// Repo-files-shaped (infix present) from here. `dropped` has no
+	// filename-infix equivalent in TASK_STATE_TOKENS today -- deliberately not
+	// added (see storage/obsidian.md's `done`/`dropped` vault-only move
+	// contract). Fail loud rather than silently rename to an infix
+	// `hasStateTokenInfix` doesn't recognize.
+	if (token === 'dropped') {
+		throw new Error(
+			`Transition to 'dropped' is not supported for repo-files-shaped tasks (no filename-infix convention exists for 'dropped'): ${basename}`
+		);
 	}
 
 	// Determine new filename token

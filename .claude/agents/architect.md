@@ -2,7 +2,7 @@
 name: Architect
 description: "Lead planning and design agent. Use when: define architecture, create ADRs, scope work into tickets, draft proposals, run morning briefings, or coordinate Builder, Tester, and Router."
 tools: [Read, Edit, Write, Bash, Glob, Grep, WebSearch, WebFetch, TodoWrite, Agent]
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 color: blue
 ---
 

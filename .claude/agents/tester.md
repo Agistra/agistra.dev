@@ -2,7 +2,7 @@
 name: Tester
 description: "Independent QA agent. Use when: test acceptance criteria, verify PRs, run black-box QA, produce pass/fail evidence, or retest fixes handed off by Builder."
 tools: [Read, Bash, Glob, Grep, WebFetch, TodoWrite, Agent]
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 color: green
 ---
 

@@ -12,6 +12,7 @@
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -22,7 +23,9 @@ import {
 	computeNightlyDreamingTaskName,
 	registerNightlyDreamingTask as registerNightlyDreamingTaskDefault,
 	removeNightlyDreamingTask as removeNightlyDreamingTaskDefault,
+	isNightlyDreamingTaskRegistered as isNightlyDreamingTaskRegisteredDefault,
 } from './lib/nightly-dreaming.js';
+import { ensureHubRootDepsInstalled as ensureHubRootDepsInstalledDefault } from './lib/hub-root-install.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +78,142 @@ export async function defaultSetupTierPlugin(opts, { libDir = path.join(__dirnam
 // Present when running `npm run setup` from inside the setchin-agent-profiles repo itself.
 // Absent in a deployed hub (agents/profiles/ is a source-repo-only concept there).
 const SOURCE_PROFILES_ROOT = path.resolve(__dirname, '..', '..', 'agents', 'profiles');
+
+// ── Claude Code statusline (exported for testing) ──────────────────────────────
+
+/** Filename this feature copies to $HOME/.claude/. */
+export const STATUSLINE_SCRIPT_FILENAME = 'statusline-command.sh';
+
+/**
+ * Exact statusLine command value this feature writes into
+ * $HOME/.claude/settings.json — also the marker used to detect "already
+ * installed by this exact mechanism" on a re-run, so re-running `npm run
+ * setup` never treats its own previously-installed entry as a foreign one
+ * needing the confirm-before-overwrite prompt below. Matches the real-world
+ * command shape already verified working on the machine this script was
+ * originally hand-wired on (bash resolves `~` against $HOME even from a
+ * Windows Git Bash shell, which is how Claude Code always runs a statusLine
+ * command regardless of platform).
+ */
+export const STATUSLINE_COMMAND = 'bash ~/.claude/statusline-command.sh';
+
+/**
+ * Absolute path to the canonical shipped statusline script, resolved
+ * relative to this file's own location (not cliOutputRoot/hubRoot) — same
+ * convention bedrock.setup-plugin.js uses for its own AWS_PROFILE_SCRIPT_PATH,
+ * so this works identically whether setup.js is running from the source repo
+ * or from a deployed hub's own copy of pipelines/deploy/setup.js.
+ *
+ * @returns {string}
+ */
+export function resolveStatuslineScriptSourcePath() {
+	return path.join(__dirname, 'lib', STATUSLINE_SCRIPT_FILENAME);
+}
+
+/**
+ * Build the exact statusLine settings.json entry this feature installs.
+ * @returns {{type: 'command', command: string}}
+ */
+export function buildStatuslineSettingsEntry() {
+	return { type: 'command', command: STATUSLINE_COMMAND };
+}
+
+/**
+ * Is the given settings.json `statusLine` value the one this feature
+ * installs? Distinguishes "already installed by this exact mechanism"
+ * (silently safe to refresh, never re-asks) from a foreign pre-existing
+ * statusLine command that must never be silently clobbered.
+ *
+ * @param {object|string|undefined|null} statusLineEntry
+ * @returns {boolean}
+ */
+export function isAgistraStatusline(statusLineEntry) {
+	return !!statusLineEntry
+		&& typeof statusLineEntry === 'object'
+		&& statusLineEntry.type === 'command'
+		&& statusLineEntry.command === STATUSLINE_COMMAND;
+}
+
+/**
+ * Interactive install/refresh step for the Claude Code statusline feature —
+ * tier-agnostic, called unconditionally for every hubType (same "applies
+ * uniformly across hub tiers, not gated by hubType" precedent as the
+ * nightly-dreaming block below), and not platform-gated either: Claude
+ * Code's statusLine hook always runs via a bash-invokable command on every
+ * platform (Git Bash on Windows), so unlike nightly dreaming this step is
+ * not Windows-only.
+ *
+ * All filesystem access goes through the same injectable fsMod the rest of
+ * createRun() already uses — this keeps the step fully mockable in tests and
+ * ensures a mocked fsMod can never leak a write onto the real machine's
+ * $HOME, regardless of what homeDir string is used to build paths.
+ *
+ * A missing/unreadable script source (e.g. a broken deploy) warns and skips
+ * rather than throwing — this step must never crash the rest of the wizard,
+ * same non-fatal posture as the nightly Scheduled Task registration failure
+ * warning below.
+ *
+ * @param {object} opts
+ * @param {function(string, boolean=): Promise<boolean>} opts.askYN
+ * @param {object} opts.fsMod  Injectable fs module.
+ * @param {string} opts.homeDir  Absolute path to $HOME.
+ * @param {string} opts.scriptSourcePath  Absolute path to the canonical shipped script.
+ * @param {function(string): void} [opts.log]
+ * @returns {Promise<{installed: boolean, skippedExisting?: boolean, refreshed?: boolean, error?: string}>}
+ */
+export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSourcePath, log = (s) => process.stdout.write(s) }) {
+	const wantsInstall = await askYN(
+		'Install the Claude Code statusline (context/rate-limit/cost visibility in your terminal)?',
+		true,
+	);
+	if (!wantsInstall) return { installed: false };
+
+	const claudeDir = path.join(homeDir, '.claude');
+	const settingsPath = path.join(claudeDir, 'settings.json');
+	const scriptTargetPath = path.join(claudeDir, STATUSLINE_SCRIPT_FILENAME);
+
+	let existingSettings = null;
+	if (fsMod.existsSync(settingsPath)) {
+		try {
+			existingSettings = JSON.parse(fsMod.readFileSync(settingsPath, 'utf-8'));
+		} catch {
+			existingSettings = null;
+		}
+	}
+	const existingStatusLine = existingSettings?.statusLine;
+	const alreadyInstalledByThisMechanism = isAgistraStatusline(existingStatusLine);
+
+	if (existingStatusLine && !alreadyInstalledByThisMechanism) {
+		const overwrite = await askYN(
+			`  An existing statusLine command is already configured (${JSON.stringify(existingStatusLine)}). Overwrite it with the Agistra statusline?`,
+			false,
+		);
+		if (!overwrite) {
+			log('  Skipping statusline install — existing statusLine command left untouched.\n');
+			return { installed: false, skippedExisting: true };
+		}
+	}
+
+	let scriptSource;
+	try {
+		scriptSource = fsMod.readFileSync(scriptSourcePath, 'utf-8');
+	} catch (err) {
+		log(`  WARNING: could not read the statusline script (${err.message}) — skipping install.\n`);
+		return { installed: false, error: err.message };
+	}
+
+	fsMod.mkdirSync(claudeDir, { recursive: true });
+	// Always refresh the script content, even when settings.json already has
+	// the right statusLine entry — this is what lets future script
+	// improvements reach the customer on a later `npm run setup` re-run.
+	fsMod.writeFileSync(scriptTargetPath, scriptSource, 'utf-8');
+
+	const updatedSettings = { ...(existingSettings ?? {}), statusLine: buildStatuslineSettingsEntry() };
+	fsMod.writeFileSync(settingsPath, JSON.stringify(updatedSettings, null, 2) + '\n', 'utf-8');
+
+	log(`  Statusline ${alreadyInstalledByThisMechanism ? 'refreshed' : 'installed'} → ${scriptTargetPath}\n`);
+	return { installed: true, refreshed: alreadyInstalledByThisMechanism };
+}
 
 /**
  * Read the static hub-type config file injected into the archive by the packaging
@@ -383,6 +522,20 @@ export const TOKEN_SENTINEL = '[token set — press Enter to keep]';
  *   Injectable nightly dreaming Scheduled Task registration (see lib/nightly-dreaming.js).
  * @param {function} [deps.removeNightlyDreamingTask]
  *   Injectable nightly dreaming Scheduled Task removal (see lib/nightly-dreaming.js).
+ * @param {function} [deps.isNightlyDreamingTaskRegistered]
+ *   Injectable live Scheduled Task presence check (see lib/nightly-dreaming.js). Used to
+ *   skip the interactive re-prompt on a true no-op re-run (config already says enabled
+ *   AND the live task is still registered).
+ * @param {string} [deps.homeDir]
+ *   Injectable absolute path to $HOME, used only by the statusline install step below.
+ *   Defaults to the real os.homedir() — tests point this at a scratch fixture directory.
+ * @param {function} [deps.installStatusline]
+ *   Injectable statusline install/refresh step (see maybeInstallStatusline above).
+ * @param {function} [deps.ensureHubRootDepsInstalled]
+ *   Injectable hub-root npm dependency install step (see lib/hub-root-install.js).
+ *   Defaults to the real implementation (runs a real `npm ci`/`npm install` when
+ *   node_modules/ is missing or stale). Overridable so unit tests can verify this
+ *   step's own wiring (runs early, every hubType) without spawning a real npm install.
  * @returns {function(): Promise<void>}
  */
 export function createRun({
@@ -399,8 +552,23 @@ export function createRun({
 	platform = process.platform,
 	registerNightlyDreamingTask = registerNightlyDreamingTaskDefault,
 	removeNightlyDreamingTask = removeNightlyDreamingTaskDefault,
+	isNightlyDreamingTaskRegistered = isNightlyDreamingTaskRegisteredDefault,
+	homeDir = os.homedir(),
+	installStatusline = maybeInstallStatusline,
+	ensureHubRootDepsInstalled = ensureHubRootDepsInstalledDefault,
 }) {
 	return async function run() {
+		// ── Hub-root npm dependencies ──────────────────────────────────────────────
+		// Runs first, before anything else: buildPackageJson() (lib/extras.js)
+		// writes this hub's own package.json unconditionally on every hubType, and
+		// several steps further down (the relay MCP wiring, any tier plugin that
+		// spawns packages/vault/vault-guard.cjs indirectly via a prior-hub
+		// migration) assume node_modules/ is already populated from it. Idempotent —
+		// see lib/hub-root-install.js's own doc comment for the presence-check that
+		// makes a re-run against an already-installed hub a true no-op.
+		line('Hub-root dependencies ');
+		ensureHubRootDepsInstalled({ hubRoot: cliOutputRoot, fsMod });
+
 		// ── Read existing config (pre-populate defaults) ──────────────────────────
 		let existingConfig = null;
 		const configPath = path.join(cliOutputRoot, 'workspace.config.json');
@@ -697,6 +865,20 @@ export function createRun({
 			await setupTierPlugin(tierPluginOpts);
 		}
 
+		// ── Claude Code statusline ────────────────────────────────────────────────
+		// Tier-agnostic — applies uniformly across hub tiers, not gated by hubType,
+		// same precedent as the nightly-dreaming block below. Unlike nightly
+		// dreaming this step is not platform-gated: Claude Code's statusLine hook
+		// always runs via a bash-invokable command, on every platform (Git Bash on
+		// Windows), so this runs unconditionally regardless of process.platform.
+		line('Claude Code statusline ');
+		await installStatusline({
+			askYN,
+			fsMod,
+			homeDir,
+			scriptSourcePath: resolveStatuslineScriptSourcePath(),
+		});
+
 		// ── Nightly dreaming (Windows only) ──────────────────────────────────────
 		// Applies uniformly across hub tiers — not gated by hubType. Runs last (after
 		// the tier plugin steps above) and does its own read-merge-write of
@@ -713,41 +895,55 @@ export function createRun({
 			);
 			const prevNightlyDreaming = prev.nightlyDreaming ?? {};
 			const prevNightlyEnabled = prevNightlyDreaming.enabled === true;
-			const enableNightlyDreaming = await askYN(
-				'Enable nightly automated end-of-day memory consolidation?',
-				prevNightlyEnabled,
-			);
+			const prevNightlyTaskName = prevNightlyDreaming.taskName ?? NIGHTLY_DREAMING_TASK_NAME;
+			// Presence-check before prompting: if the wizard's own record already says
+			// nightly dreaming is enabled AND the live Windows Scheduled Task is confirmed
+			// still registered, this run is a true no-op re-run — skip the interactive
+			// re-prompt and just confirm. Drift (config says enabled but the live task was
+			// deleted, e.g. manually in Task Scheduler) still falls through to the normal
+			// prompt below, which is the existing self-healing (re-register) path.
+			const liveTaskRegistered = prevNightlyEnabled
+				? isNightlyDreamingTaskRegistered({ taskName: prevNightlyTaskName })
+				: false;
 
 			let nightlyDreaming;
-			if (enableNightlyDreaming) {
-				// Per-hub unique name — a shared/generic name across every hub on this
-				// machine would let a second hub's `schtasks /create ... /f` silently
-				// overwrite a first hub's already-registered task. See
-				// computeNightlyDreamingTaskName's doc comment in lib/nightly-dreaming.js.
-				const taskName = computeNightlyDreamingTaskName(cliOutputRoot);
-				const result = registerNightlyDreamingTask({ hubRoot: cliOutputRoot, taskName });
-				if (result.ok) {
-					process.stdout.write(`  Nightly Scheduled Task registered (${taskName}).\n`);
-					nightlyDreaming = { enabled: true, taskName };
+			if (prevNightlyEnabled && liveTaskRegistered) {
+				process.stdout.write(`  Nightly dreaming already enabled — task ${prevNightlyTaskName} is registered.\n`);
+				nightlyDreaming = { enabled: true, taskName: prevNightlyTaskName };
+			} else {
+				const enableNightlyDreaming = await askYN(
+					'Enable nightly automated end-of-day memory consolidation?',
+					prevNightlyEnabled,
+				);
+
+				if (enableNightlyDreaming) {
+					// Per-hub unique name — a shared/generic name across every hub on this
+					// machine would let a second hub's `schtasks /create ... /f` silently
+					// overwrite a first hub's already-registered task. See
+					// computeNightlyDreamingTaskName's doc comment in lib/nightly-dreaming.js.
+					const taskName = computeNightlyDreamingTaskName(cliOutputRoot);
+					const result = registerNightlyDreamingTask({ hubRoot: cliOutputRoot, taskName });
+					if (result.ok) {
+						process.stdout.write(`  Nightly Scheduled Task registered (${taskName}).\n`);
+						nightlyDreaming = { enabled: true, taskName };
+					} else {
+						process.stdout.write(`  WARNING: could not register the nightly Scheduled Task: ${result.error}\n`);
+						process.stdout.write('  Setup will continue — re-run npm run setup to retry.\n');
+						nightlyDreaming = { enabled: false };
+					}
 				} else {
-					process.stdout.write(`  WARNING: could not register the nightly Scheduled Task: ${result.error}\n`);
-					process.stdout.write('  Setup will continue — re-run npm run setup to retry.\n');
+					if (prevNightlyEnabled) {
+						const removeResult = removeNightlyDreamingTask({ taskName: prevNightlyTaskName });
+						if (removeResult.ok) {
+							process.stdout.write('  Nightly Scheduled Task removed.\n');
+						} else {
+							process.stdout.write(
+								`  WARNING: could not remove the existing nightly Scheduled Task: ${removeResult.error}\n`,
+							);
+						}
+					}
 					nightlyDreaming = { enabled: false };
 				}
-			} else {
-				if (prevNightlyEnabled) {
-					const removeResult = removeNightlyDreamingTask({
-						taskName: prevNightlyDreaming.taskName ?? NIGHTLY_DREAMING_TASK_NAME,
-					});
-					if (removeResult.ok) {
-						process.stdout.write('  Nightly Scheduled Task removed.\n');
-					} else {
-						process.stdout.write(
-							`  WARNING: could not remove the existing nightly Scheduled Task: ${removeResult.error}\n`,
-						);
-					}
-				}
-				nightlyDreaming = { enabled: false };
 			}
 
 			const onDisk = fsMod.existsSync(configPath)

@@ -53,6 +53,15 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// vault-index.js is intentionally NOT statically imported here (and must never be) —
+// it ships only to vault-backed tiers (dev:sub/ops/publish; see extras.js), while this
+// module ships unconditionally to every tier and is itself statically imported by
+// doctor.js. A static top-level import of a tier-gated file breaks ESM module
+// resolution for every free-tier deploy before any code even runs, regardless of
+// whether the code path that needs it is reached — confirmed via a real deployed
+// "dev" tier hub crashing doctor.js with ERR_MODULE_NOT_FOUND. See the lazy, guarded
+// `await import('./vault-index.js')` inside runNightlyDreamingWithLogging() below,
+// which mirrors doctor.js's own existing pattern for optional, tier-gated plugin files.
 
 export const NIGHTLY_DREAMING_TASK_NAME = 'AgistraDevNightlyDreaming';
 export const DEFAULT_NIGHTLY_DREAMING_TIME = '02:00';
@@ -64,7 +73,9 @@ export const NIGHTLY_DREAMING_MODEL = 'claude-haiku-4-5-20251001';
 export const NIGHTLY_DREAMING_PROMPT =
 	'Architect, Good night Team. Run the dreaming skill end-of-day memory consolidation now. ' +
 	'This is an unattended automated run, not interactive chat -- actually perform the file ' +
-	'reads and writes yourself, do not just acknowledge in words.';
+	'reads and writes yourself, do not just acknowledge in words. If any MCP tool (e.g. ' +
+	'obsidian) is unavailable, still write to the vault paths via direct file edit -- never ' +
+	'fall back to the old free-tier memory/ location.';
 // Non-interactive permission mode — nobody is present overnight to approve a permission
 // prompt for the file-writing tool calls consolidation requires.
 export const NIGHTLY_DREAMING_PERMISSION_MODE = 'bypassPermissions';
@@ -375,9 +386,12 @@ export function removeNightlyDreamingTask({
  *   spawn failure) instead of only inside a catch block reached on a thrown/non-zero exit.
  * @param {object}   [opts.fsMod]   Injectable fs module for testing.
  * @param {function} [opts.now]     Injectable clock (returns a Date) for testing.
- * @returns {{ ok: boolean, exitCode: number, logPath: string }}
+ * @param {function} [opts.buildVaultIndexFn]  Injectable `buildVaultIndex`-shaped function
+ *   for testing. Defaults to a lazy `await import('./vault-index.js')` — see the file
+ *   header comment above for why this is never a static top-level import.
+ * @returns {Promise<{ ok: boolean, exitCode: number, logPath: string }>}
  */
-export function runNightlyDreamingWithLogging({
+export async function runNightlyDreamingWithLogging({
 	hubRoot = process.cwd(),
 	prompt = NIGHTLY_DREAMING_PROMPT,
 	model = NIGHTLY_DREAMING_MODEL,
@@ -385,6 +399,7 @@ export function runNightlyDreamingWithLogging({
 	execFn = spawnSync,
 	fsMod = fs,
 	now = () => new Date(),
+	buildVaultIndexFn = null,
 } = {}) {
 	const logDir = path.join(hubRoot, 'logs');
 	fsMod.mkdirSync(logDir, { recursive: true });
@@ -408,6 +423,40 @@ export function runNightlyDreamingWithLogging({
 	if (result.error) {
 		append(`[nightly-dreaming-runner] error: ${result.error.message}\n`);
 	}
+
+	// Guaranteed post-session vault index refresh — runs unconditionally after the
+	// `claude -p` subprocess above has fully exited (spawnSync blocks until then), so
+	// every memory/archive write from the whole session — including any subagent
+	// dispatches the cold session made internally — is already on disk before this
+	// scans the vault. This closes two real gaps found via direct log evidence (see
+	// the PR description): the dreaming skill's own step 10 is a prose instruction to
+	// a cold session with no code-level enforcement, and real nightly logs show it is
+	// unreliable both in ordering (a run can report a stale zero-change scan despite
+	// claiming fresh archives moments earlier) and in occurrence (it can be silently
+	// dropped entirely once the session runs low on time/token budget). Invoking the
+	// scan directly from code, after the entire external process has exited, removes
+	// both failure modes — it no longer depends on the cold session choosing to run
+	// it, or on when within its own turn it chose to.
+	const vaultDir = path.join(hubRoot, 'vault');
+	if (fsMod.existsSync(vaultDir)) {
+		try {
+			const resolveBuildVaultIndex =
+				buildVaultIndexFn ?? (await import('./vault-index.js')).buildVaultIndex;
+			const stats = await resolveBuildVaultIndex({ vaultRoot: vaultDir, fsMod });
+			append(
+				`\nvault-index: created ${stats.created}, updated ${stats.updated}, unchanged ${stats.unchanged}` +
+					(stats.errors?.length
+						? `, errors ${stats.errors.length}:\n  ${stats.errors.join('\n  ')}`
+						: '') +
+					'\n',
+			);
+		} catch (err) {
+			append(`\nvault-index: failed — ${err.message}\n`);
+		}
+	} else {
+		append('\nvault-index: skipped (no vault/ directory found — free-tier hub)\n');
+	}
+
 	const exitCode = typeof result.status === 'number' ? result.status : 1;
 	append(`\n=== nightly-dreaming run finished ${now().toISOString()} (exit ${exitCode}) ===\n`);
 	return { ok: exitCode === 0, exitCode, logPath };
@@ -477,7 +526,7 @@ export function findMostRecentArchiveDate({ hubRoot, agent = 'architect', fsMod 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const [, , promptArg, modelArg, permissionModeArg] = process.argv;
-	const result = runNightlyDreamingWithLogging({
+	const result = await runNightlyDreamingWithLogging({
 		hubRoot: process.cwd(),
 		prompt: promptArg || NIGHTLY_DREAMING_PROMPT,
 		model: modelArg || NIGHTLY_DREAMING_MODEL,

@@ -109,25 +109,37 @@ forward only, and reports rather than blocks.
 PROPOSED  →  ACCEPTED  →  (SUPERSEDED or DEPRECATED)
 ```
 
-**No-delete rule:** Never edit or delete an existing ADR. Old ADRs capture historical context that is irreplaceable. When a decision changes, write a new ADR that references and supersedes the old one. The old ADR's status field becomes `Superseded by ADR-XXX`.
+**Edit-or-supersede, Architect's judgment:** Architect may edit an existing ADR directly — e.g.
+extending an actively in-progress, multi-phase design within the same document — or write a new ADR
+that supersedes the old one when a decision fundamentally changes and the old record should stand
+untouched as history. Both are legitimate; which one fits is Architect's call, not a fixed rule. When
+superseding, the old ADR's status field becomes `Superseded by ADR-XXX`.
 
-### Commit Ownership Rule
+### Authoring and Review Flow
 
-**Architect (or any agent) drafting an ADR or planning/decision document writes the file to disk and stops.** No `git add`, `git commit`, branch creation, or PR for the document itself. The team lead reviews the content and commits it personally.
+**Architect has full authority over ADR content — creating a new ADR, editing an existing one, or
+marking one Superseded/Deprecated — but never touches the shared checkout's git state directly.**
+Architect authors the complete content (the new file, or the specific edit/status change to an
+existing one), then dispatches Builder with a verbatim-copy-only ticket: exact content, target file
+path, no interpretation required. Builder creates a worktree, writes the file, and raises the PR. The
+team lead reviews and merges.
 
-This is the inverse of implementation work — code changes always go through a branch and PR (per `software-engineer-mode`), but decision documents are lightweight enough that git ceremony adds friction without adding safety. The more valuable gate is the team lead reading raw content before it enters history, not reviewing a PR diff of a new file.
+This matches the standard code-change flow (branch + PR, per `software-engineer-mode`) rather than
+being an exception to it — ADRs get the same review gate as everything else in the repo, and
+Architect's write-path discipline (no direct edits to the shared checkout) stays consistent across
+every file type, not just code.
 
 **In practice:**
-- Write the ADR file to `docs/decisions/` (or the project's decisions path).
-- Confirm the file is saved and structurally complete.
-- Stop. Do not stage, commit, branch, or open a PR.
-- Inform the team lead that the file is ready for their review and commit.
+- Architect authors the full ADR content — new file, or the specific edit/status change.
+- Architect dispatches Builder with a verbatim-copy-only ticket (exact content + target path).
+- Builder creates a worktree, writes the file exactly as provided, opens a PR.
+- Team lead reviews and merges.
 
 ## Sharing ADRs and Reports with Non-Technical Stakeholders (Claude Code only)
 
 When an ADR or report needs to be shared with a non-technical stakeholder or presented visually, additionally publish it as an Artifact via Claude Code's `artifact-design` or `artifact-diagramming` skill. The Artifact is a presentation layer on top of the committed document — it does not replace it.
 
-The committed markdown in `docs/decisions/` remains the source of truth. The No-Delete Rule and the Commit Ownership Rule above are unaffected: the Artifact is produced after the ADR file is written and committed by the team lead, as a separate presentation step, never as a substitute for it.
+The committed markdown in `docs/decisions/` remains the source of truth. The Edit-or-supersede convention and the Authoring and Review Flow above are unaffected: the Artifact is produced after the ADR file is merged via the standard Builder-PR flow, as a separate presentation step, never as a substitute for it.
 
 There is no Codex equivalent for this path. Codex's `imagegen` produces static bitmap assets — a materially narrower and different capability that does not produce a shareable, interactive, or editable presentation of an ADR. On Codex, stakeholder presentation of a decision document means sharing the committed markdown directly, or producing an HTML/PDF export separately; do not imply parity with Claude Code's Artifacts that does not exist.
 
@@ -269,5 +281,5 @@ These surfaces help agents follow project conventions and avoid known traps:
 - [ ] Known gotchas are documented inline where they matter
 - [ ] No commented-out code remains
 - [ ] Rules files (CLAUDE.md, etc.) are current and accurate
-- [ ] No ADR has been edited or deleted — superseded only
+- [ ] Every ADR change (create, edit, or supersede) landed via a Builder-raised PR the team lead reviewed and merged — never a direct edit to the shared checkout
 ```

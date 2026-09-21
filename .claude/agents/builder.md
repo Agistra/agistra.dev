@@ -2,7 +2,7 @@
 name: Builder
 description: "Implementation agent. Use when: implement scoped tickets, write tests, raise PRs, review code, or hand off to Tester for QA."
 tools: [Read, Edit, Write, Bash, Glob, Grep, WebSearch, WebFetch, TodoWrite, Agent]
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 color: purple
 ---
 

@@ -31,6 +31,7 @@ import { discoverProfileDirs, readAgentManifest, readProfileIdentity } from './l
 import { buildPortablePrompt } from './lib/compose-portable-prompt.js';
 import { normalise } from './lib/validate-utils.js';
 import { LANGGRAPH_RUNTIME_DIR, LANGGRAPH_GENERATED_DIR, langGraphArtifactFileName } from './lib/langgraph-paths.js';
+import { checkHubRootDepsCurrent } from './lib/hub-root-install.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -694,6 +695,56 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 }
 
 /**
+ * Check 22: hub-root npm dependency install.
+ *
+ * buildPackageJson() (lib/extras.js) writes outputRoot/package.json
+ * unconditionally on every hub tier, and a package-lock.json ships alongside
+ * it — but a hub set up before setup.js's own early hub-root install step
+ * shipped (lib/hub-root-install.js), or one where that step's `npm ci`/`npm
+ * install` call failed silently, can still be missing node_modules/ entirely.
+ * That gap surfaced for real: a vault-backed tier's stdio MCP proxy script
+ * (packages/vault/vault-guard.cjs) requires
+ * '@modelcontextprotocol/sdk/server/stdio.js' at spawn time and crashed with
+ * MODULE_NOT_FOUND on a hub whose node_modules/ simply did not exist, while
+ * doctor previously had no signal for it at all.
+ *
+ * Not tier-gated and not a "*.doctor-plugin.js" plugin — that discovery
+ * mechanism is reserved for content deployExtras() ships conditionally by
+ * hub tier (see checkOptionalTierReadiness below). package.json ships to
+ * every hub tier unconditionally (buildPackageJson() has no hubType branch
+ * around its own call site in lib/extras.js), so this check runs the same
+ * way regardless of hubType — same "core check, not a tier plugin, because
+ * the underlying content is universal" precedent checkLangGraphCompileTarget
+ * above already established.
+ *
+ * id 22 (not 20): a tier plugin discovered by checkOptionalTierReadiness
+ * below already owns id 20 for its own vault-content sampling check — 22 is
+ * the next id past checkLangGraphCompileTarget (21), the highest numbered
+ * check in this file.
+ *
+ * Generic like checkHubRootDepsCurrent() itself: reads whichever
+ * dependencies package.json actually declares rather than hardcoding a
+ * package name, so this keeps working unchanged if that dependency set ever
+ * grows or shrinks.
+ */
+function checkHubRootDependencies({ hubRoot, fsMod }) {
+	const pkgPath = path.join(hubRoot, 'package.json');
+	if (!fsMod.existsSync(pkgPath)) {
+		return skip(22, 'hub-root dependencies', 'package.json not found — nothing to check');
+	}
+	const { declared, missing } = checkHubRootDepsCurrent({ hubRoot, fsMod });
+	if (declared.length === 0) {
+		return pass(22, 'hub-root dependencies', 'no runtime dependencies declared in package.json');
+	}
+	if (missing.length === 0) {
+		return pass(22, 'hub-root dependencies', `all ${declared.length} declared dependenc${declared.length === 1 ? 'y' : 'ies'} present in node_modules/`);
+	}
+	return fail(22, 'hub-root dependencies',
+		`node_modules/ missing ${missing.length} declared dependenc${missing.length === 1 ? 'y' : 'ies'}: ${missing.join(', ')}`,
+		'run: npm install');
+}
+
+/**
  * Checks 16+: optional tier-specific readiness (dev:sub, ops, publish hubs only).
  *
  * Manifest-driven, not hardcoded: some hub tiers ship one or more additional
@@ -814,6 +865,7 @@ export async function runChecks({
 		checkHubType({ hubRoot, fsMod }),
 		checkNightlyDreamingTask({ hubRoot, fsMod, execFn, platform }),
 		checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, platform }),
+		checkHubRootDependencies({ hubRoot, fsMod }),
 		checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }),
 		...(await checkOptionalTierReadiness({ hubRoot, fsMod, execFn, platform, env, fetchFn, pluginOptions })),
 	];
