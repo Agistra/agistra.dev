@@ -81,41 +81,83 @@ const SOURCE_PROFILES_ROOT = path.resolve(__dirname, '..', '..', 'agents', 'prof
 
 // ── Claude Code statusline (exported for testing) ──────────────────────────────
 
-/** Filename this feature copies to $HOME/.claude/. */
-export const STATUSLINE_SCRIPT_FILENAME = 'statusline-command.sh';
+/**
+ * Filenames this feature copies to $HOME/.claude/, one per platform family.
+ * Windows gets a native PowerShell port (statusline-command.ps1) rather than
+ * the bash script: Claude Code's statusLine setting has no exec form (unlike
+ * hooks), so the configured command always runs through a shell, and on
+ * Windows that shell cannot resolve `bash` on its own child-process PATH even
+ * when Git Bash is installed. This hub's own documented constraint
+ * (skills/agent-foundations/SKILL.md, "Windows + PowerShell") requires
+ * status-line scripts to be .ps1 on Windows, never .sh invoked through a
+ * shell that may not have bash resolvable.
+ */
+export const STATUSLINE_SCRIPT_FILENAME_UNIX = 'statusline-command.sh';
+export const STATUSLINE_SCRIPT_FILENAME_WINDOWS = 'statusline-command.ps1';
 
 /**
- * Exact statusLine command value this feature writes into
- * $HOME/.claude/settings.json — also the marker used to detect "already
- * installed by this exact mechanism" on a re-run, so re-running `npm run
- * setup` never treats its own previously-installed entry as a foreign one
- * needing the confirm-before-overwrite prompt below. Matches the real-world
- * command shape already verified working on the machine this script was
- * originally hand-wired on (bash resolves `~` against $HOME even from a
- * Windows Git Bash shell, which is how Claude Code always runs a statusLine
- * command regardless of platform).
+ * statusLine command value for non-Windows platforms — unchanged from the
+ * pre-existing behaviour. `~` is bash/zsh shell-expansion syntax, resolved
+ * correctly by the shell Claude Code spawns to run shell-form statusLine
+ * commands on Mac/Linux.
  */
-export const STATUSLINE_COMMAND = 'bash ~/.claude/statusline-command.sh';
+export const STATUSLINE_COMMAND_UNIX = `bash ~/.claude/${STATUSLINE_SCRIPT_FILENAME_UNIX}`;
+
+/**
+ * Resolve the filename this feature copies to $HOME/.claude/ for a given
+ * platform.
+ *
+ * @param {NodeJS.Platform} [platform] Defaults to the real process.platform.
+ * @returns {string}
+ */
+export function resolveStatuslineScriptFilename(platform = process.platform) {
+	return platform === 'win32' ? STATUSLINE_SCRIPT_FILENAME_WINDOWS : STATUSLINE_SCRIPT_FILENAME_UNIX;
+}
 
 /**
  * Absolute path to the canonical shipped statusline script, resolved
  * relative to this file's own location (not cliOutputRoot/hubRoot) — same
- * convention bedrock.setup-plugin.js uses for its own AWS_PROFILE_SCRIPT_PATH,
- * so this works identically whether setup.js is running from the source repo
- * or from a deployed hub's own copy of pipelines/deploy/setup.js.
+ * convention other tier-gated setup plugin files use for their own
+ * script-path resolution, so this works identically whether setup.js is
+ * running from the source repo or from a deployed hub's own copy of
+ * pipelines/deploy/setup.js.
  *
+ * @param {NodeJS.Platform} [platform] Defaults to the real process.platform.
  * @returns {string}
  */
-export function resolveStatuslineScriptSourcePath() {
-	return path.join(__dirname, 'lib', STATUSLINE_SCRIPT_FILENAME);
+export function resolveStatuslineScriptSourcePath(platform = process.platform) {
+	return path.join(__dirname, 'lib', resolveStatuslineScriptFilename(platform));
+}
+
+/**
+ * Build the exact statusLine command string for a given $HOME and platform.
+ * Non-Windows: unchanged bash-form command (`~` shell-expansion). Windows:
+ * `~` does not reliably expand outside bash, so the absolute installed script
+ * path is baked in and invoked directly via `powershell -NoProfile -File`
+ * (the pattern Claude Code's own docs use for a Windows statusLine script:
+ * https://code.claude.com/docs/en/statusline).
+ *
+ * @param {string} homeDir
+ * @param {NodeJS.Platform} [platform] Defaults to the real process.platform.
+ * @returns {string}
+ */
+export function buildStatuslineCommand(homeDir, platform = process.platform) {
+	if (platform === 'win32') {
+		const scriptPath = path.join(homeDir, '.claude', STATUSLINE_SCRIPT_FILENAME_WINDOWS);
+		return `powershell -NoProfile -File "${scriptPath}"`;
+	}
+	return STATUSLINE_COMMAND_UNIX;
 }
 
 /**
  * Build the exact statusLine settings.json entry this feature installs.
+ *
+ * @param {string} homeDir
+ * @param {NodeJS.Platform} [platform] Defaults to the real process.platform.
  * @returns {{type: 'command', command: string}}
  */
-export function buildStatuslineSettingsEntry() {
-	return { type: 'command', command: STATUSLINE_COMMAND };
+export function buildStatuslineSettingsEntry(homeDir, platform = process.platform) {
+	return { type: 'command', command: buildStatuslineCommand(homeDir, platform) };
 }
 
 /**
@@ -125,23 +167,25 @@ export function buildStatuslineSettingsEntry() {
  * statusLine command that must never be silently clobbered.
  *
  * @param {object|string|undefined|null} statusLineEntry
+ * @param {string} homeDir
+ * @param {NodeJS.Platform} [platform] Defaults to the real process.platform.
  * @returns {boolean}
  */
-export function isAgistraStatusline(statusLineEntry) {
+export function isAgistraStatusline(statusLineEntry, homeDir, platform = process.platform) {
 	return !!statusLineEntry
 		&& typeof statusLineEntry === 'object'
 		&& statusLineEntry.type === 'command'
-		&& statusLineEntry.command === STATUSLINE_COMMAND;
+		&& statusLineEntry.command === buildStatuslineCommand(homeDir, platform);
 }
 
 /**
  * Interactive install/refresh step for the Claude Code statusline feature —
  * tier-agnostic, called unconditionally for every hubType (same "applies
  * uniformly across hub tiers, not gated by hubType" precedent as the
- * nightly-dreaming block below), and not platform-gated either: Claude
- * Code's statusLine hook always runs via a bash-invokable command on every
- * platform (Git Bash on Windows), so unlike nightly dreaming this step is
- * not Windows-only.
+ * nightly-dreaming block below). Platform-conditional on script *shape*
+ * (bash .sh vs native PowerShell .ps1 — see resolveStatuslineScriptFilename),
+ * but not platform-gated as a whole feature: it still installs on every
+ * platform, just with the platform-appropriate script and command.
  *
  * All filesystem access goes through the same injectable fsMod the rest of
  * createRun() already uses — this keeps the step fully mockable in tests and
@@ -158,19 +202,14 @@ export function isAgistraStatusline(statusLineEntry) {
  * @param {object} opts.fsMod  Injectable fs module.
  * @param {string} opts.homeDir  Absolute path to $HOME.
  * @param {string} opts.scriptSourcePath  Absolute path to the canonical shipped script.
+ * @param {NodeJS.Platform} [opts.platform]  Defaults to the real process.platform.
  * @param {function(string): void} [opts.log]
  * @returns {Promise<{installed: boolean, skippedExisting?: boolean, refreshed?: boolean, error?: string}>}
  */
-export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSourcePath, log = (s) => process.stdout.write(s) }) {
-	const wantsInstall = await askYN(
-		'Install the Claude Code statusline (context/rate-limit/cost visibility in your terminal)?',
-		true,
-	);
-	if (!wantsInstall) return { installed: false };
-
+export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSourcePath, platform = process.platform, log = (s) => process.stdout.write(s) }) {
 	const claudeDir = path.join(homeDir, '.claude');
 	const settingsPath = path.join(claudeDir, 'settings.json');
-	const scriptTargetPath = path.join(claudeDir, STATUSLINE_SCRIPT_FILENAME);
+	const scriptTargetPath = path.join(claudeDir, resolveStatuslineScriptFilename(platform));
 
 	let existingSettings = null;
 	if (fsMod.existsSync(settingsPath)) {
@@ -181,16 +220,28 @@ export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSour
 		}
 	}
 	const existingStatusLine = existingSettings?.statusLine;
-	const alreadyInstalledByThisMechanism = isAgistraStatusline(existingStatusLine);
+	const alreadyInstalledByThisMechanism = isAgistraStatusline(existingStatusLine, homeDir, platform);
 
-	if (existingStatusLine && !alreadyInstalledByThisMechanism) {
-		const overwrite = await askYN(
-			`  An existing statusLine command is already configured (${JSON.stringify(existingStatusLine)}). Overwrite it with the Agistra statusline?`,
-			false,
+	// Already installed by this exact mechanism on a prior `npm run setup` run —
+	// skip the initial install prompt entirely and go straight to a silent
+	// refresh below (script content + settings.json), rather than re-asking
+	// the same yes/no question on every rerun.
+	if (!alreadyInstalledByThisMechanism) {
+		const wantsInstall = await askYN(
+			'Install the Claude Code statusline (context/rate-limit/cost visibility in your terminal)?',
+			true,
 		);
-		if (!overwrite) {
-			log('  Skipping statusline install — existing statusLine command left untouched.\n');
-			return { installed: false, skippedExisting: true };
+		if (!wantsInstall) return { installed: false };
+
+		if (existingStatusLine) {
+			const overwrite = await askYN(
+				`  An existing statusLine command is already configured (${JSON.stringify(existingStatusLine)}). Overwrite it with the Agistra statusline?`,
+				false,
+			);
+			if (!overwrite) {
+				log('  Skipping statusline install — existing statusLine command left untouched.\n');
+				return { installed: false, skippedExisting: true };
+			}
 		}
 	}
 
@@ -208,7 +259,7 @@ export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSour
 	// improvements reach the customer on a later `npm run setup` re-run.
 	fsMod.writeFileSync(scriptTargetPath, scriptSource, 'utf-8');
 
-	const updatedSettings = { ...(existingSettings ?? {}), statusLine: buildStatuslineSettingsEntry() };
+	const updatedSettings = { ...(existingSettings ?? {}), statusLine: buildStatuslineSettingsEntry(homeDir, platform) };
 	fsMod.writeFileSync(settingsPath, JSON.stringify(updatedSettings, null, 2) + '\n', 'utf-8');
 
 	log(`  Statusline ${alreadyInstalledByThisMechanism ? 'refreshed' : 'installed'} → ${scriptTargetPath}\n`);
@@ -759,6 +810,17 @@ export function createRun({
 			// failure) exit before reaching that step — this line ensures those paths
 			// never permanently lose a previously-recorded graphify config.
 			...(prev.graphify ? { graphify: prev.graphify } : {}),
+			// Preserve a pre-existing modelProvider config across re-runs of setup
+			// exactly as-is. Defaulting modelProvider on a hub type that has never
+			// configured it is the tier-gated model-provider setup plugin's own
+			// responsibility (it runs after this write, via setupTierPlugin() below,
+			// and is never shipped to a hub type that shouldn't see this field at
+			// all) — this file only ever preserves an already-set value.
+			...(prev.modelProvider ? { modelProvider: prev.modelProvider } : {}),
+			// Preserve scanned project registrations across re-runs of setup — re-running
+			// setup must never silently drop projects.<name> entries that `npm run scan`
+			// wrote via registerProject() (pipelines/deploy/lib/bootstrap.js).
+			...(prev.projects ? { projects: prev.projects } : {}),
 		};
 
 		fsMod.mkdirSync(cliOutputRoot, { recursive: true });
@@ -867,16 +929,17 @@ export function createRun({
 
 		// ── Claude Code statusline ────────────────────────────────────────────────
 		// Tier-agnostic — applies uniformly across hub tiers, not gated by hubType,
-		// same precedent as the nightly-dreaming block below. Unlike nightly
-		// dreaming this step is not platform-gated: Claude Code's statusLine hook
-		// always runs via a bash-invokable command, on every platform (Git Bash on
-		// Windows), so this runs unconditionally regardless of process.platform.
+		// same precedent as the nightly-dreaming block below. Installs
+		// unconditionally on every platform; the script shape and command it
+		// writes are platform-conditional (bash .sh vs native PowerShell .ps1 —
+		// see resolveStatuslineScriptFilename/buildStatuslineCommand).
 		line('Claude Code statusline ');
 		await installStatusline({
 			askYN,
 			fsMod,
 			homeDir,
-			scriptSourcePath: resolveStatuslineScriptSourcePath(),
+			scriptSourcePath: resolveStatuslineScriptSourcePath(platform),
+			platform,
 		});
 
 		// ── Nightly dreaming (Windows only) ──────────────────────────────────────

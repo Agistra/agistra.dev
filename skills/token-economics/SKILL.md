@@ -35,7 +35,7 @@ Before every response, ask: is this response as compact as it can be while still
 
 ## Working Buffer Compression
 
-When writing to `memory/working-buffer.md` or `memory/<agent>.md`:
+When writing to `memory/working-buffer.md` or `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
 
 - Write the **decision or outcome**, not the conversation.
 - Write the **current state**, not how you got there.
@@ -51,7 +51,7 @@ When handing off between agents or sessions:
 - Pass: the decision made, constraints it created, and the next concrete action.
 - Don't pass: the full conversation, the reasoning path, or the context already in the ticket.
 - If handing off to Builder, the ticket IS the context — don't duplicate it in the dispatch message.
-- If handing off at session end, update `memory/<agent>.md` HOT section and stop. The next session reads memory, not chat history.
+- If handing off at session end, update `memory/<agent>.md` HOT section (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) and stop. The next session reads memory, not chat history.
 
 ---
 
@@ -74,3 +74,9 @@ When invoking a subagent or spawning a task:
 - Name the exact file, line, or artifact — don't describe it in prose.
 - State the question or task in one sentence before any supporting context.
 - Remove the supporting context if the subagent can read it directly.
+
+---
+
+## Storage-plugin note
+
+**Storage-plugin note (`memory/<agent>.md` references above, in Working Buffer Compression and Handoff Packing):** before writing to `memory/<agent>.md`, check for an active storage plugin file at `agents/skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`/`publish`), the literal repo-relative path is wrong — write instead via that plugin's `write-memory-entry(agent, tier, content)` operation (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.

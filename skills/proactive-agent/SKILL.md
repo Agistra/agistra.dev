@@ -49,9 +49,9 @@ Auto-trigger when:
 Recovery steps:
 
 1. Read `memory/working-buffer.md` — raw danger-zone exchanges
-2. Read `memory/<agent>.md` — current HOT/WARM/COLD state
+2. Read `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) — current HOT/WARM/COLD state
 3. Read today's and yesterday's daily notes
-4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md`
+4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below)
 5. Present: "Recovered from working buffer. Last task was X. Continue?"
 
 Do NOT ask "what were we discussing?" — the buffer has the conversation.
@@ -87,7 +87,7 @@ During any automation run involving multiple sequential agent dispatches, write 
 
 ### Checkpoint format
 
-Write to `memory/<agent>.md` HOT section (the loading agent's own memory file):
+Write to `memory/<agent>.md` HOT section (the loading agent's own memory file; or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
 
 ```
 ## Automation Checkpoint — [timestamp]
@@ -130,6 +130,12 @@ Before proposing a change to agent behavior, ask three questions:
 3. Does this reduce the team lead's effort in a concrete way?
 
 If the answer to all three is "no" or "maybe", skip it. One strong "yes" is the bar — not a weighted total.
+
+---
+
+## Storage-plugin note
+
+**Storage-plugin note (`memory/<agent>.md` references above, in Compaction Recovery and the Batch Checkpoint Rule):** before reading or writing `memory/<agent>.md`, check for an active storage plugin file at `agents/skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`/`publish`), the literal repo-relative path is wrong — route instead via that plugin's `read-memory(agent)` / `write-memory-entry(agent, tier, content)` operations (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
 
 ---
 

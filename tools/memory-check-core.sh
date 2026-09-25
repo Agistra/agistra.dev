@@ -2,9 +2,19 @@
 # memory-check-core.sh — platform-neutral WAL memory-check logic.
 #
 # Checks whether files were changed this session (git status --porcelain)
-# without a corresponding update to memory/*.md (git status, falling back
-# to filesystem mtime within the last 240 minutes since memory/ may be
-# gitignored in some hubs).
+# without a corresponding update to the hub's live memory directory (git
+# status, falling back to filesystem mtime within the last 240 minutes since
+# that directory may be gitignored in some hubs).
+#
+# The live memory directory is tier-aware: free-tier hubs (dev, dev:graph)
+# store memory at memory/*.md; vault-backed hubs (dev:sub, ops, publish)
+# store it at vault/Memory/*.md instead (see
+# pipelines/deploy/lib/memory-root.js's resolveMemoryRootForHub() — the
+# single source of truth every other tier-aware consumer already uses). This
+# script shells out to Node to call that function directly rather than
+# reimplementing the vault-tier list a third time. If Node is unavailable or
+# the call fails for any reason, it falls back to the free-tier default
+# ("memory") — the pre-existing behaviour this script has always had.
 #
 # Contract (consumed by platform adapters — no platform-specific formatting here):
 #   stdout: "clean" or "dirty"
@@ -52,9 +62,38 @@ if [ -z "$status" ]; then
   exit 0
 fi
 
-# memory/ may be excluded from git tracking — check filesystem mtime instead.
-# Any memory/*.md modified in the last 4 hours counts as updated this session.
-if find memory/ -maxdepth 1 -name "*.md" -mmin -240 2>/dev/null | grep -q .; then
+# Resolve the tier-aware memory root segment ("memory" or "vault/Memory") by
+# shelling out to Node to call resolveMemoryRootForHub() directly — the same
+# function pipelines/deploy/lib/session-cli.js already uses for this exact
+# "hubRoot only, no pre-parsed config" case. Any failure (node missing,
+# workspace.config.json absent/unreadable, memory-root.js missing) falls
+# back to "memory", matching this script's pre-existing free-tier-only
+# behaviour.
+memory_root_segment="memory"
+if command -v node > /dev/null 2>&1; then
+  resolved_segment="$(node -e '
+    const path = require("node:path");
+    const url = require("node:url");
+    (async () => {
+      try {
+        const modPath = path.resolve(process.cwd(), "pipelines/deploy/lib/memory-root.js");
+        const { resolveMemoryRootForHub } = await import(url.pathToFileURL(modPath).href);
+        const absRoot = resolveMemoryRootForHub(process.cwd());
+        process.stdout.write(path.relative(process.cwd(), absRoot).split(path.sep).join("/"));
+      } catch {
+        process.stdout.write("memory");
+      }
+    })();
+  ' 2>/dev/null || true)"
+  if [ -n "$resolved_segment" ]; then
+    memory_root_segment="$resolved_segment"
+  fi
+fi
+
+# The resolved memory root may be excluded from git tracking — check
+# filesystem mtime instead. Any *.md modified in the last 4 hours counts as
+# updated this session.
+if find "$memory_root_segment/" -maxdepth 1 -name "*.md" -mmin -240 2>/dev/null | grep -q .; then
   echo "clean"
   exit 0
 fi

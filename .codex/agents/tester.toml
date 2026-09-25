@@ -113,7 +113,7 @@ When defects are found, follow the notification options defined in `qa-ticket-wo
 <!-- COMPILED BOOTSTRAP START -->
 <!-- role: tester -->
 <!-- skills: agent-foundations, token-economics, proactive-agent -->
-<!-- source-hash: 7119a81b0cb509b22bd0ada86eab0700daa86cc819248f2861e8b1a13a5048a3 -->
+<!-- source-hash: feb87113e969a3a51e39b6141065b163000e48986d96b70ae0356d4c5afdda9b -->
 
 <!-- BEGIN SKILL: agent-foundations -->
 
@@ -271,7 +271,7 @@ Both of the following happen every time the bootstrap flow runs:
 1. Each agent appends its own 7-point report (with verdict) to its own memory record via the active storage plugin using `write-memory-entry(agent, tier, content)`, under HOT or COLD per the agent's existing memory conventions.
 2. All agents' reports are written together into a shared bootstrap report, overwriting any previous one — this is the at-a-glance combined view. Location is tier-aware: free-tier default `projects/_bootstrap-report.md`; vault-backed tiers (`dev:sub`, `ops`, `publish`) `vault/Docs/_bootstrap-report.md` (see `storage/obsidian.md`'s folder-mapping table).
 
-After both writes complete, set `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version). This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap") — never automatically, and never as a side effect of memory being archived or compacted.
+After both writes complete, run `node pipelines/deploy/lib/bootstrap.js --output .` from the hub root. This is the persistence step's real call site — it backfills `hubType` from the packaged tier sentinel (`pipelines/deploy/.hub-config.json`) when `workspace.config.json` doesn't already have one set (never overriding an already-set value), then stamps `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version), and prints the resulting config to stdout. Do not hand-edit `workspace.config.json` directly for this step. This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap") — never automatically, and never as a side effect of memory being archived or compacted.
 
 ### Adapter Notes
 
@@ -577,7 +577,7 @@ Before every response, ask: is this response as compact as it can be while still
 
 ## Working Buffer Compression
 
-When writing to `memory/working-buffer.md` or `memory/<agent>.md`:
+When writing to `memory/working-buffer.md` or `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
 
 - Write the **decision or outcome**, not the conversation.
 - Write the **current state**, not how you got there.
@@ -593,7 +593,7 @@ When handing off between agents or sessions:
 - Pass: the decision made, constraints it created, and the next concrete action.
 - Don't pass: the full conversation, the reasoning path, or the context already in the ticket.
 - If handing off to Builder, the ticket IS the context — don't duplicate it in the dispatch message.
-- If handing off at session end, update `memory/<agent>.md` HOT section and stop. The next session reads memory, not chat history.
+- If handing off at session end, update `memory/<agent>.md` HOT section (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) and stop. The next session reads memory, not chat history.
 
 ---
 
@@ -616,6 +616,12 @@ When invoking a subagent or spawning a task:
 - Name the exact file, line, or artifact — don't describe it in prose.
 - State the question or task in one sentence before any supporting context.
 - Remove the supporting context if the subagent can read it directly.
+
+---
+
+## Storage-plugin note
+
+**Storage-plugin note (`memory/<agent>.md` references above, in Working Buffer Compression and Handoff Packing):** before writing to `memory/<agent>.md`, check for an active storage plugin file at `agents/skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`/`publish`), the literal repo-relative path is wrong — write instead via that plugin's `write-memory-entry(agent, tier, content)` operation (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
 
 <!-- END SKILL: token-economics -->
 <!-- BEGIN SKILL: proactive-agent -->
@@ -665,9 +671,9 @@ Auto-trigger when:
 Recovery steps:
 
 1. Read `memory/working-buffer.md` — raw danger-zone exchanges
-2. Read `memory/<agent>.md` — current HOT/WARM/COLD state
+2. Read `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) — current HOT/WARM/COLD state
 3. Read today's and yesterday's daily notes
-4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md`
+4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below)
 5. Present: "Recovered from working buffer. Last task was X. Continue?"
 
 Do NOT ask "what were we discussing?" — the buffer has the conversation.
@@ -703,7 +709,7 @@ During any automation run involving multiple sequential agent dispatches, write 
 
 ### Checkpoint format
 
-Write to `memory/<agent>.md` HOT section (the loading agent's own memory file):
+Write to `memory/<agent>.md` HOT section (the loading agent's own memory file; or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
 
 ```
 ## Automation Checkpoint — [timestamp]
@@ -746,6 +752,12 @@ Before proposing a change to agent behavior, ask three questions:
 3. Does this reduce the team lead's effort in a concrete way?
 
 If the answer to all three is "no" or "maybe", skip it. One strong "yes" is the bar — not a weighted total.
+
+---
+
+## Storage-plugin note
+
+**Storage-plugin note (`memory/<agent>.md` references above, in Compaction Recovery and the Batch Checkpoint Rule):** before reading or writing `memory/<agent>.md`, check for an active storage plugin file at `agents/skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`/`publish`), the literal repo-relative path is wrong — route instead via that plugin's `read-memory(agent)` / `write-memory-entry(agent, tier, content)` operations (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
 
 ---
 

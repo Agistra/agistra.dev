@@ -149,7 +149,7 @@ Live HOT/WARM/COLD state: `memory/router.md` on free-tier hubs (tracked in repo)
 <!-- COMPILED BOOTSTRAP START -->
 <!-- role: router -->
 <!-- skills: agent-foundations -->
-<!-- source-hash: ba95bb631b36261d856db9d29537559a7ba49eb480deb47de94a4ea25c516ff8 -->
+<!-- source-hash: f3a48b9eda572c7d3de2b31a76ab45550a62dd1a2f095d18f45c073bd6624ee8 -->
 
 <!-- BEGIN SKILL: agent-foundations -->
 
@@ -307,7 +307,7 @@ Both of the following happen every time the bootstrap flow runs:
 1. Each agent appends its own 7-point report (with verdict) to its own memory record via the active storage plugin using `write-memory-entry(agent, tier, content)`, under HOT or COLD per the agent's existing memory conventions.
 2. All agents' reports are written together into a shared bootstrap report, overwriting any previous one — this is the at-a-glance combined view. Location is tier-aware: free-tier default `projects/_bootstrap-report.md`; vault-backed tiers (`dev:sub`, `ops`, `publish`) `vault/Docs/_bootstrap-report.md` (see `storage/obsidian.md`'s folder-mapping table).
 
-After both writes complete, set `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version). This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap") — never automatically, and never as a side effect of memory being archived or compacted.
+After both writes complete, run `node pipelines/deploy/lib/bootstrap.js --output .` from the hub root. This is the persistence step's real call site — it backfills `hubType` from the packaged tier sentinel (`pipelines/deploy/.hub-config.json`) when `workspace.config.json` doesn't already have one set (never overriding an already-set value), then stamps `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version), and prints the resulting config to stdout. Do not hand-edit `workspace.config.json` directly for this step. This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap") — never automatically, and never as a side effect of memory being archived or compacted.
 
 ### Adapter Notes
 

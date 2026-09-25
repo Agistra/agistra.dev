@@ -93,6 +93,8 @@ Agistra gives AI a team structure with memory, a shared task queue, and a ticket
 
 Each agent runs in its own Claude Code workspace with its own identity, memory file, skills, and lifecycle role bindings. Architect orchestrates the others via the shared task queue — no agent talks to another directly except through defined handoff contracts.
 
+To keep token spend down on any provider, see [Token Use Best Practices](docs/TOKEN-USE-BEST-PRACTICES.md).
+
 ---
 
 ## Built with Agistra

@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readHubConfig } from '../setup.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -173,4 +174,77 @@ export function setHubType(workspaceRoot, hubType, fsMod = fs) {
 	fsMod.mkdirSync(workspaceRoot, { recursive: true });
 	fsMod.writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
 	return updated;
+}
+
+/**
+ * Register a project in workspace.config.json's `projects.<projectName>` map.
+ *
+ * Never overwrites an already-registered project — it may carry a
+ * hand-customized `repoPath`, `githubRepo`, or `notes` that the caller doesn't
+ * know about and must not clobber. If `projects.<projectName>` already
+ * exists, this is a no-op that returns the existing config unchanged.
+ *
+ * Preserves every other field already present in workspace.config.json —
+ * this helper never overwrites unrelated config (bootstrap, hubType, other
+ * projects, etc.).
+ *
+ * @param {string} workspaceRoot Absolute path to the workspace root.
+ * @param {string} projectName Name of the project (the key under `projects`).
+ * @param {object} fields Fields to store for this project (e.g. `{ repoPath }`).
+ * @param {object} [fsMod] Injectable fs module for testability.
+ * @returns {object} The resulting config object (written to disk unless the
+ *   project was already registered, in which case the unchanged existing
+ *   config is returned without a write).
+ */
+export function registerProject(workspaceRoot, projectName, fields, fsMod = fs) {
+	const configPath = path.join(workspaceRoot, 'workspace.config.json');
+	const existing = readWorkspaceConfig(workspaceRoot, fsMod) ?? {};
+	if (existing.projects?.[projectName]) {
+		return existing;
+	}
+	const updated = {
+		...existing,
+		projects: {
+			...(existing.projects ?? {}),
+			[projectName]: fields,
+		},
+	};
+	fsMod.mkdirSync(workspaceRoot, { recursive: true });
+	fsMod.writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
+	return updated;
+}
+
+// ── CLI entry point ────────────────────────────────────────────────────────────
+//
+// The persistence step of the Bootstrap Self-Check protocol (agent-foundations
+// skill) previously had no real call site: an agent had to hand-edit
+// workspace.config.json at runtime, following prose that never mentioned
+// hubType. This entry point is what that protocol now actually runs — it
+// backfills hubType from the packaged tier sentinel (pipelines/deploy/.hub-config.json)
+// when it isn't already set, then stamps bootstrap.completedAt. It never
+// overrides an already-set hubType (see setHubType() docs above and
+// resolveHubType()'s matching "never silently apply" precedent in setup.js —
+// that reconciliation-with-prompt UX belongs to `npm run setup` only; this
+// skip-setup path only ever fills an unset value, it never reconciles a
+// disagreement).
+
+const isMain = process.argv[1] &&
+	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (isMain) {
+	const outputIdx = process.argv.indexOf('--output');
+	const hubRoot = outputIdx !== -1
+		? path.resolve(process.argv[outputIdx + 1])
+		: process.cwd();
+
+	const existing = readWorkspaceConfig(hubRoot);
+	if (!existing?.hubType) {
+		const hubConfig = readHubConfig(path.join(hubRoot, 'pipelines', 'deploy'));
+		if (hubConfig?.hubType) {
+			setHubType(hubRoot, hubConfig.hubType);
+		}
+	}
+
+	const updated = markBootstrapCompleted(hubRoot);
+	process.stdout.write(JSON.stringify(updated, null, 2) + '\n');
 }

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { scanProject, loadHealth, saveHealth, generateTasks } from './lib/scanner.js';
+import { registerProject } from './lib/bootstrap.js';
 
 const SCORE_BAR = (s) => {
 	const filled = Math.round(s * 10);
@@ -97,6 +98,15 @@ export function scan({ projectRoot, projectName, projectsDir, hubRoot, dryRun = 
 		? path.join(hubRoot, '.graphify', projectName, 'graphify-out', 'graph.json')
 		: undefined;
 	const { perspectives, overall, allFindings } = scanProject({ projectDir: projectRoot, graphJsonPath });
+
+	// Register this project in workspace.config.json's projects.<name> map so
+	// later consumers (graph-cli.js's resolveRepoPath(), graph-lens-gate.js,
+	// ticket-drift.js) can resolve it without hand-editing the config first.
+	// Never overwrites an already-registered project (see registerProject()
+	// docs) — only fills in repoPath for projects scan doesn't yet know about.
+	if (!dryRun && hubRoot) {
+		registerProject(hubRoot, projectName, { repoPath: projectRoot });
+	}
 
 	// Load previous health for trend comparison
 	const prev = loadHealth(projectsDir);

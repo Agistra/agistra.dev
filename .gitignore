@@ -37,3 +37,7 @@ logs/
 # memory-index CLI local index — regenerated via `npm run memory-index -- build`
 .memory-index.json
 .dep-graph-baseline.json
+memory/
+projects/
+.graphify/
+package-lock.json

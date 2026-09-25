@@ -1,9 +1,14 @@
 /**
- * Command run on Claude Code SessionStart. Anchored to $CLAUDE_PROJECT_DIR
- * because Claude Code does not guarantee a hook's working directory is the
- * project root.
+ * Command run on Claude Code SessionStart, in exec form — bypasses shell
+ * interpretation entirely so it runs identically regardless of which shell
+ * Claude Code selects to spawn hooks (PowerShell on Windows does not expand
+ * a bare $VAR the way bash does; exec form sidesteps that ambiguity per
+ * https://code.claude.com/docs/en/hooks, "Reference scripts by path"/exec
+ * form). ${CLAUDE_PROJECT_DIR} is anchored because Claude Code does not
+ * guarantee a hook's working directory is the project root.
  */
-export const RELAY_SESSION_START_COMMAND = 'node "$CLAUDE_PROJECT_DIR/tools/ensure-relay-daemon.js"';
+export const RELAY_SESSION_START_COMMAND = 'node';
+export const RELAY_SESSION_START_ARGS = ['${CLAUDE_PROJECT_DIR}/tools/ensure-relay-daemon.js'];
 
 /**
  * Ensure hub .claude/settings.json includes SessionStart → ensure-relay-daemon.
@@ -16,12 +21,15 @@ export function mergeRelaySessionStartHook(settings = {}) {
 	const next = { ...settings, hooks: { ...(settings.hooks ?? {}) } };
 	const sessionStart = [...(next.hooks.SessionStart ?? [])];
 	const hasRelayHook = sessionStart.some(entry =>
-		entry.hooks?.some(h => String(h.command ?? '').includes('ensure-relay-daemon')),
+		entry.hooks?.some(h =>
+			String(h.command ?? '').includes('ensure-relay-daemon') ||
+			(Array.isArray(h.args) && h.args.some(a => String(a).includes('ensure-relay-daemon'))),
+		),
 	);
 	if (!hasRelayHook) {
 		sessionStart.push({
 			matcher: '',
-			hooks: [{ type: 'command', command: RELAY_SESSION_START_COMMAND }],
+			hooks: [{ type: 'command', command: RELAY_SESSION_START_COMMAND, args: RELAY_SESSION_START_ARGS }],
 		});
 	}
 	next.hooks.SessionStart = sessionStart;

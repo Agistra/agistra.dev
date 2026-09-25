@@ -70,7 +70,7 @@ When `relay.primaryRuntime: "claude-code"` and `relay.autoDispatch: true` are se
 
 ## 3. Start the relay daemon (manual / Cursor)
 
-**Claude Code (automatic):** when `remoteTeam` + `telegram` are enabled, opening the hub in Claude runs a **SessionStart** hook (`node "$CLAUDE_PROJECT_DIR/tools/ensure-relay-daemon.js"`) that starts the daemon if it is not already listening on port 17391. Re-deploy or re-run setup to install the hook on an existing hub.
+**Claude Code (automatic):** when `remoteTeam` + `telegram` are enabled, opening the hub in Claude runs a **SessionStart** hook — exec form: `{"type": "command", "command": "node", "args": ["${CLAUDE_PROJECT_DIR}/tools/ensure-relay-daemon.js"]}` — that starts the daemon if it is not already listening on port 17391. Exec form bypasses shell interpretation entirely, so this runs identically regardless of which shell Claude Code selects to spawn hooks — this is what makes the hook work correctly on native Windows PowerShell, which does not expand a bare `$VAR` the way a shell-form command would need it to. Re-deploy or re-run setup to install the hook on an existing hub.
 
 **Manual start** (Cursor, troubleshooting, or before hook is installed):
 
