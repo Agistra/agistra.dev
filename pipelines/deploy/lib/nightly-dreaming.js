@@ -54,7 +54,7 @@ import crypto from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 // vault-index.js is intentionally NOT statically imported here (and must never be) —
-// it ships only to vault-backed tiers (dev:sub/ops/publish; see extras.js), while this
+// it ships only to vault-backed tiers (dev:sub/ops; see extras.js), while this
 // module ships unconditionally to every tier and is itself statically imported by
 // doctor.js. A static top-level import of a tier-gated file breaks ESM module
 // resolution for every free-tier deploy before any code even runs, regardless of

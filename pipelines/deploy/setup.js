@@ -871,9 +871,8 @@ export function createRun({
 			askYN,
 			askSecret,
 			// Forwarded so a tier plugin shared across multiple hubTypes (e.g.
-			// dev-sub.setup-plugin.js, shipped to both "dev:sub" and "publish") can
-			// gate hubType-specific steps internally — see that plugin's own
-			// LangGraph install gate.
+			// bedrock.setup-plugin.js) can gate hubType-specific steps
+			// internally — see that plugin's own eligibility check.
 			hubType: config.hubType,
 			readJsonSafe: (p) => readJsonSafe(p, fsMod),
 			writeJsonSafe: (p, v) => writeJsonSafe(p, v, fsMod),
@@ -910,20 +909,6 @@ export function createRun({
 			// provisioning) — a pre-existing, separately-flagged gap, not this
 			// ticket's scope. ask/askYN are passed through the same way the
 			// dev:graph/dev:sub tier plugins already receive them.
-			await setupTierPlugin(tierPluginOpts);
-		}
-
-		if (config.hubType === 'publish') {
-			line('Knowledge retrieval ');
-			// The tier plugin discovered here is dev-sub.setup-plugin.js — it
-			// ships to both "dev:sub" and "publish" hubs (see extras.js) and was
-			// previously never actually invoked for "publish" (no branch existed
-			// for this hubType at all, a pre-existing gap surfaced while wiring
-			// the LangGraph runtime install — that plugin also
-			// owns its own knowledge-retrieval setup and prior-hub migration
-			// prompt, same as the dev:sub branch above). hubType is forwarded via
-			// tierPluginOpts so the plugin can gate its LangGraph install step to
-			// "publish" only, never "dev:sub".
 			await setupTierPlugin(tierPluginOpts);
 		}
 

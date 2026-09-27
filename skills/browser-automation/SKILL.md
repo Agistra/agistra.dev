@@ -29,9 +29,9 @@ Tester must satisfy at least one of these before reporting `state:qa-passed`:
 
 ## Usage
 
-**Preflight:** Before using any `mcp__agent-browser__*` tool, confirm the server is present in `.mcp.json` and reachable. If not, fall back immediately to the When Browser Is Unavailable section below and report evidence quality in your verdict.
+**Preflight:** Before using any `mcp__agent-browser__*` tool, confirm two things, not just one: (1) the server is present in `.mcp.json` and reachable, and (2) the current subagent's own tool grant (`claude.tools` in `agent.manifest.json`, or the equivalent `tools:` frontmatter) actually lists the specific `mcp__agent-browser__*` tool names needed. `.mcp.json` configuration makes the server reachable session-wide, but it does not by itself grant any subagent access to it — Claude Code's subagent `tools:` allowlist does not support a wildcard for MCP tools (individual restricted-content gates aside), so every tool name must be explicitly enumerated in the subagent's own manifest. If either check fails, fall back immediately to the When Browser Is Unavailable section below and report evidence quality in your verdict.
 
-The `agent-browser` MCP server exposes tools directly in the session once configured in `.mcp.json`. No `npx` invocation required — tools are available as `mcp__agent-browser__browser_navigate`, `mcp__agent-browser__browser_snapshot`, `mcp__agent-browser__browser_screenshot`, etc.
+The `agent-browser` MCP server exposes tools directly in the session once both conditions above are met. No `npx` invocation required at call time — tools are available as `mcp__agent-browser__agent_browser_open`, `mcp__agent-browser__agent_browser_snapshot`, `mcp__agent-browser__agent_browser_screenshot`, `mcp__agent-browser__agent_browser_click`, `mcp__agent-browser__agent_browser_fill`, `mcp__agent-browser__agent_browser_get_text`, etc. — see the full enumerated `core`-profile tool list in Tester's or Builder's `agent.manifest.json`.
 
 Common operations:
 - Navigate to a URL and capture a screenshot

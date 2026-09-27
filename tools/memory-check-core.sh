@@ -7,7 +7,7 @@
 # that directory may be gitignored in some hubs).
 #
 # The live memory directory is tier-aware: free-tier hubs (dev, dev:graph)
-# store memory at memory/*.md; vault-backed hubs (dev:sub, ops, publish)
+# store memory at memory/*.md; vault-backed hubs (dev:sub, ops)
 # store it at vault/Memory/*.md instead (see
 # pipelines/deploy/lib/memory-root.js's resolveMemoryRootForHub() — the
 # single source of truth every other tier-aware consumer already uses). This

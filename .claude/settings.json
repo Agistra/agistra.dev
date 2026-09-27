@@ -21,6 +21,20 @@
 					}
 				]
 			}
+		],
+		"PreToolUse": [
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node",
+						"args": [
+							"${CLAUDE_PROJECT_DIR}/pipelines/deploy/lib/secret-scan-gate.js"
+						]
+					}
+				]
+			}
 		]
 	},
 	"enableAllProjectMcpServers": true

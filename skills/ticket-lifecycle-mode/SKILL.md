@@ -103,7 +103,7 @@ Backend note: `task-cli.js` implements the repo-files task store operations from
 Storage Plugin Contract in `agent-foundations/SKILL.md` (`read-task`, `list-tasks`,
 `update-task-fields`, `transition-state`). The `obsidian` plugin
 (`agent-foundations/storage/obsidian.md`) is a real, already-shipped, currently-active
-storage backend on vault-backed tiers (`dev:sub`, `ops`, `publish`) — not hypothetical
+storage backend on vault-backed tiers (`dev:sub`, `ops`) — not hypothetical
 future work. It implements the same operations behind this CLI's module boundary with
 materially different transition behavior on that tier: no filename rename. See that
 plugin's own Task store section (`transition-state`) for the authoritative statement of

@@ -24,7 +24,7 @@
  *
  * Memory root resolution is hubType-aware via lib/memory-root.js's
  * resolveMemoryRootForHub() — the single source of truth shared with
- * doctor.js and lib/session-cli.js. Vault-backed tiers (dev:sub/ops/publish)
+ * doctor.js and lib/session-cli.js. Vault-backed tiers (dev:sub/ops)
  * resolve to `vault/Memory`; free/customer-archive tiers (dev/dev:graph, or
  * unset hubType) resolve to the pre-existing `memory` default.
  */

@@ -5,7 +5,7 @@
  * Free/customer-archive tiers (dev, dev:graph) store memory as plain repo
  * files at <hubRoot>/memory/<agent>.md (the repo-files.md storage plugin)
  * and tasks as plain repo files at <hubRoot>/projects/<project>/task_*.md.
- * Vault-backed paid tiers (dev:sub, ops, publish) store memory as an
+ * Vault-backed paid tiers (dev:sub, ops) store memory as an
  * Obsidian vault note at <hubRoot>/vault/Memory/<agent>.md and tasks as
  * vault notes at <hubRoot>/vault/Tasks/<project>/task_*.md (the obsidian.md
  * storage plugin — see the Storage Plugin Contract in
@@ -33,7 +33,7 @@ import path from 'node:path';
 import { readJsonSafe } from '../wizard.js';
 
 /** Hub tiers whose canonical memory record lives in the Obsidian vault, not plain repo files. */
-export const VAULT_BACKED_HUB_TYPES = ['dev:sub', 'ops', 'publish'];
+export const VAULT_BACKED_HUB_TYPES = ['dev:sub', 'ops'];
 
 export function isVaultBackedHubType(hubType) {
 	return VAULT_BACKED_HUB_TYPES.includes(hubType);

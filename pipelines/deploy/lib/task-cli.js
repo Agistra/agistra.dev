@@ -80,6 +80,7 @@ import {
 import { parseGithubIssueRef, fetchIssueState } from './ticket-drift.js';
 import { resolveTasksRoot, isVaultBackedHubType } from './memory-root.js';
 import { readJsonSafe } from '../wizard.js';
+import { scanForSecrets, formatSecretScanError } from './secret-scan.js';
 
 export const DEFAULT_PROJECTS_ROOT = 'projects';
 
@@ -180,6 +181,12 @@ export function updateField(id, field, value, opts = {}) {
 	if (!field) return { ok: false, error: 'field is required' };
 	const taskPath = resolveTaskPath(id, opts);
 	if (!taskPath) return { ok: false, error: `task not found: ${id}` };
+
+	// Secret scan before writing — never partially writes the file.
+	const secretMatch = scanForSecrets(String(value));
+	if (secretMatch) {
+		return { ok: false, error: formatSecretScanError(secretMatch), path: taskPath };
+	}
 
 	try {
 		updateTaskFields(taskPath, { [field]: value });
@@ -294,6 +301,18 @@ export function transitionTask(id, newState, {
 	const taskPath = resolveTaskPath(id, { projectsRoot });
 	if (!taskPath) {
 		result.error = `task not found: ${id}`;
+		return result;
+	}
+
+	// Secret scan the incoming frontmatter-updates values before writing —
+	// never partially writes the file. Only the caller-supplied updates are
+	// scanned here (not the file's own pre-existing frontmatter/body), since
+	// those are the only new content this call introduces.
+	const frontmatterUpdatesContent = Object.values(frontmatterUpdates).map(String).join('\n');
+	const secretMatch = scanForSecrets(frontmatterUpdatesContent);
+	if (secretMatch) {
+		result.error = formatSecretScanError(secretMatch);
+		result.steps.push({ step: 'local-write', ok: false, error: result.error });
 		return result;
 	}
 
@@ -436,6 +455,12 @@ export function appendSection(id, section, content, opts = {}) {
 	}
 	const taskPath = resolveTaskPath(id, opts);
 	if (!taskPath) return { ok: false, error: `task not found: ${id}` };
+
+	// Secret scan before writing — never partially writes the file.
+	const secretMatch = scanForSecrets(content);
+	if (secretMatch) {
+		return { ok: false, error: formatSecretScanError(secretMatch), path: taskPath };
+	}
 
 	try {
 		appendTaskSection(taskPath, section, content);
@@ -1067,9 +1092,17 @@ export function createTask(project, id, slug, {
 	const meta = { status, ...restFields };
 
 	const taskBody = body;
+	const fileContent = `---\n${serializeFrontmatter(meta)}\n---\n${taskBody}`;
+
+	// Secret scan the exact content about to be written (frontmatter +
+	// body in one call) before writing — never partially writes the file.
+	const secretMatch = scanForSecrets(fileContent);
+	if (secretMatch) {
+		return { ok: false, error: formatSecretScanError(secretMatch) };
+	}
 
 	fsMod.mkdirSync(projectDir, { recursive: true });
-	fsMod.writeFileSync(taskPath, `---\n${serializeFrontmatter(meta)}\n---\n${taskBody}`, 'utf-8');
+	fsMod.writeFileSync(taskPath, fileContent, 'utf-8');
 
 	if (isVaultShaped) {
 		ensureProjectHubNote(projectsRoot, project, filenameNoExt, fsMod);

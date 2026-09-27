@@ -128,7 +128,7 @@ function discoverDeployedAgentIds({ hubRoot, fsMod }) {
 
 function checkMemoryFiles({ hubRoot, fsMod }) {
 	const agentIds = discoverDeployedAgentIds({ hubRoot, fsMod });
-	// hubType-aware: vault-backed tiers (dev:sub/ops/publish) scaffold into
+	// hubType-aware: vault-backed tiers (dev:sub/ops) scaffold into
 	// vault/Memory (see lib/memory-root.js, the single source of truth shared
 	// with lib/extras.js and lib/session-cli.js). readHubConfig() is the same
 	// workspace.config.json reader checkHubType() (check 15) uses below.
@@ -382,7 +382,7 @@ function checkAutoDispatchRouterModel({ hubRoot, fsMod, profilesRoot }) {
 }
 
 function checkProjectsDir({ hubRoot, fsMod }) {
-	// hubType-aware: vault-backed tiers (dev:sub/ops/publish) use vault/Tasks
+	// hubType-aware: vault-backed tiers (dev:sub/ops) use vault/Tasks
 	// (see lib/memory-root.js, the single source of truth shared with
 	// lib/extras.js). readHubConfig() is the same workspace.config.json
 	// reader checkHubType() (check 15) uses below.
@@ -745,7 +745,7 @@ function checkHubRootDependencies({ hubRoot, fsMod }) {
 }
 
 /**
- * Checks 16+: optional tier-specific readiness (dev:sub, ops, publish hubs only).
+ * Checks 16+: optional tier-specific readiness (dev:sub, ops hubs only).
  *
  * Manifest-driven, not hardcoded: some hub tiers ship one or more additional
  * doctor checks as self-contained plugin modules under lib/ (filename
