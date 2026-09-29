@@ -2,5 +2,6 @@
 command = "npx"
 args = [
     "-y",
-    "@vercel-labs/agent-browser",
+    "agent-browser",
+    "mcp",
 ]

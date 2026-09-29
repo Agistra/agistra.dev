@@ -33,7 +33,7 @@ export function dispatch({ projectsRoot, skillsRoot, project, advance, list, lau
 		}
 		console.log('\nProject Queue\n');
 		let anyPending = false;
-		for (const { project: name, todos, inFlight, dones } of all) {
+		for (const { project: name, todos, inFlight, dones, unrecognized } of all) {
 			const pending = todos.length + inFlight.length;
 			const done = dones.length;
 			const status = pending === 0 ? 'complete' : `${pending} pending`;
@@ -43,6 +43,9 @@ export function dispatch({ projectsRoot, skillsRoot, project, advance, list, lau
 			}
 			for (const { file, state } of inFlight) {
 				console.log(`    → ${file.replace(`_${state}_`, ` [${state}] `)}`);
+			}
+			for (const { file, status: s } of unrecognized) {
+				console.log(`    ⚠ ${file} [unrecognized status: ${s}]`);
 			}
 			if (pending > 0) anyPending = true;
 		}

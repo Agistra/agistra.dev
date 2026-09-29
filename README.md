@@ -13,7 +13,7 @@
 
 Run [scan](#project-health-scanner) on any existing project to analyse it and generate the first batch of tasks automatically. No manual setup required.
 
-**[Get started →](#quick-start)** · [GitHub](https://github.com/vsetchinfc/agistra.dev) · Open source
+**[Get started →](#quick-start)** · [GitHub](https://github.com/Agistra/agistra.dev) · Open source
 
 ---
 
@@ -110,7 +110,7 @@ To keep token spend down on any provider, see [Token Use Best Practices](docs/TO
 ### 1. Clone or fork the hub
 
 ```powershell
-git clone https://github.com/vsetchinfc/agistra.dev.git my-hub
+git clone https://github.com/Agistra/agistra.dev.git my-hub
 cd my-hub
 ```
 
@@ -418,7 +418,7 @@ A full superset of `agistra.dev:sub`'s Obsidian + qmd storage stack, plus a Lang
 
 Agistra is open source and free to use.
 
-**[github.com/vsetchinfc/agistra.dev](https://github.com/vsetchinfc/agistra.dev)**
+**[github.com/Agistra/agistra.dev](https://github.com/Agistra/agistra.dev)**
 
 Clone it, deploy it to your own hub, and run your team from there. The source of truth for agent profiles, skills, and the CLI lives in the profiles repo — deploy generates your hub from it.
 

@@ -564,7 +564,7 @@ const NIGHTLY_DREAMING_STALE_ARCHIVE_DAYS = 2;
  * consolidation work happened: no dated archive snapshot was written and no memory
  * compaction occurred. This check closes that specific gap by cross-checking the task's
  * own last-run outcome against the newest dated archive snapshot under
- * `memory/archive/` — flagging exactly the "Windows says success, nothing actually
+ * the tier-correct archive path (`vault/Memory/archive/` on vault tiers) — flagging exactly the "Windows says success, nothing actually
  * happened" pattern that made the original regression invisible until someone asked by
  * hand.
  */
@@ -592,7 +592,9 @@ function checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, pl
 		return skip(19, 'nightly dreaming freshness', 'Scheduled Task not registered or has not run yet — see check 18');
 	}
 
-	const latestArchiveDate = findMostRecentArchiveDate({ hubRoot, agent: 'architect', fsMod });
+	const latestArchiveDate = findMostRecentArchiveDate({
+		hubRoot, agent: 'architect', hubType: config?.hubType ?? null, fsMod,
+	});
 	const staleDays = latestArchiveDate
 		? Math.floor((Date.now() - Date.parse(latestArchiveDate)) / 86_400_000)
 		: Infinity;
@@ -600,7 +602,7 @@ function checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, pl
 	if (lastResult === 0 && staleDays > NIGHTLY_DREAMING_STALE_ARCHIVE_DAYS) {
 		return fail(19, 'nightly dreaming freshness',
 			`Scheduled Task last reported success (exit 0, ${lastRunTime}) but the newest archived ` +
-			`memory snapshot (memory/archive/architect-*.md) is ${latestArchiveDate ?? 'missing entirely'}` +
+			`memory snapshot (<memory root>/archive/architect-*.md) is ${latestArchiveDate ?? 'missing entirely'}` +
 			`${latestArchiveDate ? ` (${staleDays} days old)` : ''} — the task reported success but ` +
 			'consolidation did not actually run',
 			`inspect logs/nightly-dreaming-<date>.log; re-run manually via: schtasks /run /tn ${taskName}`);

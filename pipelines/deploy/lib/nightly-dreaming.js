@@ -53,6 +53,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { resolveMemoryRoot, resolveMemoryRootForHub } from './memory-root.js';
 // vault-index.js is intentionally NOT statically imported here (and must never be) —
 // it ships only to vault-backed tiers (dev:sub/ops; see extras.js), while this
 // module ships unconditionally to every tier and is itself statically imported by
@@ -65,7 +66,15 @@ import { fileURLToPath } from 'node:url';
 
 export const NIGHTLY_DREAMING_TASK_NAME = 'AgistraDevNightlyDreaming';
 export const DEFAULT_NIGHTLY_DREAMING_TIME = '02:00';
-export const NIGHTLY_DREAMING_MODEL = 'claude-haiku-4-5-20251001';
+// Sonnet-class model addressed by Claude Code's provider-neutral alias, not a raw
+// provider-specific model id: the CLI resolves `sonnet` per configured provider
+// (Anthropic API, Bedrock, ...), so one value works on every hub. Dreaming has judgment
+// steps (what to promote, contradiction review, what to retire) that a small model
+// skips by answering conversationally in a cold headless session.
+export const NIGHTLY_DREAMING_MODEL = 'sonnet';
+// Exit code returned when `claude -p` exited 0 but left no evidence that consolidation
+// ran. Distinct from claude's own exit codes so the Scheduled Task result is honest.
+export const NIGHTLY_DREAMING_NO_EFFECT_EXIT_CODE = 2;
 // Addressed to Architect by name (required for the cold-session CLAUDE.md Startup Rule to
 // fire at all) plus an explicit non-interactive directive (required so the model performs
 // real file reads/writes instead of a conversational acknowledgement). See the file header
@@ -389,7 +398,11 @@ export function removeNightlyDreamingTask({
  * @param {function} [opts.buildVaultIndexFn]  Injectable `buildVaultIndex`-shaped function
  *   for testing. Defaults to a lazy `await import('./vault-index.js')` — see the file
  *   header comment above for why this is never a static top-level import.
- * @returns {Promise<{ ok: boolean, exitCode: number, logPath: string }>}
+ * @param {function} [opts.verifyEffectFn]  Injectable `verifyDreamingEffect`-shaped function
+ *   for testing. After a clean (exit 0) `claude -p` run it must confirm consolidation left
+ *   evidence on disk; a run that exits 0 but changed nothing is reported as `NO-EFFECT`
+ *   with a non-zero exit code.
+ * @returns {Promise<{ ok: boolean, exitCode: number, logPath: string, noEffect?: boolean }>}
  */
 export async function runNightlyDreamingWithLogging({
 	hubRoot = process.cwd(),
@@ -400,7 +413,9 @@ export async function runNightlyDreamingWithLogging({
 	fsMod = fs,
 	now = () => new Date(),
 	buildVaultIndexFn = null,
+	verifyEffectFn = verifyDreamingEffect,
 } = {}) {
+	const runStartedAt = now();
 	const logDir = path.join(hubRoot, 'logs');
 	fsMod.mkdirSync(logDir, { recursive: true });
 	const logPath = path.join(logDir, `nightly-dreaming-${localDateString(now())}.log`);
@@ -457,9 +472,81 @@ export async function runNightlyDreamingWithLogging({
 		append('\nvault-index: skipped (no vault/ directory found — free-tier hub)\n');
 	}
 
-	const exitCode = typeof result.status === 'number' ? result.status : 1;
+	let exitCode = typeof result.status === 'number' ? result.status : 1;
+	let noEffect = false;
+	if (exitCode === 0) {
+		// Exit 0 only says the `claude` process ended cleanly, not that it consolidated
+		// anything (a conversational reply exits 0 too). Confirm the archive snapshot the
+		// dreaming skill writes before compacting actually landed on disk.
+		const effect = verifyEffectFn({ hubRoot, runStartedAt, runFinishedAt: now(), fsMod });
+		if (effect.ok) {
+			append(`\neffect-check: ok — ${effect.detail}\n`);
+		} else {
+			noEffect = true;
+			exitCode = NIGHTLY_DREAMING_NO_EFFECT_EXIT_CODE;
+			append(`\nNO-EFFECT: claude exited 0 but consolidation left no evidence — ${effect.detail}\n`);
+		}
+	} else {
+		append('\neffect-check: skipped (claude did not exit 0)\n');
+	}
 	append(`\n=== nightly-dreaming run finished ${now().toISOString()} (exit ${exitCode}) ===\n`);
-	return { ok: exitCode === 0, exitCode, logPath };
+	return { ok: exitCode === 0, exitCode, logPath, ...(noEffect ? { noEffect } : {}) };
+}
+
+function resolveMemoryRootSafe(hubRoot, fsMod) {
+	try {
+		return resolveMemoryRootForHub(hubRoot, { fsMod });
+	} catch {
+		// Unreadable/absent workspace.config.json (or a minimal fs stub): fall back to the
+		// free-tier default, matching resolveMemoryRoot()'s behaviour for an unset hubType.
+		return resolveMemoryRoot(hubRoot, undefined);
+	}
+}
+
+/**
+ * Confirm a nightly dreaming run actually consolidated memory.
+ *
+ * Evidence required: a dated archive snapshot `<agent>-YYYY-MM-DD.md` for the run date
+ * (start or finish date, so a run crossing midnight is not misjudged) at the tier-correct
+ * archive path, written at or after the run started -- a snapshot left by an earlier
+ * manual run the same day does not count. The dreaming skill does not define a
+ * `lastConsolidation` field, so it is not required as evidence.
+ *
+ * @param {object} opts
+ * @param {string} opts.hubRoot
+ * @param {Date}   opts.runStartedAt
+ * @param {Date}   [opts.runFinishedAt]
+ * @param {string} [opts.agent]
+ * @param {object} [opts.fsMod]
+ * @returns {{ ok: boolean, detail: string, archivePath?: string }}
+ */
+export function verifyDreamingEffect({
+	hubRoot,
+	runStartedAt,
+	runFinishedAt = runStartedAt,
+	agent = 'architect',
+	fsMod = fs,
+}) {
+	const archiveDir = path.join(resolveMemoryRootSafe(hubRoot, fsMod), 'archive');
+	const dates = [...new Set([localDateString(runStartedAt), localDateString(runFinishedAt)])];
+	const startMs = runStartedAt.getTime();
+	const problems = [];
+	for (const date of dates) {
+		const archivePath = path.join(archiveDir, `${agent}-${date}.md`);
+		let mtimeMs;
+		try {
+			mtimeMs = fsMod.statSync(archivePath).mtimeMs;
+		} catch {
+			problems.push(`${archivePath} does not exist`);
+			continue;
+		}
+		if (typeof mtimeMs !== 'number' || mtimeMs < startMs) {
+			problems.push(`${archivePath} predates this run (not written by it)`);
+			continue;
+		}
+		return { ok: true, detail: `archive snapshot ${archivePath} written this run`, archivePath };
+	}
+	return { ok: false, detail: problems.join('; ') };
 }
 
 /**
@@ -493,8 +580,9 @@ export function getNightlyDreamingTaskRuntimeInfo({
 }
 
 /**
- * Finds the most recent dated archive snapshot for an agent under memory/archive/
- * (e.g. `architect-2026-07-30.md`). Returns the YYYY-MM-DD date string of the newest
+ * Finds the most recent dated archive snapshot for an agent under the tier-correct
+ * archive directory (`memory/archive/` on free tiers, `vault/Memory/archive/` on
+ * vault-backed tiers — resolved by memory-root.js), e.g. `architect-2026-07-30.md`. Returns the YYYY-MM-DD date string of the newest
  * one found, or null if none exist. Used to detect a known regression pattern: the
  * Scheduled Task reporting success while the dreaming skill's own archive-before-
  * compact step never actually ran.
@@ -502,11 +590,15 @@ export function getNightlyDreamingTaskRuntimeInfo({
  * @param {object} opts
  * @param {string} opts.hubRoot
  * @param {string} [opts.agent]
+ * @param {string} [opts.hubType]  When omitted, read from the hub's workspace.config.json.
  * @param {object} [opts.fsMod]
  * @returns {string|null}
  */
-export function findMostRecentArchiveDate({ hubRoot, agent = 'architect', fsMod = fs }) {
-	const archiveDir = path.join(hubRoot, 'memory', 'archive');
+export function findMostRecentArchiveDate({ hubRoot, agent = 'architect', hubType, fsMod = fs }) {
+	const memoryRoot = hubType === undefined
+		? resolveMemoryRootSafe(hubRoot, fsMod)
+		: resolveMemoryRoot(hubRoot, hubType);
+	const archiveDir = path.join(memoryRoot, 'archive');
 	let files;
 	try {
 		files = fsMod.readdirSync(archiveDir);

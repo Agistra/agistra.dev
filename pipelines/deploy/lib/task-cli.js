@@ -156,6 +156,7 @@ export function listTasks(project, { state, projectsRoot = DEFAULT_PROJECTS_ROOT
 		...entry.todos.map(file => ({ file, state: 'todo' })),
 		...entry.inFlight,
 		...entry.dones.map(file => ({ file, state: 'done' })),
+		...entry.unrecognized.map(item => ({ file: item.file, state: 'unrecognized', status: item.status })),
 	];
 	if (state) tasks = tasks.filter(t => t.state === state);
 

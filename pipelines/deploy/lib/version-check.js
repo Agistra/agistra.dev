@@ -22,7 +22,7 @@ import { parseVersion, compareVersions } from './version.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REMOTE_URL = 'https://raw.githubusercontent.com/vsetchinfc/agistra.dev/main/VERSION';
+const REMOTE_URL = 'https://raw.githubusercontent.com/Agistra/agistra.dev/main/VERSION';
 
 function readLocalVersion(hubRoot) {
 	const versionPath = path.join(hubRoot, 'VERSION');

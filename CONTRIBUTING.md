@@ -68,7 +68,7 @@ sign-off regardless of CI status.
 ## Development setup
 
 ```bash
-git clone https://github.com/vsetchinfc/agistra.dev
+git clone https://github.com/Agistra/agistra.dev
 cd agistra.dev
 npm run setup        # configure workspace.config.json (gitignored — stays local)
 npm run doctor       # verify hub health

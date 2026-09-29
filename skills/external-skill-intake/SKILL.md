@@ -64,14 +64,23 @@ fifth (most often license fit).
 | Trust posture of upstream content | Is the upstream source a maintained, reputable repo, or an unmaintained/anonymous one? Does it instruct execution of untrusted external content (a red flag under the security baseline)? | Repo URL, last-commit recency, maintainer signal, any instruction-execution red flags found |
 | Deployment impact | What does adopting this add to the deploy pipeline — new manifest entries, new packaging allowlist entries, new dependencies, new install steps? | Concrete list of what deploy/packaging surfaces would need to change |
 | Memory-model fit | Does the candidate assume a memory/state model compatible with Agistra's HOT/WARM/COLD `memory/<agent>.md` convention, or does it assume something incompatible (e.g. a different persistence backend, no WAL discipline)? | State the assumed memory model and how (or whether) it maps to Agistra's |
-| Commercial / license fit (hard check) | What license does the candidate ship under? No-license or a restrictive/incompatible license means no redistribution rights — it cannot be vendored into a paid package. | The exact license identifier (e.g. MIT, Apache-2.0, "no license found") — never left blank or assumed |
+| Commercial / license fit (hard check) | What license does the candidate ship under? Only MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, and ISC pass. No-license or a restrictive/incompatible license means no redistribution rights — it cannot be vendored into a paid package, and it cannot be installed by Agistra's own setup scripts either. | The exact license identifier (e.g. MIT, Apache-2.0, "no license found") — never left blank or assumed |
 
-**The license-fit criterion is a hard check, not a note.** If the upstream repo has no discoverable
-license file or license header, record it as "no license found" and treat that as a redistribution
-blocker by default — do not assume permissive intent. A candidate that fails only the license
-criterion is not a small ding on an otherwise-good scorecard; it caps the classification at **Adapt
-concept** at best (the idea can be re-implemented in Agistra's own words) or **Reject**, never
-**Install candidate**, unless the team lead separately confirms a license exception in writing.
+**The license-fit criterion is a hard check, not a note.** Check it before any other criterion; a
+license failure ends the evaluation. It applies to every external tool Agistra evaluates, adopts, or
+installs — vendored content, and also anything a setup script, doctor-gated opt-in, or `.mcp.json`
+entry installs without vendoring source. If Agistra's own code triggers the install, the gate
+applies even when the user ends up owning the local copy; there is no "optional third-party tool"
+exception.
+
+Hard exclusions, with no carve-out: licenses that restrict commercial use, source-available
+licenses, the whole GPL/LGPL/AGPL family at any version, and "no license found." If the upstream
+repo has no discoverable license file or license header, record it as "no license found" and treat
+that as a blocker by default — do not assume permissive intent. A candidate that fails only the
+license criterion is not a small ding on an otherwise-good scorecard; it caps the classification at
+**Adapt concept** at best (the idea can be re-implemented in Agistra's own words) or **Reject**,
+never **Install candidate**, unless the team lead separately confirms a license exception in
+writing. This is engineering policy, not legal advice.
 
 ## 3. Security surface check
 

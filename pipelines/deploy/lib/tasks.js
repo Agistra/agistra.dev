@@ -137,19 +137,31 @@ export function listAllTasks(projectsRoot) {
 			const todos = [];
 			const dones = [];
 			const inFlight = [];
+			const unrecognized = [];
 
 			const classify = (file, dir) => {
 				let token = hasStateTokenInfix(file) ? filenameInfix(file) : null;
 				if (!token) {
 					// Vault-shaped (no valid infix): derive the bucket token from the
 					// `status:` frontmatter field instead. An unrecognized/malformed
-					// status leaves the file uncategorized (consistent with the
-					// existing repo-files behavior of ignoring non-matching filenames).
+					// status is tracked in `unrecognized` rather than silently dropped,
+					// so callers can report it (consistent with the existing repo-files
+					// behavior of ignoring non-matching filenames, but observable).
 					try {
 						const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
 						const { meta } = parseFrontmatter(raw);
 						token = stateToToken(meta.status);
-					} catch {
+					} catch (err) {
+						// stateToToken threw Unknown lifecycle state; track this file
+						// so the caller can report it instead of silently dropping it.
+						try {
+							const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
+							const { meta } = parseFrontmatter(raw);
+							unrecognized.push({ file, status: meta.status });
+						} catch {
+							// File unreadable or unparseable; still track it as unrecognized.
+							unrecognized.push({ file, status: undefined });
+						}
 						return;
 					}
 				}
@@ -168,6 +180,7 @@ export function listAllTasks(projectsRoot) {
 			todos.sort((a, b) => taskNum(a) - taskNum(b));
 			dones.sort((a, b) => taskNum(a) - taskNum(b));
 			inFlight.sort((a, b) => taskNum(a.file) - taskNum(b.file));
+			unrecognized.sort((a, b) => taskNum(a.file) - taskNum(b.file));
 
 			return {
 				project: e.name,
@@ -175,6 +188,7 @@ export function listAllTasks(projectsRoot) {
 				todos,
 				inFlight,
 				dones,
+				unrecognized,
 			};
 		});
 }
@@ -238,6 +252,8 @@ export function loadSkillContent(skillsRoot, skillName) {
 export function stateToToken(state) {
 	const map = {
 		'state:ready-for-implementation': 'todo',
+		'state:todo': 'todo',
+		'todo': 'todo',
 		'state:in-progress': 'in-progress',
 		'state:ready-for-review': 'ready-for-review',
 		'state:ready-for-qa': 'ready-for-qa',
