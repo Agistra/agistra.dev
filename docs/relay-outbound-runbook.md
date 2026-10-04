@@ -8,7 +8,7 @@ Manual E2E verification for Router → relay daemon → Telegram group.
 
 - `workspace.config.json` has `remoteTeam.enabled`, `telegram.enabled`, `bot_token`, and `relay_group_id`
 - Relay MCP wired in `~/.claude/settings.json` or `.cursor/mcp.json` (run `npm run setup` from hub, or see `docs/relay-setup.md`)
-- Relay daemon code available (`setchin-agent-profiles` repo; hub deploy copies `cli/relay/` in a future ticket)
+- Relay daemon code available (`setchin-agent-profiles` repo; the deploy pipeline copies it to `pipelines/deploy/relay/` on every hub)
 
 ---
 
@@ -96,4 +96,4 @@ GitHub Router has no relay MCP yet. Post outbound via daemon HTTP (see `profiles
 | `relay daemon not reachable` | Start daemon (step 1) |
 | Router refuses free-form send | Use state-transition dispatch (step 3) |
 | Router has no `relay_send` tool | Redeploy hub with the latest relay tooling |
-| MCP path missing | Relay MCP server lives in profiles repo until hub deploy copies `cli/relay/` |
+| MCP path missing | Relay MCP server is at `pipelines/deploy/relay/mcp/server.js`; re-run the deploy if it is missing |

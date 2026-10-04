@@ -22,7 +22,6 @@ tmp/
 dist/
 coverage/
 node_modules/
-relay/
 
 dev-server.log
 
@@ -31,7 +30,6 @@ copilot-instructions.md
 .claude/settings.local.json
 .env
 # Third-party skills
-codebase-design/
 logs/
 .claude/.graph-lens-state.json
 # memory-index CLI local index — regenerated via `npm run memory-index -- build`
@@ -41,3 +39,10 @@ memory/
 projects/
 .graphify/
 package-lock.json
+/relay/
+# Relay daemon runtime scratch (inbox, logs) lives only at the hub root; an
+# unanchored rule would also swallow the shipped pipelines/deploy/relay/ module.
+# dep-graph MCP baseline() output, written next to the scanned directory
+# Third-party skills (install-skill writes to <hub>/skills/<name>/)
+/skills/codebase-design/
+graphify-out/

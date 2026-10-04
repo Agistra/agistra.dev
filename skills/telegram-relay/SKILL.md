@@ -6,7 +6,7 @@ argument-hint: "Inbound Telegram message, remote agent request, outbound state t
 
 # Telegram Relay
 
-Use this skill when Router needs to bridge your team and the remote team across Telegram. The skill defines Router's behaviour rules on top of the hub relay daemon (`cli/relay/`). Router calls `relay_send` for outbound; inbound arrives as parsed jobs via `relay_inbox_peek`.
+Use this skill when Router needs to bridge your team and the remote team across Telegram. The skill defines Router's behaviour rules on top of the hub relay daemon (`pipelines/deploy/relay/`). Router calls `relay_send` for outbound; inbound arrives as parsed jobs via `relay_inbox_peek`.
 
 ## Scope
 
@@ -18,7 +18,7 @@ Use this skill when Router needs to bridge your team and the remote team across 
 - One shared Telegram group where Router (your team's bot) and the remote agent both operate.
 - **Inbound addressing:** remote team messages must start with Router's configured display name (from `agents.router.displayName`, e.g. `Atlas, …`) or `Router, …` when no display name is set. The relay daemon ignores group messages without this salutation.
 - **Outbound addressing:** every `relay_send` body is prefixed with the remote agent's name (from `remoteTeam.agentName`, e.g. `Max, …`) by the daemon when missing.
-- The team lead is in the channel for awareness; team-lead-only escalations go via `memory/router.md` HOT and surface at morning-standup or end-of-day dreaming.
+- The team lead is in the channel for awareness; team-lead-only escalations go via Router's HOT memory and surface at morning-standup or end-of-day dreaming.
 
 ## Inbound — Remote Agent to Your Team
 
@@ -64,7 +64,7 @@ When spawning Builder or Tester, pass:
 Subagent-spawned Tester cannot run live tests — browser-driven QA needs the shared browser tab and a direct Tester session. On `qa_requested` inbound, Tester operates in **Pre-QA Readiness Check mode only** (see `qa-ticket-workflow`):
 
 - confirms the Developer → QA handoff payload is complete
-- queues the ticket in `memory/tester.md` HOT
+- queues the ticket in Tester's HOT memory
 - returns `READY` or `INCOMPLETE: [missing fields]`
 
 If the remote agent requests actual test execution, Tester's response is a queue confirmation only.
@@ -154,7 +154,7 @@ The ticket itself is the audit. Builder and Tester comment on the ticket in thei
 
 | Failure | Response |
 | ------- | -------- |
-| Unknown sender | Do NOT reply on channel. Append to `memory/router.md` HOT; surfaces to the team lead at morning-standup or dreaming. |
+| Unknown sender | Do NOT reply on channel. Append to Router's HOT memory; surfaces to the team lead at morning-standup or dreaming. |
 | Telegram unreachable inbound | Runtime queues. Router takes no action until invoked with a parsed message. |
 | Telegram unreachable outbound | `relay_send` returns error. Return error to the dispatching agent. The dispatching agent appends a retry note to its own HOT. |
 | Ambiguous reference (e.g., "the ticket") | Ask one concise clarifying question via the runtime; no subagent spawn until resolved. |

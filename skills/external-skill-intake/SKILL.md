@@ -20,10 +20,6 @@ promoted, or adapted into Agistra.
 questions are architecture and workflow questions before they are implementation questions, and
 Architect already owns role boundaries, lifecycle fit, ADRs, and upstream-pattern adaptation.
 
-Future `CAO`/ops-side use of this same skill is reuse of this one in-house gate —
-not a separate process, not a fork, not a second intake workflow. If `CAO` runs an intake later, the
-protocol below still applies unchanged; only the owner role changes.
-
 ## When to load
 
 - The team lead points at an external repo, skill, tool, or workflow and asks whether Agistra should
@@ -63,7 +59,7 @@ fifth (most often license fit).
 | Role-boundary / lifecycle fit | Does the candidate respect Agistra's existing agent role model (Architect/Builder/Tester/Router) and ticket-lifecycle states, or does it assume a flatter, single-agent workflow? | Name the specific role/lifecycle conflict, or state "no conflict found" with what was checked |
 | Trust posture of upstream content | Is the upstream source a maintained, reputable repo, or an unmaintained/anonymous one? Does it instruct execution of untrusted external content (a red flag under the security baseline)? | Repo URL, last-commit recency, maintainer signal, any instruction-execution red flags found |
 | Deployment impact | What does adopting this add to the deploy pipeline — new manifest entries, new packaging allowlist entries, new dependencies, new install steps? | Concrete list of what deploy/packaging surfaces would need to change |
-| Memory-model fit | Does the candidate assume a memory/state model compatible with Agistra's HOT/WARM/COLD `memory/<agent>.md` convention, or does it assume something incompatible (e.g. a different persistence backend, no WAL discipline)? | State the assumed memory model and how (or whether) it maps to Agistra's |
+| Memory-model fit | Does the candidate assume a memory/state model compatible with Agistra's HOT/WARM/COLD agent-memory convention, or does it assume something incompatible (e.g. a different persistence backend, no WAL discipline)? | State the assumed memory model and how (or whether) it maps to Agistra's |
 | Commercial / license fit (hard check) | What license does the candidate ship under? Only MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, and ISC pass. No-license or a restrictive/incompatible license means no redistribution rights — it cannot be vendored into a paid package, and it cannot be installed by Agistra's own setup scripts either. | The exact license identifier (e.g. MIT, Apache-2.0, "no license found") — never left blank or assumed |
 
 **The license-fit criterion is a hard check, not a note.** Check it before any other criterion; a
@@ -113,7 +109,7 @@ above is the entire security-surface evidence on `dev`, full stop. This mirrors 
 uses — a section scoped by `hubType`, never by ambient capability detection.
 
 `dev:sub` already carries a Python runtime as a load-bearing dependency for Graphify (`python -m
-graphify.serve`); `ops` already carries one for the CAO/LangGraph runtime. Because Python
+graphify.serve`). Because Python
 availability tracks tier deterministically rather than varying machine-to-machine, this is a tier
 gate, not a "try it, skip if missing" runtime probe.
 
@@ -247,5 +243,3 @@ gets to `skill-quality-review` at all, regardless of how polished the upstream c
 - It does not replace `skill-quality-review`'s content-level checks (trigger quality, progressive
   disclosure, hallucination resistance) — those still apply in full once a candidate reaches that
   gate.
-- It does not decide CAO/ops-side process — it defines one gate that Architect owns first and that
-  CAO may reuse later.

@@ -32,8 +32,9 @@
  *   — the core never fails the calling process; adapters decide how to
  *   surface "dirty" to their platform.
  *
- * Adapters source the shared reminder text from memory-check-message.txt
- * (same directory as this file) rather than duplicating the message.
+ * Adapters get the shared, tier-aware reminder text from
+ * memory-check-message.js (same directory as this file) rather than
+ * duplicating the message.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -58,7 +59,7 @@ const FOUR_HOURS_MS = 240 * 60 * 1000;
  *
  * @returns {string}
  */
-function resolveHubRoot() {
+export function resolveHubRoot() {
 	if (process.env.CLAUDE_PROJECT_DIR) {
 		return process.env.CLAUDE_PROJECT_DIR;
 	}
@@ -81,7 +82,7 @@ function resolveHubRoot() {
  * @param {string} hubRoot
  * @returns {Promise<string>}
  */
-async function resolveMemoryRootSegment(hubRoot) {
+export async function resolveMemoryRootSegment(hubRoot) {
 	try {
 		const modPath = path.resolve(hubRoot, 'pipelines/deploy/lib/memory-root.js');
 		const { resolveMemoryRootForHub } = await import(pathToFileURL(modPath).href);

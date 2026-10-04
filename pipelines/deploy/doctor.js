@@ -32,6 +32,7 @@ import { buildPortablePrompt } from './lib/compose-portable-prompt.js';
 import { normalise } from './lib/validate-utils.js';
 import { LANGGRAPH_RUNTIME_DIR, LANGGRAPH_GENERATED_DIR, langGraphArtifactFileName } from './lib/langgraph-paths.js';
 import { checkHubRootDepsCurrent } from './lib/hub-root-install.js';
+import { readTaskPermissionState, TASK_PERMISSION_STATES } from './lib/task-permission.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -418,17 +419,24 @@ function checkProjectsDir({ hubRoot, fsMod }) {
 }
 
 const HUB_TYPE_DEV_REQUIRED = ['architect', 'builder', 'tester', 'router'];
-const HUB_TYPE_DEV_SUB_REQUIRED = ['architect', 'builder', 'tester', 'router', 'cao'];
-const HUB_TYPE_OPS_REQUIRED = ['architect', 'builder', 'tester', 'router', 'cao'];
+// Profiles only the subscription and ops tiers deploy; a dev hub that carries one is flagged.
+const HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES = ['cao'];
+const HUB_TYPE_DEV_SUB_REQUIRED = [...HUB_TYPE_DEV_REQUIRED, ...HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES];
+const HUB_TYPE_OPS_REQUIRED = [...HUB_TYPE_DEV_REQUIRED, ...HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES];
+
+/** Subscription-only profile ids present in a hub that should not carry them. */
+function unexpectedProfiles(agentSet) {
+	return HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES.filter(id => agentSet.has(id));
+}
 
 /**
  * Check 15: hubType-aware agent profile verification.
  *
  * Reads `hubType` from workspace.config.json and verifies that the correct
  * set of agent profiles is deployed in .claude/agents/:
- *   "dev"     — architect, builder, tester, router (cao must NOT be present)
- *   "dev:sub" — architect, builder, tester, router, cao (all five required)
- *   "ops"     — architect, builder, tester, router, cao (all five required)
+ *   "dev"     — architect, builder, tester, router (no subscription-only profile may be present)
+ *   "dev:sub" — the four dev profiles plus the subscription-only one (all five required)
+ *   "ops"     — the four dev profiles plus the subscription-only one (all five required)
  *
  * If hubType is absent or unrecognised, warns and falls back to dev checks.
  */
@@ -460,10 +468,11 @@ function checkHubType({ hubRoot, fsMod }) {
 				`hubType=dev:graph but missing profiles: ${missingAgents.join(', ')}`,
 				'run: npm run package:dev:graph then unzip to reinstall the hub');
 		}
-		if (agentSet.has('cao')) {
+		const unexpected = unexpectedProfiles(agentSet);
+		if (unexpected.length > 0) {
 			return warn(15, 'hub type',
-				'hubType=dev:graph but cao profile found — unexpected in a dev:graph hub',
-				'remove cao or change hubType in workspace.config.json');
+				`hubType=dev:graph but unexpected profile found: ${unexpected.join(', ')} — not part of a dev:graph hub`,
+				'remove the profile or change hubType in workspace.config.json');
 		}
 		return pass(15, 'hub type', 'hubType=dev:graph — architect, builder, tester, router all present');
 	}
@@ -475,7 +484,7 @@ function checkHubType({ hubRoot, fsMod }) {
 				`hubType=dev:sub but missing profiles: ${missingAgents.join(', ')}`,
 				'run: npm run deploy:dev:sub (redeploy subscriber hub)');
 		}
-		return pass(15, 'hub type', 'hubType=dev:sub — architect, builder, tester, router, cao all present');
+		return pass(15, 'hub type', `hubType=dev:sub — ${HUB_TYPE_DEV_SUB_REQUIRED.join(', ')} all present`);
 	}
 
 	if (hubType === 'dev') {
@@ -485,10 +494,11 @@ function checkHubType({ hubRoot, fsMod }) {
 				`hubType=dev but missing profiles: ${missingAgents.join(', ')}`,
 				'run: npm run deploy:dev (redeploy dev hub)');
 		}
-		if (agentSet.has('cao')) {
+		const unexpected = unexpectedProfiles(agentSet);
+		if (unexpected.length > 0) {
 			return warn(15, 'hub type',
-				'hubType=dev but cao profile found — unexpected in a dev hub',
-				'remove cao or change hubType to "ops" in workspace.config.json');
+				`hubType=dev but unexpected profile found: ${unexpected.join(', ')} — not part of a dev hub`,
+				'remove the profile or change hubType in workspace.config.json');
 		}
 		return pass(15, 'hub type', 'hubType=dev — architect, builder, tester, router all present');
 	}
@@ -500,7 +510,7 @@ function checkHubType({ hubRoot, fsMod }) {
 			`hubType=ops but missing profiles: ${missingAgents.join(', ')}`,
 			'run: npm run deploy:ops (redeploy ops hub)');
 	}
-	return pass(15, 'hub type', 'hubType=ops — architect, builder, tester, router, cao all present');
+	return pass(15, 'hub type', `hubType=ops — ${HUB_TYPE_OPS_REQUIRED.join(', ')} all present`);
 }
 
 /**
@@ -626,7 +636,7 @@ function checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, pl
  * checkout (hubRoot = the repo root) is what exercises this check when the
  * compile target is being maintained.
  *
- * Regenerates the expected prompt from the CAO profile source using the same
+ * Regenerates the expected prompt from the profile source using the same
  * regenerate-and-diff flow the other compile targets use, then compares the
  * generated artifact against the copy on disk via the injectable fsMod.
  * `compareFile` cannot be reused directly here because it hardcodes real `fs`
@@ -744,6 +754,29 @@ function checkHubRootDependencies({ hubRoot, fsMod }) {
 	return fail(22, 'hub-root dependencies',
 		`node_modules/ missing ${missing.length} declared dependenc${missing.length === 1 ? 'y' : 'ies'}: ${missing.join(', ')}`,
 		'run: npm install');
+}
+
+/**
+ * Check 23: task-CLI permission rules (Claude Code).
+ *
+ * Core check, runs on every tier. Never a failure: `missing` is a warning (the
+ * operator can run `npm run setup`), `declined by choice` is information only,
+ * and a hub without a Claude Code adapter reports `not applicable`.
+ */
+function checkTaskPermission({ hubRoot, fsMod }) {
+	const state = readTaskPermissionState({ hubRoot, fsMod });
+	switch (state) {
+		case TASK_PERMISSION_STATES.ENABLED:
+			return pass(23, 'task permission', 'enabled — task CLI allow rules present in .claude/settings.json');
+		case TASK_PERMISSION_STATES.DECLINED:
+			return skip(23, 'task permission', 'declined by choice — re-ask with: npm run setup -- --ask-permissions');
+		case TASK_PERMISSION_STATES.NOT_APPLICABLE:
+			return skip(23, 'task permission', 'not applicable — no Claude Code adapter deployed');
+		default:
+			return warn(23, 'task permission',
+				'missing — task CLI allow rules not in .claude/settings.json; agents will be prompted on every task command',
+				'run: npm run setup (interactive terminal) and accept the task CLI permission offer');
+	}
 }
 
 /**
@@ -868,6 +901,7 @@ export async function runChecks({
 		checkNightlyDreamingTask({ hubRoot, fsMod, execFn, platform }),
 		checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, platform }),
 		checkHubRootDependencies({ hubRoot, fsMod }),
+		checkTaskPermission({ hubRoot, fsMod }),
 		checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }),
 		...(await checkOptionalTierReadiness({ hubRoot, fsMod, execFn, platform, env, fetchFn, pluginOptions })),
 	];

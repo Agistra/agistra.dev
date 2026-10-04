@@ -16,9 +16,9 @@ These behaviours are always-on, not mode-gated. Load this skill to review or ref
 
 ## Working Buffer Protocol
 
-The working buffer is the crisis backstop — it activates at 60%. `token-economics` is the upstream discipline that delays or avoids that crisis. Load it to apply token budgeting from session start.
+The working buffer is the crisis backstop — it activates at 60%. `token-economics` is the upstream discipline that delays it. Load it for token budgeting from session start.
 
-When the session is clearly growing long — a rough signal is after many extended exchanges, or when you notice responses requiring significant context re-establishment — log every subsequent exchange to `memory/working-buffer.md`:
+When the session grows long (many extended exchanges, or responses needing heavy context re-establishment), log every subsequent exchange to the working buffer: `working-buffer.md` in the active storage plugin's Memory store (free-tier default: `memory/working-buffer.md`):
 
 ```
 # Working Buffer (Danger Zone Log)
@@ -34,7 +34,7 @@ When the session is clearly growing long — a rough signal is after many extend
 [1-2 sentence summary of response + key details]
 ```
 
-After compaction or session restart, read `memory/working-buffer.md` first before asking "where were we?"
+After compaction or session restart, read the working buffer first before asking "where were we?"
 
 ---
 
@@ -48,7 +48,7 @@ Auto-trigger when:
 
 Recovery steps:
 
-1. Read `memory/working-buffer.md` — raw danger-zone exchanges
+1. Read the working buffer — raw danger-zone exchanges
 2. Read `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) — current HOT/WARM/COLD state
 3. Read today's and yesterday's daily notes
 4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below)

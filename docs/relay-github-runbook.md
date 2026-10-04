@@ -11,7 +11,7 @@ GitHub Copilot can use the same **relay MCP** as Claude/Cursor once wired in rep
   - `relay.github.trackingIssue`: `owner/repo#N`
   - `relay.primaryRuntime`: `github` (when GitHub is the only agent platform)
 - `GITHUB_TOKEN` in environment when daemon posts inbound comments
-- Copy `cli/relay/adapters/github-action.yml` → `.github/workflows/relay-notify.yml`
+- Copy `pipelines/deploy/relay/adapters/github-action.yml` → `.github/workflows/relay-notify.yml`
 
 ---
 
@@ -88,7 +88,7 @@ Replaces a prior standalone GitHub poller's inbound half with the unified relay 
 | **`relay:notify` Action** | Label-driven automation **without** an open agent session (CI, manual issue triage, mobile) |
 | **curl / runbook** | One-off manual probes |
 
-Once Copilot repo MCP points at `cli/relay/mcp/server.js --hub <hub>`, agent-driven outbound **does not need** the Action. The workflow remains useful as an optional fallback — it is low maintenance and does not conflict with MCP (same `/outbound` API).
+Once Copilot repo MCP points at `pipelines/deploy/relay/mcp/server.js --hub <hub>`, agent-driven outbound **does not need** the Action. The workflow remains useful as an optional fallback — it is low maintenance and does not conflict with MCP (same `/outbound` API).
 
 **Cleanup guidance (future):**
 

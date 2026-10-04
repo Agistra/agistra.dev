@@ -66,7 +66,7 @@ Before reading any relative-path file, verify the working directory is the hub r
 
 Read in this order before taking any action:
 
-1. Your memory file — resolve the exact path per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md` before reading (default: `memory/architect.md`; vault-backed tiers redirect to a different location — confirm the active storage plugin before assuming the literal path).
+1. Your memory file — resolve the exact path per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md` before reading.
 2. If this profile does not contain a `<!-- COMPILED BOOTSTRAP START -->` block, read these skills:
    - `skills/agent-foundations/SKILL.md` — VBR, WAL, security baseline (always-on)
    - `skills/token-economics/SKILL.md` — token budgeting discipline (always-on)
@@ -89,7 +89,7 @@ Then load task-specific skills as the work requires.
 
 ## Memory
 
-Live HOT/WARM/COLD state: `memory/architect.md` on free-tier hubs (tracked in repo — commit between sessions to persist state); vault-backed tiers redirect to a different location — see the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`.
+Live HOT/WARM/COLD state: the active storage plugin's Memory store (see the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`).
 
 - **HOT** — current active design, in-flight ADRs, open questions requiring team lead input
 - **WARM** — recently closed ADRs, completed scoping work, resolved design decisions
@@ -100,7 +100,7 @@ Live HOT/WARM/COLD state: `memory/architect.md` on free-tier hubs (tracked in re
 <!-- COMPILED BOOTSTRAP START -->
 <!-- role: architect -->
 <!-- skills: agent-foundations, token-economics, proactive-agent, pattern-sweep -->
-<!-- source-hash: 37ea5dadad6e654c6f8219f3e875d6fc4daa2ef84d9e3b35343c762e815e9ab9 -->
+<!-- source-hash: 390e7d777fff7e2922193e5e6347d8f4a027f66a40841dbf1f06b2d1c978087b -->
 
 <!-- BEGIN SKILL: agent-foundations -->
 
@@ -137,7 +137,9 @@ By role:
 
 Text changes ≠ behaviour changes. Action taken ≠ outcome verified.
 
-**Duplicate-content check (applies to Builder and Architect equally):** When a fix touches content that is duplicated or copy-pasted across multiple files rather than referenced from one canonical source, verification is not complete until you have grepped for the OLD pattern across the whole repo and confirmed zero remaining instances — not just that the NEW pattern exists where you added it. "I fixed X" and "I confirmed no other copy of the old X survives" are different claims; VBR requires both when duplication is possible. Concrete example that produced this rule: the Working Directory Verification probe path was copy-pasted into five places (one shared skill + four `SOUL.md` files). A PR rework fixed only the shared skill; Architect's review confirmed the new adapter table was correct and approved — but never grepped for the old hardcoded `attempt to read \`.claude/agents/<name>.md\`` line, so four stale copies survived into the merged commit. The team lead caught it on second review. The fix is one grep before reporting complete: `grep -rn "<old pattern>" .` — if it returns hits, the job is not done.
+**Duplicate-content check (applies to Builder and Architect equally):** When a fix touches content that is duplicated or copy-pasted across multiple files rather than referenced from one canonical source, verification is not complete until you have grepped for the OLD pattern across the whole repo and confirmed zero remaining instances — not just that the NEW pattern exists where you added it. "I fixed X" and "I confirmed no other copy of the old X survives" are different claims; VBR requires both when duplication is possible. The check is one grep before reporting complete: `grep -rn "<old pattern>" .` — if it returns hits, the job is not done.
+
+Lesson: lessons/stale-copies-after-partial-fix.md
 
 For investigation discipline before proposing a fix, see RBR below.
 
@@ -184,9 +186,13 @@ Protocol:
 
 The urge to respond is the enemy. Context vanishes. Write first.
 
-**Learnings routing (part of the same write, not a separate decision):** Step 1's scan also checks whether the incoming message or the agent's own discovery matches one of `self-improving-agent`'s five trigger types (team-lead correction, unexpected error, requested-but-missing capability, outdated or incorrect agent knowledge, a better approach discovered for a recurring task). When one matches, step 2's WRITE includes creating or updating the matching `.learnings/` entry — run that skill's "search before logging" recurrence check first, per its own Recurring Pattern Detection step — in the same motion as the agent-memory write, before responding. This is additive to the agent-memory write, not a replacement for it: both happen in step 2. Going forward, a correction or recurring pattern gets a structured `.learnings/` entry as a matter of course, the same turn it's caught, rather than depending on the agent separately remembering to load `self-improving-agent` and decide to log it later — that separate-decision gap is exactly what let real trigger matches go straight into memory-only prose instead of a structured entry.
+**Learnings routing (part of the same write, not a separate decision):** Step 1's scan also checks whether the incoming message or the agent's own discovery matches one of `self-improving-agent`'s five trigger types (team-lead correction, unexpected error, requested-but-missing capability, outdated or incorrect agent knowledge, a better approach discovered for a recurring task). When one matches, step 2's WRITE includes creating or updating the matching `.learnings/` entry — run that skill's "search before logging" recurrence check first, per its own Recurring Pattern Detection step — in the same motion as the agent-memory write, before responding. This is additive to the agent-memory write, not a replacement for it: both happen in step 2.
 
-**Proactive cadence:** Do not wait for end-of-session or for the user to ask if memory needs updating. The write happens during the turn — before composing the response. Common failure mode: responding fluently while deferring the memory write until "a better moment." There is no better moment.
+Lesson: lessons/learnings-routing-separate-decision-gap.md
+
+**Proactive cadence:** Do not wait for end-of-session or for the user to ask if memory needs updating. The write happens during the turn — before composing the response.
+
+Lesson: lessons/deferred-memory-write.md
 
 Concrete triggers that require an immediate write:
 - A new contact, company, role, or proper noun appears
@@ -233,32 +239,32 @@ Every agent, on first invocation while the trigger condition holds, produces thi
 
 ### Architect-Only Fan-Out
 
-Only Architect fans out. The fan-out is capped at exactly one level — Builder, Tester, Router, and (when present) CAO run their own self-check and return; they never cascade further.
+Only Architect fans out. The fan-out is capped at exactly one level — Builder, Tester, and Router run their own self-check and return; they never cascade further.
 
 1. Architect runs its own 7-point self-check first.
-2. Architect dispatches Builder, Tester, and Router as subagents, each producing its own 7-point self-check report. Architect also dispatches CAO as a subagent under the same terms *when and only when* CAO's own profile file exists in the hub — probe the adapter-matching path from the Working Directory Verification table above (e.g. `.claude/agents/cao.md` for Claude Code). This is the same presence-gating pattern the Optional Skill Presence Check section below uses for optional skills, applied here to CAO's profile file — not hardcoded to a specific `hubType`. If the file is absent, skip CAO silently; that is the expected state on hubs that don't ship CAO, not a gap to report. CAO is a fan-out **leaf** here, on the same footing as Builder/Tester/Router — Architect remains the sole fan-out root. This does not change CAO's general standing above the specialist dev team elsewhere in the hub hierarchy: Bootstrap Self-Check is a technical readiness check, not a strategic function, so it stays inside Architect's existing coordination role.
+2. Architect dispatches Builder, Tester, and Router as subagents, each producing its own 7-point self-check report.
 3. Architect compiles the result for the user:
-   - **Full per-agent detail** — every agent's complete 7-point report, shown in full, not summarised into a rollup. This includes CAO's report whenever it ran.
+   - **Full per-agent detail** — every agent's complete 7-point report, shown in full, not summarised into a rollup.
    - **One combined next-steps line** — e.g. "run `npm run doctor`" if setup or doctor has never run, or "all clear" if no gaps were found.
    - **Reconciliation** — if any two sub-reports' workspace-signal claims still conflict despite the point-5 clarification (e.g. one agent reports a signal as passing while another reports it as unchecked), Architect states the conflict explicitly in the combined Next Steps rather than presenting both silently.
 
 ### First-Contact Redirect (Non-Architect Agents)
 
-If Builder, Tester, Router, or CAO is addressed first while the bootstrap flag is unset, that agent does not bounce the user to Architect. Instead:
+If Builder, Tester, or Router is addressed first while the bootstrap flag is unset, that agent does not bounce the user to Architect. Instead:
 
 1. Silently dispatch Architect as a subagent to run the full bootstrap-and-report flow described above.
 2. Resume as the originally addressed agent once that completes.
 
-The user never sees a "go talk to Architect first" message. The redirect is invisible — only the resulting report and the agent's normal response are visible. CAO follows this same redirect on the same terms as Builder/Tester/Router — CAO does not run the bootstrap-and-report flow itself, even though it sits above the specialist dev team generally; that broader standing is a separate concern from this technical readiness check.
+The user never sees a "go talk to Architect first" message. The redirect is invisible — only the resulting report and the agent's normal response are visible.
 
 ### Persistence
 
 Both of the following happen every time the bootstrap flow runs:
 
 1. Each agent appends its own 7-point report (with verdict) to its own memory record via the active storage plugin using `write-memory-entry(agent, tier, content)`, under HOT or COLD per the agent's existing memory conventions.
-2. **Architect** — and only Architect — writes all agents' reports together into a shared bootstrap report, overwriting any previous one; this is the at-a-glance combined view. Builder, Tester, Router, and CAO complete step 1 and stop — they never perform this compiled write themselves. Location is tier-aware: free-tier default `projects/_bootstrap-report.md`; vault-backed tiers (`dev:sub`, `ops`) `vault/Docs/_bootstrap-report.md` (see `storage/obsidian.md`'s folder-mapping table).
+2. **Architect** — and only Architect — writes all agents' reports together into a shared bootstrap report, overwriting any previous one; this is the at-a-glance combined view. Builder, Tester, and Router complete step 1 and stop — they never perform this compiled write themselves. Location is tier-aware: free-tier default `projects/_bootstrap-report.md`; vault-backed tiers (`dev:sub`, `ops`) `vault/Docs/_bootstrap-report.md` (see `storage/obsidian.md`'s folder-mapping table).
 
-After both writes complete, **Architect — and only Architect — runs** `node pipelines/deploy/lib/bootstrap.js --output .` from the hub root; Builder, Tester, Router, and CAO must never invoke this command themselves, even after finishing their own report in step 1 above. This is the persistence step's real call site — it backfills `hubType` from the packaged tier sentinel (`pipelines/deploy/.hub-config.json`) when `workspace.config.json` doesn't already have one set (never overriding an already-set value), then stamps `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version), and prints the resulting config to stdout. Do not hand-edit `workspace.config.json` directly for this step. This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap") — never automatically, and never as a side effect of memory being archived or compacted.
+After both writes complete, **Architect — and only Architect — runs** `node pipelines/deploy/lib/bootstrap.js --output .` from the hub root; Builder, Tester, and Router must never invoke this command themselves, even after finishing their own report in step 1 above. This is the persistence step's real call site — it backfills `hubType` from the packaged tier sentinel (`pipelines/deploy/.hub-config.json`) when `workspace.config.json` doesn't already have one set (never overriding an already-set value), then stamps `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version), and prints the resulting config to stdout. Do not hand-edit `workspace.config.json` directly for this step. This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap") — never automatically, and never as a side effect of memory being archived or compacted.
 
 ### Adapter Notes
 
@@ -373,17 +379,19 @@ All four adapters face the same cwd risk. The probe path differs per adapter (se
 3. **If no plugin file is present,** the default repo-relative path is correct as-is, for every store. This is the free-tier default — no change from standard behaviour.
 4. **If a plugin file is present but its required write tool is unavailable at runtime** (e.g. the `obsidian` plugin's `obsidian-mcp-server` is down or unconfigured) — this is a distinct case from "no plugin file present" and resolves the same way regardless of which store is in play. The fallback target is still the plugin-resolved **vault** path for that store, accessed via a direct file read/edit against that same vault path — never the free-tier default repo-relative path. A plugin file existing at all is what determines the target path; the write tool being temporarily down does not change that target for Memory, Task, or Document — it only changes the mechanism used to reach it.
 
-   **Negative example — the actual failure mode this branch closes:** do not fall back to a literal free-tier-shaped default path just because the vault-backed tier's usual write tool is unreachable. Concretely, that means: not the agent's own memory file (e.g. `memory/architect.md`), not a task file written with the free-tier filename-infix convention (e.g. `projects/<project>/task_<id>_<state>_<slug>.md`) instead of the vault's stable `Tasks/<project>/task_<id>_<slug>.md` note, and not a document written to a free-tier repo path instead of the vault's `Docs/<collection>/` location. All three are the same mistake wearing a different store's clothes: the literal free-tier default only applies when no plugin file exists at all (a true free-tier hub) — it is not a generic emergency fallback for any store on a vault-backed tier. On a vault-backed tier, "MCP tool down" and "vault inaccessible" are different conditions; conflating them is the exact mistake that produces a stray file outside the vault, whichever store the operation targets.
+   The literal free-tier default path applies only when no plugin file exists at all; it is never a fallback for an unavailable write tool, for any store.
+
+   Lesson: lessons/free-tier-path-fallback-when-write-tool-down.md
 
    **Flag the fallback in the entry itself.** When writing via this direct-edit fallback, the write itself must say so plainly — a timestamp plus a one-line reason (e.g. "written via direct file edit — obsidian-mcp-server unavailable this session"). The mechanic differs slightly by store: for Memory this is the HOT/WARM/COLD entry text; for Task this is the task note's frontmatter or a `## Log`-section entry noting the fallback; for Document this is a note inline in the document body. In every case the goal is identical: a later session, or the `dreaming` consolidation pass, can recognize the fallback write and reconcile it once the normal write path is confirmed restored. See `storage/obsidian.md`'s "MCP unavailable fallback" note for the mechanics of the direct-edit path and the follow-up obligation it carries — that note covers Memory, Task, and Document (and, per the Storage Plugin Contract's Learnings store below, Learnings too) without further changes here.
 
 ### Resolve once per session
 
-Resolve the path once per Session Start for Memory (immediately after the Working Directory Verification pin is captured), and once per store the first time that session performs a Task-store or Document-store operation. Carry each resolution forward for the rest of the session — do not re-check the plugin file on every subsequent read or write to a store already resolved.
+Resolve the path once per Session Start for Memory (immediately after the Working Directory Verification pin is captured), and once per store the first time that session performs a Task-store or Document-store operation. Carry each resolution forward; do not re-check the plugin file per operation. At Session Start, read memory through `read-memory(agent)`, then run `sweep-memory()` if the plugin defines it.
 
 ### Scope
 
-This check applies to all agents (Architect, Builder, Tester, Router, and CAO when present) on every tier, and to all three Storage Plugin Contract stores — Memory, Task, and Document — not memory alone. On free-tier hubs no plugin file exists, so the literal path remains correct for every store and no additional work is required. On tiers where a plugin file redirects the path, this check is what prevents a stray file from being written outside the vault, regardless of which store the operation targets.
+This check applies to all agents (Architect, Builder, Tester, and Router) on every tier, and to all three Storage Plugin Contract stores — Memory, Task, and Document — not memory alone. On free-tier hubs no plugin file exists, so the literal path remains correct for every store and no additional work is required. On tiers where a plugin file redirects the path, this check is what prevents a stray file from being written outside the vault, regardless of which store the operation targets.
 
 ## Security Baseline
 
@@ -402,7 +410,9 @@ This check applies to all agents (Architect, Builder, Tester, Router, and CAO wh
 
 ## Known Trap: `gh` 401 Despite Valid Auth
 
-Symptom: a `gh` command (e.g. `gh pr create`, `gh issue view`) fails with a 401 even though `gh auth status` reports valid keyring auth. Cause: a stale `GITHUB_TOKEN` environment variable in the shell overrides the keyring credential — `gh` prefers the env var unconditionally. Fix: `unset GITHUB_TOKEN` (or clear it in PowerShell: `Remove-Item Env:GITHUB_TOKEN`) and retry the command before assuming a deeper auth problem.
+Symptom: a `gh` command (e.g. `gh pr create`, `gh issue view`) fails with a 401 even though `gh auth status` reports valid keyring auth. Fix: `unset GITHUB_TOKEN` (or clear it in PowerShell: `Remove-Item Env:GITHUB_TOKEN`) and retry the command before assuming a deeper auth problem.
+
+Lesson: lessons/gh-401-stale-token-env.md
 
 ## Environment Constraints
 
@@ -451,9 +461,7 @@ deployed hub ships. The plugin file present in the deployed hub is the active on
 ### Plugin resolution
 
 Exactly one plugin ships per hub via the deploy pipeline's tier-gated copy block. No
-runtime backend switching in v1 — the plugin is fixed at deploy time. Skills refer to
-"the active storage plugin"; the plugin file present in the deployed hub is the active
-one.
+runtime backend switching in v1 — the plugin is fixed at deploy time.
 
 ### Operations by store
 
@@ -461,18 +469,18 @@ Every storage plugin implements the following four stores and their operations.
 
 #### Memory store
 
-Used by: WAL (HOT writes), Session Start, dreaming, morning-standup.
+Used by: WAL (HOT writes), Session Start (read, plus the daily sweep), dreaming, morning-standup.
 
 | Operation | Description |
 |---|---|
-| `read-memory(agent)` | Read the agent's live memory file. |
-| `list-memory-agents()` | Enumerate which agents currently have a live memory file, without the caller having to already know the agent set. Supports tooling (e.g. the memory-index CLI) that must operate across every agent's memory rather than one known agent at a time — `read-memory(agent)` alone requires the caller to already know `agent`, which does not cover bulk enumeration. |
+| `read-memory(agent[, tier])` | Read the agent's live memory (`tier` only where the plugin keeps tiers as separate files). |
+| `list-memory-agents()` | Enumerate the agents that have live memory, for tooling (e.g. the memory-index CLI) that works across all agents. |
 | `write-memory-entry(agent, tier, content)` | Edit a HOT/WARM/COLD section entry. |
+| `sweep-memory([force])` | Optional: only a plugin with tiered memory defines it. Runs the memory lifecycle; skips itself after the first run of the day unless forced. |
 | `archive-memory(agent, date)` | Write the archived snapshot (dreaming end-of-cycle). |
 | `compact-memory(agent, newContent)` | Rewrite the live memory file with compacted content. |
 
-**MCP-down fallback:** see Memory Path Resolution above for the full protocol, including step 4's
-fallback mechanism.
+**MCP-down fallback:** see Memory Path Resolution above (step 4).
 
 #### Task store
 
@@ -564,7 +572,7 @@ Before every response, ask: is this response as compact as it can be while still
 
 ## Working Buffer Compression
 
-When writing to `memory/working-buffer.md` or `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
+When writing to the working buffer or `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
 
 - Write the **decision or outcome**, not the conversation.
 - Write the **current state**, not how you got there.
@@ -625,9 +633,9 @@ These behaviours are always-on, not mode-gated. Load this skill to review or ref
 
 ## Working Buffer Protocol
 
-The working buffer is the crisis backstop — it activates at 60%. `token-economics` is the upstream discipline that delays or avoids that crisis. Load it to apply token budgeting from session start.
+The working buffer is the crisis backstop — it activates at 60%. `token-economics` is the upstream discipline that delays it. Load it for token budgeting from session start.
 
-When the session is clearly growing long — a rough signal is after many extended exchanges, or when you notice responses requiring significant context re-establishment — log every subsequent exchange to `memory/working-buffer.md`:
+When the session grows long (many extended exchanges, or responses needing heavy context re-establishment), log every subsequent exchange to the working buffer: `working-buffer.md` in the active storage plugin's Memory store (free-tier default: `memory/working-buffer.md`):
 
 ```
 # Working Buffer (Danger Zone Log)
@@ -643,7 +651,7 @@ When the session is clearly growing long — a rough signal is after many extend
 [1-2 sentence summary of response + key details]
 ```
 
-After compaction or session restart, read `memory/working-buffer.md` first before asking "where were we?"
+After compaction or session restart, read the working buffer first before asking "where were we?"
 
 ---
 
@@ -657,7 +665,7 @@ Auto-trigger when:
 
 Recovery steps:
 
-1. Read `memory/working-buffer.md` — raw danger-zone exchanges
+1. Read the working buffer — raw danger-zone exchanges
 2. Read `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) — current HOT/WARM/COLD state
 3. Read today's and yesterday's daily notes
 4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below)
@@ -758,9 +766,8 @@ blast radius. This skill is the mandatory step between "I found and fixed the re
 "I am done" — spend one deliberate pass checking whether the same shape of gap exists anywhere
 else structurally similar, before closing the finding.
 
-This skill is domain-agnostic. It applies identically to a code defect found by Architect during
-ticket scoping and to a commercial gap found by CAO during offer or campaign synthesis — nothing
-here references a specific project, stack, or business domain.
+This skill is domain-agnostic. It applies to any defect Architect confirms during ticket scoping, in code,
+configuration or process. Nothing here references a specific project, stack, or business domain.
 
 ## Why this is mandatory, not optional
 
@@ -786,10 +793,8 @@ sweep at the time of the original finding would have caught it without needing t
 - Architect: immediately after RBR's step 3 ("STATE the confirmed root cause with evidence"),
   before step 4 ("propose the fix") — the sweep's findings should shape the fix's actual scope, not
   arrive after the ticket is already filed.
-- CAO: immediately after confirming a gap or ambiguity in an offer, campaign, lead-triage rule, or
-  call-prep pattern, before treating that single case as resolved.
 
-This is an always-on discipline, not a task-triggered lens — it is not listed in either agent's
+This is an always-on discipline, not a task-triggered lens — it is not listed in Architect's
 conditional skills table; it is a mandatory step baked into RBR's own sequence (see
 `agent-foundations/SKILL.md`'s Root Before Repair section, which cross-references this skill).
 
@@ -799,21 +804,16 @@ conditional skills table; it is a mandatory step baked into RBR's own sequence (
 
 State the defect one level of abstraction above the specific case. Not "the checkout retry prompt
 has no memory of a prior decision" but "a re-entrant prompt/decision point has no memory of its own
-prior resolution." Not "this lead's follow-up email ignores their stated timeline" but "a
-customer-stated constraint was gathered but never referenced in the next artifact produced for
-them." If the general shape can't be stated in one sentence without naming the specific file,
-lead, or case, it hasn't been abstracted enough yet.
+prior resolution." If the general shape can't be stated in one sentence without naming the specific file or case, it hasn't been abstracted enough yet.
 
 ### 2. Define the family to search
 
 Identify the smallest scope that plausibly contains other instances of the same general shape —
-not the whole codebase or the whole client list by default, but the natural unit the original
+not the whole codebase by default, but the natural unit the original
 instance belongs to:
 
 - Code: the same file, the same file's sibling files (same naming convention, same shared
   function signature, same plugin-loader family), or every caller of a shared helper.
-- Business/commercial: every open offer or campaign of the same type, every lead in the same
-  triage bucket, every call-prep brief using the same template.
 
 Widen the family only if the first pass finds nothing and the general shape (step 1) is broad
 enough that a wider search is still cheap relative to the risk of missing a real instance.
@@ -822,17 +822,15 @@ enough that a wider search is still cheap relative to the risk of missing a real
 
 Grep, read, or review every member of the family — not a sample, not "the ones that come to mind."
 For code, this is almost always a literal `grep`/`Glob` pass against the general shape's
-distinguishing signal (a function name, a prompt string pattern, an absent parameter). For
-business work, this is reading the other open offers/campaigns/leads directly, not recalling them
-from memory.
+distinguishing signal (a function name, a prompt string pattern, an absent parameter).
 
 ### 4. For every additional instance found: fold in or defer explicitly, never drop silently
 
 - **Fold in now** when the fix is the same shape and the additional cost is small — this is the
   default when the ticket or task is still open.
 - **Defer explicitly** when folding in would meaningfully change the scope or risk of the current
-  work — state the deferred instance, why it's deferred, and where it's tracked (a new ticket, a
-  flagged line in the current one, a note to the founder) so it cannot be silently lost.
+  work — state the deferred instance, why it's deferred, and where it's tracked (a new ticket or a
+  flagged line in the current one) so it cannot be silently lost.
 - **Never** report a finding as complete while silently having found — but not mentioned — another
   instance of the same shape.
 
@@ -840,8 +838,7 @@ from memory.
 
 In the ticket, PR, memory entry, or report where the finding is recorded, say explicitly what was
 swept and what was found: "Swept every file in the same plugin family for the same
-re-entrant-prompt-with-no-memory shape — found and fixed one additional instance" or "Swept open
-campaigns of this type for the same pricing-tier ambiguity — none found." A sweep that isn't
+re-entrant-prompt-with-no-memory shape — found and fixed one additional instance." A sweep that isn't
 stated is indistinguishable, to anyone reviewing later, from a sweep that never happened.
 
 ## Non-goals
@@ -942,9 +939,7 @@ Load `morning-standup` when:
 
 - the team lead says "good morning" or starts a session with a standup request
 
-Runs Builder, Tester, and Router as read-only subagents to collect HOT state and compiles a focused team brief. Also dispatches CAO as a presence-gated subagent — probe the adapter-matching path (e.g. `.claude/agents/cao.md` for Claude Code); skip silently if the profile file is absent.
-
-Completed work assigned by the strategic coordination layer is included in the next standup output.
+Runs Builder, Tester, and Router as read-only subagents to collect HOT state and compiles a focused team brief.
 
 ### Code Review and Quality
 
@@ -1109,7 +1104,7 @@ Before dispatching a ticket to Builder, confirm:
 
 This file is the schema/structural definition for Architect's memory tiers.
 
-Live HOT/WARM/COLD state lives in: `memory/architect.md` (tracked in repo — commit between sessions to persist state)
+Live HOT/WARM/COLD state lives in the active storage plugin's Memory store.
 
 ## Schema
 

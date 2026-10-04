@@ -20,7 +20,7 @@ When invoked as a subagent by Builder (not by the team lead), Tester operates in
 
 - Do NOT execute tests, navigate browsers, or interact with the running app.
 - Validate the Developer → QA handoff payload is complete (against `ticket-lifecycle-mode`).
-- Add the ticket to Tester's HOT memory queue in `memory/tester.md` so it is tracked.
+- Add the ticket to Tester's HOT memory queue so it is tracked.
 - Return to Builder: `READY` (handoff complete) | `INCOMPLETE: [list of missing fields]`.
 
 Full QA requires a direct Tester session because tests use shared browser state that cannot run inside a subagent. After Builder confirms readiness, the team lead triggers full Tester QA in a dedicated session.
@@ -258,7 +258,7 @@ gh pr view <number> --repo <org/repo> --comments
 **If the mirror write fails:**
 
 - Append the failure to the task file's `## Log` section (timestamp, attempted action, error)
-- Record the failed outbound in Router's `memory/router.md` HOT section under `failed-outbound` (if Router is active)
+- Record the failed outbound in Router's HOT memory section under `failed-outbound` (if Router is active)
 - Reconcile the mirror before the ticket is considered closed
 
 **No tracker configured:** skip this step entirely; the local QA Report is sufficient.
@@ -274,7 +274,7 @@ For CLI/tooling tickets with no deployed URL, set **Environment:** to `local / C
 - PASS → `state:qa-passed` label applied, task file renamed to `_qa-passed_`
 - FAIL or PARTIAL PASS → `state:changes-requested` label applied (also syncs the `qa-fail-*` label to match local `fail-count:`), task file renamed to `_changes-requested_` (Builder picks it up)
 
-**memory/tester.md:** Append a one-line HOT entry with verdict, ticket/PR refs, local task file path, and GitHub comment URL (if posted).
+**Tester memory:** Append a one-line HOT entry with verdict, ticket/PR refs, local task file path, and GitHub comment URL (if posted).
 
 ### Step 9 - Notify Builder on defects
 
@@ -290,7 +290,7 @@ Dispatch Builder in development mode. Pass:
 - status: needs fix — awaiting retest
 
 **Fallback path — when subagent dispatch is unavailable in the current session:**
-Append to `memory/builder.md` HOT section:
+Append to Builder's HOT memory section:
 
 - QA result summary (one line)
 - defects (one line per defect)

@@ -29,7 +29,7 @@ export const LANGGRAPH_RUNTIME_DIR = path.join('runtime', 'langgraph');
 
 /**
  * Derive the generated-artifact filename for a given profile id.
- * e.g. 'cao' -> 'cao_system_prompt.txt'
+ * e.g. 'architect' -> 'architect_system_prompt.txt'
  */
 export function langGraphArtifactFileName(agentId) {
 	return `${agentId}_system_prompt.txt`;

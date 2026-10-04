@@ -21,8 +21,9 @@
 #   exit code: always 0 (the core never fails the calling shell; adapters
 #              decide how to surface "dirty" to their platform)
 #
-# Adapters source the shared reminder text from memory-check-message.txt
-# (same directory as this script) rather than duplicating the message.
+# Adapters get the shared, tier-aware reminder text from
+# memory-check-message.sh (same directory as this script) rather than
+# duplicating the message.
 
 set -euo pipefail
 

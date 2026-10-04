@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Agent Session Startup
 
-When you are acting as `@architect`, `@builder`, `@tester`, `@router`, or (when present) `@cao`, your **very first action** must be to read your own profile file, then follow its own "Session Start" section in full — this is the single canonical source for your startup read sequence, so this file does not duplicate it. After that, check for `workspace.config.json` per below.
+When you are acting as `@architect`, `@builder`, `@tester`, or `@router`, your **very first action** must be to read your own profile file, then follow its own "Session Start" section in full — this is the single canonical source for your startup read sequence, so this file does not duplicate it. After that, check for `workspace.config.json` per below.
 
 ## File paths — hub workspace root only
 
@@ -17,11 +17,8 @@ This workspace has multiple root folders. Agent profiles and memory files both l
 | `@builder`   | `<hub>/.cursor/agents/builder.md`   | `<hub>/workspace.config.json` if present |
 | `@tester`    | `<hub>/.cursor/agents/tester.md`    | `<hub>/workspace.config.json` if present |
 | `@router`    | `<hub>/.cursor/agents/router.md`    | `<hub>/workspace.config.json` if present |
-| `@cao`       | `<hub>/.cursor/agents/cao.md`       | `<hub>/workspace.config.json` if present |
 
 Replace `<hub>` with the actual hub folder name (e.g. `agistra.dev`).
-
-`@cao` is presence-gated, not guaranteed on every hub: `dev`/`dev:graph` tiers never ship it. Before treating `@cao` as a valid agent, check whether `<hub>/.cursor/agents/cao.md` exists. If it is absent, that is the expected state on hubs that don't ship CAO, not an error — proceed without it, the same way `agent-foundations/SKILL.md`'s Bootstrap Self-Check protocol presence-gates CAO in its Architect-Only Fan-Out.
 
 Read the profile file first. It contains a "Session Start" section listing every file you must read next (memory, always-on skills, any agent-specific bootstrap step) in the exact order to read them — execute that sequence in full before writing a single word of response or issuing any other tool call. After the profile's own "Session Start" sequence is complete, check whether `<hub>/workspace.config.json` exists; if present, read it for personalisation context. If absent, proceed without it — this is normal, not an error.
 

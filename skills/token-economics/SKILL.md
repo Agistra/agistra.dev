@@ -35,7 +35,7 @@ Before every response, ask: is this response as compact as it can be while still
 
 ## Working Buffer Compression
 
-When writing to `memory/working-buffer.md` or `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
+When writing to the working buffer or `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
 
 - Write the **decision or outcome**, not the conversation.
 - Write the **current state**, not how you got there.

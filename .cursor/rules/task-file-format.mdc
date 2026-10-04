@@ -72,7 +72,7 @@ task_N_qa-passed_<slug>.md             ← state:qa-passed
 task_N_done_<slug>.md                  ← closed (terminal, moves to projects/<project>/done/)
 ```
 
-All state transitions are managed by `cli/lib/tasks.js` (`changeTaskStatus` function). The CLI updates filename and frontmatter atomically.
+All state transitions are managed by `npm run task -- transition <id> <state>` (`pipelines/deploy/lib/task-cli.js`, which calls `changeTaskStatus` in `pipelines/deploy/lib/tasks.js`). The CLI updates filename and frontmatter atomically.
 
 ### Mirror obligation
 

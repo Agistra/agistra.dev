@@ -19,7 +19,7 @@ From the hub directory:
 
 ```bash
 npm run setup
-# or: node cli/setup.js --output <hub-path>
+# or: node pipelines/deploy/setup.js --output <hub-path>
 ```
 
 When prompted:
@@ -78,7 +78,7 @@ When `relay.primaryRuntime: "claude-code"` and `relay.autoDispatch: true` are se
 npm run relay -- --hub D:/path/to/your/hub
 ```
 
-From a **deployed hub** (after the deploy pipeline copies `cli/relay/`):
+From a **deployed hub** (the deploy pipeline copies the relay to `pipelines/deploy/relay/`):
 
 ```bash
 npm run relay
@@ -135,7 +135,7 @@ When `remoteTeam.enabled`, doctor checks:
 | Inbound (Telegram → inbox → Router) | [relay-inbound-runbook.md](./relay-inbound-runbook.md) |
 | GitHub adapter | [relay-github-runbook.md](./relay-github-runbook.md) |
 
-Module reference: `cli/relay/README.md` in setchin-agent-profiles.
+Module reference: `pipelines/deploy/relay/README.md` in setchin-agent-profiles.
 
 ---
 
@@ -147,4 +147,4 @@ Module reference: `cli/relay/README.md` in setchin-agent-profiles.
 | `relay daemon` doctor WARN | Start `npm run relay -- --hub <hub>` |
 | MCP tools missing in session | Restart Claude/Cursor after setup |
 | Outbound works, inbound silent | Message must address Router (`Atlas, …` or `@bot`); see inbound runbook |
-| `cli/relay/mcp/server.js` not found on hub | Rerun the tier-specific deploy command to copy `cli/relay/` |
+| `pipelines/deploy/relay/mcp/server.js` not found on hub | Rerun the tier-specific deploy command to copy `pipelines/deploy/relay/` |

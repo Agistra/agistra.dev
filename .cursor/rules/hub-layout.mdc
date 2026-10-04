@@ -18,7 +18,7 @@ This workspace is an **Agistra hub** — it holds planning, memory, and task que
 | `.cursor/agents/` | Cursor agent profiles (generated — do not edit directly) |
 | `.github/skills/<name>/` | VS Code/Copilot discovery stubs (`SKILL.md` only — points at `skills/<name>/`) |
 | `.codex/skills/<name>/` | Codex discovery stubs (`SKILL.md` only — points at `skills/<name>/`) |
-| `cli/` | Hub CLI — dispatch, scan, advance, launch, setup |
+| `pipelines/deploy/` | Hub CLI — dispatch, scan, advance, launch, setup |
 | `docs/` | Agent identity cards and skill reference |
 
 ## Task file naming
@@ -36,8 +36,8 @@ npm run dispatch -- <project>                         # Print current task promp
 npm run scan     -- <project>                         # Health scan + generate task files
 npm run advance  -- <project>                         # Mark current task done, show next
 npm run launch   -- <project>                         # Launch Claude in the project directory
-node cli/index.js dispatch <project> --task 6        # Target a specific task by number
-node cli/index.js scan <project> --dry-run           # Preview scan without writing files
+node pipelines/deploy/index.js dispatch <project> --task 6  # Target a specific task by number
+node pipelines/deploy/index.js scan <project> --dry-run     # Preview scan without writing files
 ```
 
 ## Invoking an agent

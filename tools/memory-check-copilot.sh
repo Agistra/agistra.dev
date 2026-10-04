@@ -20,8 +20,8 @@ if [ "$status" != "dirty" ]; then
   exit 0
 fi
 
-message=$(cat "$script_dir/memory-check-message.txt")
-# Strip any CR (the message file may be checked out with CRLF line endings on
+message=$("$script_dir/memory-check-message.sh")
+# Strip any CR (the message may carry CRLF line endings on
 # Windows), escape for JSON (backslashes, double quotes), then convert literal
 # newlines to \n.
 escaped=$(printf '%s' "$message" | tr -d '\r' | sed 's/\\/\\\\/g; s/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')

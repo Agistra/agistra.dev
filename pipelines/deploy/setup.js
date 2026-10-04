@@ -16,7 +16,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { wireRelayMcp, readJsonSafe, writeJsonSafe } from './wizard.js';
+import {
+	wireRelayMcp,
+	readJsonSafe,
+	writeJsonSafe,
+	readSettingsForMerge,
+	stringifySettings,
+	unusableSettingsMessage,
+	SETTINGS_SHAPE,
+} from './wizard.js';
 import { mergeRelaySessionStartHook } from './lib/claude-hooks.js';
 import {
 	NIGHTLY_DREAMING_TASK_NAME,
@@ -25,6 +33,7 @@ import {
 	removeNightlyDreamingTask as removeNightlyDreamingTaskDefault,
 	isNightlyDreamingTaskRegistered as isNightlyDreamingTaskRegisteredDefault,
 } from './lib/nightly-dreaming.js';
+import { offerTaskCliPermissions as offerTaskCliPermissionsDefault, TASK_PERMISSION_CONFIG_KEY } from './lib/task-permission.js';
 import { ensureHubRootDepsInstalled as ensureHubRootDepsInstalledDefault } from './lib/hub-root-install.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -211,14 +220,15 @@ export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSour
 	const settingsPath = path.join(claudeDir, 'settings.json');
 	const scriptTargetPath = path.join(claudeDir, resolveStatuslineScriptFilename(platform));
 
-	let existingSettings = null;
-	if (fsMod.existsSync(settingsPath)) {
-		try {
-			existingSettings = JSON.parse(fsMod.readFileSync(settingsPath, 'utf-8'));
-		} catch {
-			existingSettings = null;
-		}
+	// A settings file that does not parse is never rewritten: it would lose every
+	// other key the user has in it. Skip the install and say why.
+	const settingsRead = readSettingsForMerge(settingsPath, { fsMod });
+	if (settingsRead.status === 'unusable') {
+		const reason = unusableSettingsMessage(settingsPath, settingsRead.reason, 'The statusline was not installed.');
+		log(`  WARNING: ${reason}\n`);
+		return { installed: false, error: reason };
 	}
+	const existingSettings = settingsRead.settings;
 	const existingStatusLine = existingSettings?.statusLine;
 	const alreadyInstalledByThisMechanism = isAgistraStatusline(existingStatusLine, homeDir, platform);
 
@@ -260,7 +270,7 @@ export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSour
 	fsMod.writeFileSync(scriptTargetPath, scriptSource, 'utf-8');
 
 	const updatedSettings = { ...(existingSettings ?? {}), statusLine: buildStatuslineSettingsEntry(homeDir, platform) };
-	fsMod.writeFileSync(settingsPath, JSON.stringify(updatedSettings, null, 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(settingsPath, stringifySettings(updatedSettings, settingsRead.indent, 2), 'utf-8');
 
 	log(`  Statusline ${alreadyInstalledByThisMechanism ? 'refreshed' : 'installed'} → ${scriptTargetPath}\n`);
 	return { installed: true, refreshed: alreadyInstalledByThisMechanism };
@@ -587,6 +597,13 @@ export const TOKEN_SENTINEL = '[token set — press Enter to keep]';
  *   Defaults to the real implementation (runs a real `npm ci`/`npm install` when
  *   node_modules/ is missing or stale). Overridable so unit tests can verify this
  *   step's own wiring (runs early, every hubType) without spawning a real npm install.
+ * @param {function} [deps.offerTaskPermissions]
+ *   Injectable task-CLI permission offer step (see lib/task-permission.js).
+ * @param {function(): boolean} [deps.isInteractive]
+ *   Injectable TTY probe. Setup has no other non-interactive mode, so a run without a
+ *   TTY on both stdin and stdout never adds permission rules or records a decline.
+ * @param {boolean} [deps.askPermissions]
+ *   Ask about the task-CLI rules again even after a recorded decline (--ask-permissions).
  * @returns {function(): Promise<void>}
  */
 export function createRun({
@@ -607,6 +624,9 @@ export function createRun({
 	homeDir = os.homedir(),
 	installStatusline = maybeInstallStatusline,
 	ensureHubRootDepsInstalled = ensureHubRootDepsInstalledDefault,
+	offerTaskPermissions = offerTaskCliPermissionsDefault,
+	isInteractive = () => Boolean(process.stdin.isTTY && process.stdout.isTTY),
+	askPermissions = false,
 }) {
 	return async function run() {
 		// ── Hub-root npm dependencies ──────────────────────────────────────────────
@@ -773,10 +793,10 @@ export function createRun({
 		}
 
 		// hubType controls which agent profiles are expected by `npm run doctor`.
-		//   "dev"       — expects: architect, builder, tester, router (no cao)
+		//   "dev"       — expects: architect, builder, tester, router (nothing else)
 		//   "dev:graph" — same profiles as dev; Graphify setup and doctor checks active
-		//   "dev:sub"   — expects: architect, builder, tester, router, cao
-		//   "ops"       — expects: architect, builder, tester, router, cao
+		//   "dev:sub"   — expects the four dev profiles plus the subscription-only one
+		//   "ops"       — expects the four dev profiles plus the subscription-only one
 		// On first setup in a packaged archive, .hub-config.json (injected by the
 		// packaging profile) provides the hub type rather than defaulting to "dev".
 		// A stored hubType that disagrees with the packaged sentinel is never
@@ -821,6 +841,8 @@ export function createRun({
 			// setup must never silently drop projects.<name> entries that `npm run scan`
 			// wrote via registerProject() (pipelines/deploy/lib/bootstrap.js).
 			...(prev.projects ? { projects: prev.projects } : {}),
+			// Preserve a recorded task-CLI permission decline across re-runs of setup.
+			...(prev[TASK_PERMISSION_CONFIG_KEY] ? { [TASK_PERMISSION_CONFIG_KEY]: prev[TASK_PERMISSION_CONFIG_KEY] } : {}),
 		};
 
 		fsMod.mkdirSync(cliOutputRoot, { recursive: true });
@@ -841,16 +863,37 @@ export function createRun({
 				...(platforms.cursor ? ['cursor'] : []),
 			];
 			line('Relay MCP ');
-			const { wrote } = wireRelayMcp({ config, workspaceRoot: cliOutputRoot, targets });
+			const { wrote, skipped = [] } = wireRelayMcp({ config, workspaceRoot: cliOutputRoot, targets });
 			if (wrote.length > 0) {
 				for (const f of wrote) process.stdout.write(`  MCP wired → ${f}\n`);
 			}
+			for (const { message } of skipped) {
+				process.stdout.write(`  WARNING: ${message}\n`);
+			}
 			if (platforms.claude) {
 				const settingsPath = path.join(cliOutputRoot, '.claude', 'settings.json');
-				const existing = readJsonSafe(settingsPath, fsMod) ?? { enableAllProjectMcpServers: true };
-				writeJsonSafe(settingsPath, mergeRelaySessionStartHook(existing), fsMod);
-				process.stdout.write(`  Relay autostart hook → ${settingsPath}\n`);
+				const read = readSettingsForMerge(settingsPath, { fsMod, expect: SETTINGS_SHAPE.sessionStartHook });
+				if (read.status === 'unusable') {
+					process.stdout.write(`  WARNING: ${unusableSettingsMessage(settingsPath, read.reason, 'The relay autostart hook was not added.')}\n`);
+				} else {
+					const existing = read.settings ?? { enableAllProjectMcpServers: true };
+					writeJsonSafe(settingsPath, mergeRelaySessionStartHook(existing), fsMod, read.indent);
+					process.stdout.write(`  Relay autostart hook → ${settingsPath}\n`);
+				}
 			}
+		}
+
+		// ── Task CLI permission rules (Claude Code) ──────────────────────────────
+		// Tier-agnostic. Only meaningful where a Claude Code adapter is deployed.
+		if (platforms.claude) {
+			line('Task CLI permissions ');
+			await offerTaskPermissions({
+				hubRoot: cliOutputRoot,
+				fsMod,
+				askYN,
+				isInteractive,
+				reAsk: askPermissions,
+			});
 		}
 
 		// Each branch below builds the same superset of opts (ask/askYN/askSecret/
@@ -1166,7 +1209,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	}
 
 	const tierPluginPort = cliArgs['tier-plugin-port'];
-	const run = createRun({ ask, askYN, askSecret, line, fsMod: fs, cliOutputRoot, tierPluginPort });
+	const run = createRun({
+		ask, askYN, askSecret, line, fsMod: fs, cliOutputRoot, tierPluginPort,
+		askPermissions: Boolean(cliArgs['ask-permissions']),
+	});
 
 	run().then(() => {
 		rl.close();
