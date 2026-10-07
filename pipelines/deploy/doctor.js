@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { CLAUDE_SETTINGS_PATH, readJsonSafe } from './wizard.js';
+import { CLAUDE_SETTINGS_PATH, readJsonSafe, readSettingsForMerge } from './wizard.js';
 import { resolveRouterModel, parseProfileModel } from './lib/models.js';
 import { scaffoldMemoryFile } from './lib/memory-scaffold.js';
 import { resolveMemoryRootSegment, resolveTasksRootSegment } from './lib/memory-root.js';
@@ -32,7 +32,7 @@ import { buildPortablePrompt } from './lib/compose-portable-prompt.js';
 import { normalise } from './lib/validate-utils.js';
 import { LANGGRAPH_RUNTIME_DIR, LANGGRAPH_GENERATED_DIR, langGraphArtifactFileName } from './lib/langgraph-paths.js';
 import { checkHubRootDepsCurrent } from './lib/hub-root-install.js';
-import { readTaskPermissionState, TASK_PERMISSION_STATES } from './lib/task-permission.js';
+import { readTaskPermissionState, TASK_PERMISSION_STATES, detectPartialTaskCliRules } from './lib/task-permission.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -759,22 +759,38 @@ function checkHubRootDependencies({ hubRoot, fsMod }) {
 /**
  * Check 23: task-CLI permission rules (Claude Code).
  *
- * Core check, runs on every tier. Never a failure: `missing` is a warning (the
- * operator can run `npm run setup`), `declined by choice` is information only,
- * and a hub without a Claude Code adapter reports `not applicable`.
+ * Core check, runs on every tier. Never a failure: `missing` (none present) and
+ * `partial` (some but not all present) are warnings (the operator can run
+ * `npm run setup`), `declined by choice` is information only, and a hub without
+ * a Claude Code adapter reports `not applicable`.
  */
 function checkTaskPermission({ hubRoot, fsMod }) {
 	const state = readTaskPermissionState({ hubRoot, fsMod });
 	switch (state) {
 		case TASK_PERMISSION_STATES.ENABLED:
-			return pass(23, 'task permission', 'enabled — task CLI allow rules present in .claude/settings.json');
+			return pass(23, 'task permission', 'enabled — all 10 task CLI allow rules present in .claude/settings.json');
 		case TASK_PERMISSION_STATES.DECLINED:
 			return skip(23, 'task permission', 'declined by choice — re-ask with: npm run setup -- --ask-permissions');
 		case TASK_PERMISSION_STATES.NOT_APPLICABLE:
 			return skip(23, 'task permission', 'not applicable — no Claude Code adapter deployed');
 		default:
+			// For MISSING state, check if it's partial or none
+			const settingsPath = path.join(hubRoot, '.claude', 'settings.json');
+			const read = readSettingsForMerge(settingsPath, { fsMod });
+			if (read.status === 'unusable') {
+				return warn(23, 'task permission',
+					'settings file unparseable — cannot determine task CLI rules',
+					'check .claude/settings.json format and repair if needed');
+			}
+			const partial = detectPartialTaskCliRules(read.settings);
+			if (partial) {
+				const missing = partial.missing.map(r => r.split('(')[1].split(')')[0]).join(', ');
+				return warn(23, 'task permission',
+					`partial — ${partial.count} of 10 task CLI rules present; missing: ${missing}; agents will be prompted for missing commands`,
+					'run: npm run setup (interactive terminal) to add the missing rules');
+			}
 			return warn(23, 'task permission',
-				'missing — task CLI allow rules not in .claude/settings.json; agents will be prompted on every task command',
+				'missing — no task CLI allow rules in .claude/settings.json; agents will be prompted on every task command',
 				'run: npm run setup (interactive terminal) and accept the task CLI permission offer');
 	}
 }

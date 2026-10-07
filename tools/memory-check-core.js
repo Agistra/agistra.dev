@@ -4,26 +4,42 @@
  *
  * Node reimplementation of memory-check-core.sh, invoked by the Claude Code
  * Stop hook (see memory-check.js) via exec form so no shell — bash or
- * PowerShell — is required to run it. Ports memory-check-core.sh's logic
- * exactly (see that file's own header comment for the original bash
- * version); the WAL-check semantics below (git status + tier-aware memory
- * root + 240-minute mtime fallback) are unchanged.
+ * PowerShell — is required to run it. Both implementations share one
+ * contract and the same shared test cases.
  *
- * Checks whether files were changed this session (git status --porcelain)
- * without a corresponding update to the hub's live memory directory (git
- * status, falling back to filesystem mtime within the last 240 minutes since
- * that directory may be gitignored in some hubs).
+ * "Work happened this session" is decided by a session marker, not by git:
+ * a SessionStart hook (memory-session-start.js / .sh) writes a timestamp
+ * file at `.claude/.session-start` (gitignored, outside the memory root).
+ * The check reports "dirty" when no *.md file under the tier's memory root
+ * (recursive, excluding archive/) has an mtime newer than that marker. When
+ * the marker is missing, it falls back to a 240-minute window. No git calls,
+ * so it works on hubs that are not git repos and on hubs whose own tree stays
+ * clean because agents work in other repos.
+ *
+ * Work marker: every adapter's post-tool hook runs
+ * memory-work-marker.js/.sh, which touches `.claude/.session-work` when a
+ * tool changed something (edit/write/shell, not read/search). When that marker
+ * exists the check is: dirty only if the work marker is newer than the
+ * session-start marker (work happened this session) AND no memory *.md is
+ * newer than the work marker, where "newer" allows MEMORY_WRITE_TOLERANCE_MS (30 s) of
+ * slack because the post-tool hook touches the work marker just after the
+ * memory write itself (a changing tool call within that window of a memory
+ * write counts as covered by it: a missed nag is cheaper than a false one).
+ * A work marker older than the session marker is
+ * leftover from an earlier session: clean. When the work marker is absent the
+ * marker-only behaviour above applies unchanged.
+ *
+ * Once per stop: adapters stamp `.claude/.session-reminded` when they emit a
+ * reminder (--stamp on the CLI, markReminded() in code). A stamp not older than
+ * the work marker (or, without a work marker, the session marker) means the
+ * reminder for this work was already given: clean.
  *
  * The live memory directory is tier-aware: free-tier hubs (dev, dev:graph)
- * store memory at memory/*.md; vault-backed hubs (dev:sub, ops)
- * store it at vault/Memory/*.md instead (see
- * pipelines/deploy/lib/memory-root.js's resolveMemoryRootForHub() — the
- * single source of truth every other tier-aware consumer already uses).
- * This module imports that function directly (no need to shell out to a
- * second process the way the bash version had to) rather than reimplementing
- * the vault-tier list a third time. If the import or resolution fails for
- * any reason, it falls back to the free-tier default ("memory") — the
- * pre-existing behaviour memory-check-core.sh has always had.
+ * store memory under memory/; vault-backed hubs (dev:sub, ops) store it under
+ * vault/Memory/ (see pipelines/deploy/lib/memory-root.js's
+ * resolveMemoryRootForHub() — the single source of truth every other
+ * tier-aware consumer already uses). If the import or resolution fails for
+ * any reason, it falls back to the free-tier default ("memory").
  *
  * Contract (consumed by platform adapters — no platform-specific formatting
  * here), mirrors memory-check-core.sh's contract exactly:
@@ -38,12 +54,27 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const FOUR_HOURS_MS = 240 * 60 * 1000;
+
+/** Session-start marker, relative to the hub root. Gitignored; never inside vault/. */
+export const SESSION_MARKER_RELATIVE_PATH = '.claude/.session-start';
+
+/** Work marker, touched by each adapter's post-tool hook. Gitignored; never inside vault/. */
+export const WORK_MARKER_RELATIVE_PATH = '.claude/.session-work';
+
+/**
+ * Slack for the memory-vs-work-marker comparison. The post-tool hook touches
+ * the work marker right after the tool call that wrote memory, so the marker
+ * is always slightly newer than that write. Mirrored in memory-check-core.sh.
+ */
+export const MEMORY_WRITE_TOLERANCE_MS = 30000;
+
+/** Stamp written when a reminder was emitted, so the same work is reminded once. */
+export const REMINDED_STAMP_RELATIVE_PATH = '.claude/.session-reminded';
 
 /**
  * Resolve the hub root before any check, regardless of the calling process's
@@ -52,10 +83,9 @@ const FOUR_HOURS_MS = 240 * 60 * 1000;
  * hub's.
  *
  *   1. CLAUDE_PROJECT_DIR, when set (Claude Code always sets it) — trust it.
- *   2. Otherwise fall back to this script's own repo root, discovered via
- *      `git rev-parse --show-toplevel` from this file's directory. This
- *      keeps the fallback adapter-agnostic with no hard Claude dependency in
- *      the core.
+ *   2. Otherwise this script's own location: the parent of the tools/
+ *      directory it ships in (or its own directory when not inside tools/).
+ *      Adapter-agnostic, no git.
  *
  * @returns {string}
  */
@@ -63,12 +93,7 @@ export function resolveHubRoot() {
 	if (process.env.CLAUDE_PROJECT_DIR) {
 		return process.env.CLAUDE_PROJECT_DIR;
 	}
-	const result = spawnSync('git', ['rev-parse', '--show-toplevel'], {
-		cwd: __dirname,
-		encoding: 'utf-8',
-	});
-	const toplevel = result.status === 0 ? result.stdout.trim() : '';
-	return toplevel || __dirname;
+	return path.basename(__dirname) === 'tools' ? path.dirname(__dirname) : __dirname;
 }
 
 /**
@@ -94,27 +119,75 @@ export async function resolveMemoryRootSegment(hubRoot) {
 }
 
 /**
- * @param {string} memoryDir absolute path to the resolved memory root
- * @returns {boolean} true if any top-level *.md file was modified within the last 240 minutes
+ * @param {string} dir directory to scan recursively
+ * @param {number} cutoffMs mtime threshold in ms
+ * @param {boolean} strict true: mtime must be strictly newer than the cutoff
+ * @returns {boolean} true if any *.md file (excluding archive/ directories) qualifies
  */
-function hasRecentlyUpdatedMemoryFile(memoryDir) {
+function hasMarkdownNewerThan(dir, cutoffMs, strict) {
 	let entries;
 	try {
-		entries = fs.readdirSync(memoryDir, { withFileTypes: true });
+		entries = fs.readdirSync(dir, { withFileTypes: true });
 	} catch {
 		return false;
 	}
-	const cutoff = Date.now() - FOUR_HOURS_MS;
 	for (const entry of entries) {
+		const full = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (entry.name === 'archive') continue;
+			if (hasMarkdownNewerThan(full, cutoffMs, strict)) return true;
+			continue;
+		}
 		if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
 		try {
-			const stat = fs.statSync(path.join(memoryDir, entry.name));
-			if (stat.mtimeMs >= cutoff) return true;
+			const { mtimeMs } = fs.statSync(full);
+			if (strict ? mtimeMs > cutoffMs : mtimeMs >= cutoffMs) return true;
 		} catch {
 			// Ignore files that vanish between readdir and stat.
 		}
 	}
 	return false;
+}
+
+function mtimeOf(file) {
+	try {
+		return fs.statSync(file).mtimeMs;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Whether the hub has a work marker that counts as "work happened this
+ * session" (newer than the session marker, or inside the 240-minute window
+ * when there is no session marker). Adapters use it to pick the reminder
+ * wording: with a work marker the reminder may say files were changed.
+ *
+ * @param {string} [hubRootOverride] test-only override
+ * @returns {boolean}
+ */
+export function hasSessionWork(hubRootOverride) {
+	const hubRoot = hubRootOverride ?? resolveHubRoot();
+	const workMs = mtimeOf(path.join(hubRoot, WORK_MARKER_RELATIVE_PATH));
+	if (workMs === null) return false;
+	const sessionMs = mtimeOf(path.join(hubRoot, SESSION_MARKER_RELATIVE_PATH));
+	return sessionMs === null ? workMs >= Date.now() - FOUR_HOURS_MS : workMs > sessionMs;
+}
+
+/**
+ * Record that a reminder was emitted for the current work. Never throws.
+ *
+ * @param {string} [hubRootOverride] test-only override
+ */
+export function markReminded(hubRootOverride) {
+	try {
+		const stamp = path.join(hubRootOverride ?? resolveHubRoot(), REMINDED_STAMP_RELATIVE_PATH);
+		fs.mkdirSync(path.dirname(stamp), { recursive: true });
+		fs.writeFileSync(stamp, `${new Date().toISOString()}
+`);
+	} catch {
+		// A failed stamp only risks a second reminder.
+	}
 }
 
 /**
@@ -123,41 +196,33 @@ function hasRecentlyUpdatedMemoryFile(memoryDir) {
  */
 export async function checkMemoryStatus(hubRootOverride) {
 	const hubRoot = hubRootOverride ?? resolveHubRoot();
+	const memoryDir = path.join(hubRoot, await resolveMemoryRootSegment(hubRoot));
 
-	// Nothing to check if this isn't a git repo.
-	const gitDirCheck = spawnSync('git', ['rev-parse', '--git-dir'], { cwd: hubRoot });
-	if (gitDirCheck.status !== 0) {
-		return 'clean';
+	const sessionMs = mtimeOf(path.join(hubRoot, SESSION_MARKER_RELATIVE_PATH));
+	const workMs = mtimeOf(path.join(hubRoot, WORK_MARKER_RELATIVE_PATH));
+	const remindedMs = mtimeOf(path.join(hubRoot, REMINDED_STAMP_RELATIVE_PATH));
+
+	let baselineMs;
+	if (workMs !== null) {
+		// Work marker present: it only counts when it postdates the session start.
+		if (!hasSessionWork(hubRoot)) return 'clean';
+		if (hasMarkdownNewerThan(memoryDir, workMs - MEMORY_WRITE_TOLERANCE_MS, false)) return 'clean';
+		baselineMs = workMs;
+	} else {
+		// No work marker: marker-only fallback (240-minute window without a session marker).
+		baselineMs = sessionMs ?? Date.now() - FOUR_HOURS_MS;
+		if (hasMarkdownNewerThan(memoryDir, baselineMs, sessionMs !== null)) return 'clean';
 	}
 
-	// Collect tracked changes relative to HEAD.
-	const statusResult = spawnSync('git', ['status', '--porcelain'], {
-		cwd: hubRoot,
-		encoding: 'utf-8',
-	});
-	const status = statusResult.status === 0 ? statusResult.stdout : '';
-	if (!status || !status.trim()) {
-		// No changes — nothing to remember.
-		return 'clean';
-	}
-
-	const memoryRootSegment = await resolveMemoryRootSegment(hubRoot);
-	const memoryDir = path.join(hubRoot, memoryRootSegment);
-
-	// The resolved memory root may be excluded from git tracking — check
-	// filesystem mtime instead. Any *.md modified in the last 4 hours counts
-	// as updated this session.
-	if (hasRecentlyUpdatedMemoryFile(memoryDir)) {
-		return 'clean';
-	}
-
-	// Work happened but memory was not updated.
+	// Already reminded for this work (stamp not older than the baseline).
+	if (remindedMs !== null && remindedMs >= baselineMs) return 'clean';
 	return 'dirty';
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	checkMemoryStatus().then(status => {
+		if (status === 'dirty' && process.argv.includes('--stamp')) markReminded();
 		process.stdout.write(`${status}\n`);
 		process.exit(0);
 	});

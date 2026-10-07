@@ -1,6 +1,6 @@
 ---
 name: pattern-sweep
-description: "Use immediately after RBR confirms a root cause and a fix is scoped, before considering the finding complete. Checks whether the confirmed defect is one instance of a structurally identical pattern elsewhere in the same file family, workflow, or business-domain area, and folds in or explicitly defers every other instance found. Mandatory for Architect — not an optional lens the agent judges when to apply."
+description: "Use immediately after RBR confirms a root cause, or after any confirmed finding from security-audit-lens, legacy-investigation-lens, a scan skill, or a Critical/Required code-review finding, before considering the finding complete. Checks whether the confirmed defect is one instance of a structurally identical pattern elsewhere in the same file family, workflow, or business-domain area, and folds in or explicitly defers every other instance found. Mandatory for Architect — not an optional lens the agent judges when to apply."
 argument-hint: "The confirmed root cause / defect just found, plus the file, workflow, or domain area it lives in"
 ---
 
@@ -18,7 +18,7 @@ configuration or process. Nothing here references a specific project, stack, or 
 
 `assumptions-audit` already exists for pre-flight scope review, and it is explicitly optional —
 Architect judges when a plan's ambiguity warrants it. This skill is different in kind: it fires
-*after* a defect is already confirmed via RBR, not before a plan is finalized, and it is not
+*after* a defect or finding is already confirmed (via RBR or an audit, investigation, scan, or review), not before a plan is finalized, and it is not
 optional. The reasoning: an optional step only fires when the agent remembers to reach for it —
 which is precisely when it is *not* needed, because the moment a root cause is confirmed is also
 the moment attention is narrowest (fixed on the one reported case) and momentum is highest (toward
@@ -38,10 +38,13 @@ sweep at the time of the original finding would have caught it without needing t
 - Architect: immediately after RBR's step 3 ("STATE the confirmed root cause with evidence"),
   before step 4 ("propose the fix") — the sweep's findings should shape the fix's actual scope, not
   arrive after the ticket is already filed.
+- Architect: also after any confirmed finding from `security-audit-lens`, `legacy-investigation-lens`,
+  a scan skill, or a Critical/Required code-review finding, before the finding is reported complete.
 
 This is an always-on discipline, not a task-triggered lens — it is not listed in Architect's
 conditional skills table; it is a mandatory step baked into RBR's own sequence (see
-`agent-foundations/SKILL.md`'s Root Before Repair section, which cross-references this skill).
+`agent-foundations/SKILL.md`'s Root Before Repair section, which cross-references this skill) and
+into the confirmed-finding triggers above.
 
 ## Method
 

@@ -1,6 +1,16 @@
 {
 	"version": 1,
 	"hooks": {
+		"sessionStart": [
+			{
+				"command": "bash tools/memory-session-start.sh"
+			}
+		],
+		"postToolUse": [
+			{
+				"command": "bash tools/memory-work-marker.sh"
+			}
+		],
 		"agentStop": [
 			{
 				"command": "bash tools/memory-check-copilot.sh"

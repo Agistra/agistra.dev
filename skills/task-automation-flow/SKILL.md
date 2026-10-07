@@ -36,10 +36,10 @@ The verifier is recorded in the task file (and mirrored to the tracker record at
 When Architect creates a local task file destined for Builder dispatch, check whether the target repo/project has a tracker configured. If so, create the matching tracker record in the same action as creating the local task file — before dispatch, not as a follow-up.
 
 **"Tracker configured" (plugin-based check):**
-1. Resolve the active tracker plugin per the Plugin Resolution Order in `ticket-lifecycle-mode` (check `workspace.config.json` for an explicit `tracker.plugin` declaration; fall back to auto-detection by running detect-configured for each plugin present in `agents/skills/ticket-lifecycle-mode/trackers/`).
+1. Resolve the active tracker plugin per the Plugin Resolution Order in `ticket-lifecycle-mode` (check `workspace.config.json` for an explicit `tracker.plugin` declaration; fall back to auto-detection by running detect-configured for each plugin present in `skills/ticket-lifecycle-mode/trackers/`).
 2. Run the resolved plugin's detect-configured procedure. If it returns true, a tracker is configured.
 
-The concrete detection steps (e.g. checking for a `github.com` remote and `gh auth status`) are defined by each plugin file, not by this skill — see `agents/skills/ticket-lifecycle-mode/trackers/<plugin-name>.md`.
+The concrete detection steps (e.g. checking for a `github.com` remote and `gh auth status`) are defined by each plugin file, not by this skill — see `skills/ticket-lifecycle-mode/trackers/<plugin-name>.md`.
 
 When a tracker is configured, run the plugin's create-record procedure to open a matching record in the tracker. Record the returned reference in the task file frontmatter using the field name the plugin specifies, before dispatching Builder.
 

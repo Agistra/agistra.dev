@@ -10,7 +10,9 @@
  * and vault-backed hubs are told "vault/Memory/<agent>.md".
  *
  * As a CLI it prints the rendered text to stdout; the bash adapters call it
- * through memory-check-message.sh.
+ * through memory-check-message.sh. With --neutral the first line drops the
+ * claim that files were changed (used when only the marker-only fallback
+ * applies, so no work evidence exists).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,6 +21,17 @@ import { resolveHubRoot, resolveMemoryRootSegment } from './memory-check-core.js
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = path.join(__dirname, 'memory-check-message.txt');
+
+/**
+ * Neutral wording for the first reminder line, for callers without work
+ * evidence: we cannot claim files were changed.
+ *
+ * @param {string} line
+ * @returns {string}
+ */
+export function neutralizeFirstLine(line) {
+	return line.replace(/files were changed this session but (.*) was not updated\./, 'no update to $1 was found this session.');
+}
 
 /**
  * @param {string} [hubRootOverride] test-only override; production callers omit this
@@ -38,5 +51,6 @@ export async function renderReminderLines(hubRootOverride) {
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const lines = await renderReminderLines();
+	if (process.argv.includes('--neutral')) lines[0] = neutralizeFirstLine(lines[0]);
 	process.stdout.write(`${lines.join('\n')}\n`);
 }

@@ -32,6 +32,8 @@
  * it is not silently assumed away — see the PR description for this change.
  */
 
+import { upsertOwnedHook, hookHaystack } from './claude-hooks.js';
+
 /**
  * Command run on every Edit/Write call to scan the write content for
  * high-confidence secret patterns, in exec form — see
@@ -59,21 +61,13 @@ export const SECRET_SCAN_PRE_TOOL_USE_MATCHER = 'Edit|Write';
  * @returns {object}
  */
 export function mergeSecretScanPreToolUseHook(settings = {}) {
-	const next = { ...settings, hooks: { ...(settings.hooks ?? {}) } };
-	const preToolUse = [...(next.hooks.PreToolUse ?? [])];
-	const hasHook = preToolUse.some(entry =>
-		entry.hooks?.some(h => {
-			const args = Array.isArray(h.args) ? h.args : [];
-			const haystack = [String(h.command ?? ''), ...args.map(String)];
-			return haystack.some(s => s.includes('secret-scan-gate.js'));
-		}),
-	);
-	if (!hasHook) {
-		preToolUse.push({
+	return upsertOwnedHook(
+		settings,
+		'PreToolUse',
+		h => hookHaystack(h).some(s => s.includes('secret-scan-gate.js')),
+		{
 			matcher: SECRET_SCAN_PRE_TOOL_USE_MATCHER,
 			hooks: [{ type: 'command', command: SECRET_SCAN_PRE_TOOL_USE_COMMAND, args: SECRET_SCAN_PRE_TOOL_USE_ARGS }],
-		});
-	}
-	next.hooks.PreToolUse = preToolUse;
-	return next;
+		},
+	);
 }

@@ -42,7 +42,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseFrontmatter, filenameInfix, statusToInfix } from './tasks.js';
+import { parseFrontmatter, filenameInfix, statusToInfix, doneTasksDir, droppedTasksDir } from './tasks.js';
+import { resolveTasksRoot, isVaultBackedHubType } from './memory-root.js';
+import { readJsonSafe } from '../wizard.js';
 
 /**
  * Local `status:` values that represent the pre-dispatch state — i.e. no
@@ -367,28 +369,154 @@ export function formatReport(drifts) {
 
 export const DEFAULT_TASKS_DIR = 'projects/setchin-agent-profiles';
 
+/**
+ * Extract a global `--projects-root <path>` flag from argv and strip it out.
+ * Mirrors task-cli.js's extractProjectsRootFlag.
+ */
+export function extractProjectsRootFlag(argv) {
+	const idx = argv.indexOf('--projects-root');
+	if (idx === -1) return { present: false, projectsRoot: undefined, rest: argv };
+	const value = argv[idx + 1];
+	const rest = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
+	return { present: true, projectsRoot: value, rest };
+}
+
+/**
+ * Extract a global `--hub-root <path>` flag from argv and strip it out.
+ * Mirrors task-cli.js's extractHubRootFlag.
+ */
+export function extractHubRootFlag(argv) {
+	const idx = argv.indexOf('--hub-root');
+	if (idx === -1) return { present: false, hubRoot: undefined, rest: argv };
+	const value = argv[idx + 1];
+	const rest = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
+	return { present: true, hubRoot: value, rest };
+}
+
+/**
+ * Resolve the tasks root directory following the same pattern as task-cli.js.
+ * 1. --projects-root flag wins if given
+ * 2. --hub-root with workspace.config.json is used to derive tasks root from hubType
+ * 3. Falls back to DEFAULT_TASKS_DIR relative to cwd
+ *
+ * Returns { tasksDir, hubRoot, hubType } where tasksDir is the resolved path,
+ * hubRoot is the hub root (for workspace.config.json reads), and hubType is
+ * derived from workspace.config.json when --hub-root is used (may be undefined).
+ */
+export function resolveTasksRootPath({ projectsRootFlag, hubRootFlag, cwd = process.cwd(), fsMod = fs } = {}) {
+	if (projectsRootFlag) {
+		if (!fsMod.existsSync(projectsRootFlag)) {
+			throw new Error(`--projects-root not found: ${projectsRootFlag}`);
+		}
+		return { tasksDir: projectsRootFlag, hubRoot: cwd, hubType: undefined };
+	}
+
+	if (hubRootFlag) {
+		if (!fsMod.existsSync(hubRootFlag)) {
+			throw new Error(`--hub-root not found: ${hubRootFlag}`);
+		}
+		const hubConfigPath = path.join(hubRootFlag, 'workspace.config.json');
+		if (!fsMod.existsSync(hubConfigPath)) {
+			throw new Error(`--hub-root given but no workspace.config.json found under it: ${hubConfigPath}`);
+		}
+		const hubConfig = readJsonSafe(hubConfigPath, fsMod);
+		const hubType = hubConfig?.hubType;
+		const tasksDir = resolveTasksRoot(hubRootFlag, hubType);
+		return { tasksDir, hubRoot: hubRootFlag, hubType };
+	}
+
+	// Default: cwd-relative DEFAULT_TASKS_DIR
+	const tasksDir = path.resolve(cwd, DEFAULT_TASKS_DIR);
+	return { tasksDir, hubRoot: cwd, hubType: undefined };
+}
+
+/**
+ * Count all task files in a tasks directory, including those in done/ and dropped/ subdirectories.
+ * A repo-files-shaped root has files directly in tasksDir.
+ * A vault-shaped root may have files in tasksDir, done/, and/or dropped/ subdirectories.
+ * Returns the total count of *.md files that match the task_<N>_* pattern.
+ */
+export function countTaskFilesInRoot(tasksDir, fsMod = fs) {
+	if (!fsMod.existsSync(tasksDir)) return 0;
+
+	let count = 0;
+
+	// Count files in root directory
+	try {
+		const rootFiles = fsMod.readdirSync(tasksDir).filter(f => f.endsWith('.md'));
+		count += rootFiles.length;
+	} catch (err) {
+		// Directory not readable or doesn't exist
+	}
+
+	// Count files in done/ subdirectory
+	const doneDir = doneTasksDir(tasksDir);
+	try {
+		if (fsMod.existsSync(doneDir)) {
+			const doneFiles = fsMod.readdirSync(doneDir).filter(f => f.endsWith('.md'));
+			count += doneFiles.length;
+		}
+	} catch (err) {
+		// Directory not readable
+	}
+
+	// Count files in dropped/ subdirectory
+	const droppedDir = droppedTasksDir(tasksDir);
+	try {
+		if (fsMod.existsSync(droppedDir)) {
+			const droppedFiles = fsMod.readdirSync(droppedDir).filter(f => f.endsWith('.md'));
+			count += droppedFiles.length;
+		}
+	} catch (err) {
+		// Directory not readable
+	}
+
+	return count;
+}
+
 // ── CLI entry point ────────────────────────────────────────────────────────────
 
 const isMain = process.argv[1] &&
 	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
-	const flagIdx = process.argv.indexOf('--tasks-dir');
-	const tasksDir = flagIdx !== -1
-		? path.resolve(process.argv[flagIdx + 1])
-		: path.resolve(process.cwd(), DEFAULT_TASKS_DIR);
+	// Legacy --tasks-dir flag support (deprecated in favor of --projects-root/--hub-root)
+	const legacyTasksDirIdx = process.argv.indexOf('--tasks-dir');
+	let argv = process.argv.slice(2);
+	if (legacyTasksDirIdx !== -1) {
+		// Convert --tasks-dir to --projects-root for backward compatibility
+		const tasksDirValue = process.argv[legacyTasksDirIdx + 1];
+		argv = argv.filter((v, i) => {
+			const globalIdx = i + 2; // argv starts at index 2
+			return globalIdx !== legacyTasksDirIdx && globalIdx !== legacyTasksDirIdx + 1;
+		});
+		argv = ['--projects-root', tasksDirValue, ...argv];
+	}
 
-	// `workspace.config.json` lives at the hub root, which may differ from
-	// tasksDir's own location (e.g. tasksDir points cross-repo via --tasks-dir).
-	// Defaults to cwd, matching the DEFAULT_TASKS_DIR assumption that the CLI
-	// normally runs from the hub root. A hub without workspace.config.json (or
-	// without githubWorkflows.enabled) simply skips the missing-tracker-ref
-	// check — see detectMissingTrackerRefs above — so no hard error is raised
-	// here for a missing/absent file.
-	const hubRootIdx = process.argv.indexOf('--hub-root');
-	const hubRoot = hubRootIdx !== -1
-		? path.resolve(process.argv[hubRootIdx + 1])
-		: process.cwd();
+	const { present: hubRootPresent, hubRoot: hubRootFlag, rest: afterHubRoot } = extractHubRootFlag(argv);
+	const { present: projectsRootPresent, projectsRoot: projectsRootFlag } = extractProjectsRootFlag(afterHubRoot);
+
+	let tasksDir, hubRoot, hubType;
+	try {
+		({ tasksDir, hubRoot, hubType } = resolveTasksRootPath({
+			projectsRootFlag: projectsRootPresent ? projectsRootFlag : undefined,
+			hubRootFlag: hubRootPresent ? hubRootFlag : undefined,
+		}));
+	} catch (err) {
+		process.stderr.write(`Error: ${err.message}\n`);
+		process.exit(1);
+	}
+
+	// Count all task files in the resolved directory (including done/ and dropped/ subdirectories)
+	const taskFileCount = countTaskFilesInRoot(tasksDir);
+
+	// Exit non-zero if no task files found at the resolved root
+	if (taskFileCount === 0) {
+		process.stderr.write(
+			`Warning: no task files found in ${tasksDir}\n`
+		);
+		process.exit(1);
+	}
 
 	const projectName = path.basename(tasksDir);
 	const workspaceConfig = readWorkspaceConfig(hubRoot);

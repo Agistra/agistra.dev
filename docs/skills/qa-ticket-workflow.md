@@ -8,14 +8,15 @@ Tester's full QA execution playbook — from receiving the handoff through posti
 
 ---
 
-## Two modes
+## Three modes
 
 | Mode | Trigger | What happens |
 | --- | --- | --- |
 | **Full QA** | Team lead starts Tester's session directly | Complete execution: handoff check → setup → test steps → report → state change → Builder notification |
+| **Full QA (Architect dispatch)** | Architect spawns Tester as subagent for a non-browser ticket (CLI, file, hook, deploy, scratch-repo checks) | Same complete execution, no browser or shared tab; a step that needs the browser is marked NOT RUN |
 | **Pre-QA Readiness Check** | Invoked as subagent by Builder | Validate the handoff payload is complete, queue the ticket in HOT memory — no app interaction |
 
-Full QA requires its own session because tests use shared browser state that cannot run inside a subagent. Builder confirms readiness via Pre-QA Check, then you trigger a dedicated Tester session for execution.
+Browser-driven QA requires its own session because those tests use shared browser state that cannot run inside a subagent. Builder confirms readiness via Pre-QA Check, then you trigger a dedicated Tester session for execution.
 
 ---
 

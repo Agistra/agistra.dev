@@ -39,7 +39,7 @@ core." It is structured intake, worked through in this order:
 
 1. **Identify the problem it solves.** State the concrete capability gap in one or two sentences —
    not the marketing description of the external artifact, the actual problem Agistra has.
-2. **Assess whether Agistra already solves this.** Check existing skills (`agents/skills/`) and
+2. **Assess whether Agistra already solves this.** Check existing skills (`skills/`) and
    agent workflows for overlap before assuming a gap exists. A candidate that duplicates an
    existing skill is a strong signal toward Reject or Adapt-concept-only.
 3. **Evaluate fit and risk.** Work through the Evaluation Criteria and Security Surface Check below.

@@ -6,7 +6,10 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "bash \"$CLAUDE_PROJECT_DIR/tools/memory-check.sh\""
+						"command": "node",
+						"args": [
+							"${CLAUDE_PROJECT_DIR}/tools/memory-check.js"
+						]
 					}
 				]
 			}
@@ -17,7 +20,22 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "node \"$CLAUDE_PROJECT_DIR/tools/ensure-relay-daemon.js\""
+						"command": "node",
+						"args": [
+							"${CLAUDE_PROJECT_DIR}/tools/ensure-relay-daemon.js"
+						]
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node",
+						"args": [
+							"${CLAUDE_PROJECT_DIR}/tools/memory-session-start.js"
+						]
 					}
 				]
 			}
@@ -31,6 +49,20 @@
 						"command": "node",
 						"args": [
 							"${CLAUDE_PROJECT_DIR}/pipelines/deploy/lib/secret-scan-gate.js"
+						]
+					}
+				]
+			}
+		],
+		"PostToolUse": [
+			{
+				"matcher": "Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node",
+						"args": [
+							"${CLAUDE_PROJECT_DIR}/tools/memory-work-marker.js"
 						]
 					}
 				]

@@ -68,6 +68,22 @@ export function hasAllTaskCliRules(settings) {
 }
 
 /**
+ * Detect partial permission state: some (but not all) task-CLI rules present.
+ *
+ * @param {object} settings
+ * @returns {object|null} { missing: string[], count: number } when partial, or null if all/none present
+ */
+export function detectPartialTaskCliRules(settings) {
+	const allow = allowList(settings);
+	const missing = TASK_CLI_ALLOW_RULES.filter((rule) => !allow.includes(rule));
+	if (missing.length === 0 || missing.length === TASK_CLI_ALLOW_RULES.length) {
+		// Either all present or all missing — not partial
+		return null;
+	}
+	return { missing, count: TASK_CLI_ALLOW_RULES.length - missing.length };
+}
+
+/**
  * Add any missing task-CLI allow rules. Preserves every other key and every
  * existing rule (order kept, new rules appended). Idempotent.
  *

@@ -60,6 +60,7 @@ section:
   guessing.
 - Prefer under-reporting with an explicit "not fully covered" note over over-reporting with
   low-confidence guesses. A confident wrong classification is worse than an honest "unknown."
+- Run each confirmed finding through `pattern-sweep` before listing it as final.
 
 ## Step 1 — Entry-Point Census
 
@@ -260,6 +261,7 @@ already answered it is a documentation defect, not a harmless leftover.
 
 - `architecture-mode` — this pass runs before or alongside `architecture-mode` on unfamiliar
   legacy-module tickets; see the dedicated section above.
+- `security-audit-lens` — pair with it when the code handles authentication, credentials, or database queries.
 - `assumptions-audit` — a different scope and timing: `assumptions-audit` runs over a *finished*
   plan/ticket/ADR to surface unstated assumptions in that plan. This skill runs *earlier*, directly
   over the legacy codebase, before a plan exists to audit.

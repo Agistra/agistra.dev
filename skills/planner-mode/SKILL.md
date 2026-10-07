@@ -1,6 +1,6 @@
 ---
 name: planner-mode
-description: "Use when: planner mode, planning mode, proposal, scope definition, estimate, timeline, client message, external communication, pricing, delivery confidence, commercial risk, or project delivery planning."
+description: "Use when: planner mode, planning mode, proposal, scope definition, estimate, timeline, how hard, feasibility, effort, how long, how big, client message, external communication, pricing, delivery confidence, commercial risk, or project delivery planning."
 argument-hint: "Proposal, client message, scope/timeline question, estimate, or delivery-risk question"
 ---
 

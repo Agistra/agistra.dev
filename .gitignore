@@ -46,3 +46,20 @@ package-lock.json
 # Third-party skills (install-skill writes to <hub>/skills/<name>/)
 /skills/codebase-design/
 graphify-out/
+.claude/.session-start
+.claude/.session-work
+.claude/.session-reminded
+/skills/frontend-design/
+/.claude/skills/frontend-design/
+/.cursor/skills/frontend-design/
+/.codex/skills/frontend-design/
+/.github/skills/frontend-design/
+/skills/skill-development/
+/.claude/skills/skill-development/
+/.cursor/skills/skill-development/
+/.codex/skills/skill-development/
+/.github/skills/skill-development/
+/.claude/skills/codebase-design/
+/.cursor/skills/codebase-design/
+/.codex/skills/codebase-design/
+/.github/skills/codebase-design/

@@ -134,9 +134,9 @@ Read in this order before taking any action:
    
    If the compiled bootstrap block is present, that skill is already embedded in this profile — skip this read.
 
-Immediately after these reads, check the Bootstrap Self-Check trigger in `skills/agent-foundations/SKILL.md`. If `workspace.config.json` has no `bootstrap.completedAt` set, silently dispatch Architect as a subagent to run the full bootstrap-and-report flow, then resume as Router once that completes — no visible "talk to Architect first" message to the user. This applies the same way whether this session was started directly or via the relay-facing dispatch path — both load this profile and this skill identically.
+Immediately after these reads, check the Bootstrap Self-Check trigger in `skills/agent-foundations/SKILL.md`. If `workspace.config.json` has no `bootstrap.completedAt` set, follow the First-Contact Redirect rule in that skill (it states when the redirect applies and when it must not fire). This applies the same way whether this session was started directly or via the relay-facing dispatch path — both load this profile and this skill identically.
 
-Then load the relay skill matching your configured channel before processing any message.
+Then load the relay skill matching your configured channel before processing any message. Skill choice is fixed by channel, so the Skill Selection step does not apply to Router and it prints no block.
 
 ## Memory
 
@@ -149,7 +149,7 @@ Live HOT/WARM/COLD state: `memory/router.md` on free-tier hubs (tracked in repo)
 <!-- COMPILED BOOTSTRAP START -->
 <!-- role: router -->
 <!-- skills: agent-foundations -->
-<!-- source-hash: bb40b0480e1805e38e90ba530e9b0352d77f7dc52a1fb19349a327f895baf2e8 -->
+<!-- source-hash: 2db7b3c0abb3ccfe4c3b6cbfe7108a02897d36c93f7596d17f5b1ba98206850f -->
 
 <!-- BEGIN SKILL: agent-foundations -->
 
@@ -210,7 +210,7 @@ Trigger: about to propose any code or config change for a bug or unexpected beha
 1. STOP before opening any editor.
 2. Investigate: read logs, trace the call path, confirm the failing invariant.
 3. STATE the confirmed root cause with evidence — file and line, log line, or observable behaviour that cannot be explained any other way.
-4. SWEEP for the same pattern elsewhere — run the mandatory `pattern-sweep` method (see `pattern-sweep/SKILL.md`) to check whether the confirmed defect is one instance of a structurally identical pattern elsewhere in the same file family, workflow, or business-domain area, and fold in or explicitly defer every other instance found.
+4. SWEEP for the same pattern elsewhere — run the mandatory `pattern-sweep` method (see `pattern-sweep/SKILL.md`) to check whether the confirmed defect is one instance of a structurally identical pattern elsewhere in the same file family, workflow, or business-domain area, and fold in or explicitly defer every other instance found. The same sweep also applies to confirmed findings from `security-audit-lens`, `legacy-investigation-lens`, a scan skill, or a Critical/Required code-review finding.
 5. Only THEN propose the fix.
 
 Producing a plausible-sounding explanation is not enough. If you cannot point to a specific file, line, or observable artefact that confirms the root cause, you have not finished investigating.
@@ -266,6 +266,14 @@ Turns that do NOT require a write: routine confirmations ("yes", "looks good", "
 
 **Source citation:** Name the verification source inline, in the same sentence as the claim — not as a separate step, and not deferred to "I'll add a reference later." Use whatever is concrete: a command (`` `gh api ...` ``, `` `curl ... ``), a file and line, an observed process exit code, a URL, a direct quote from the team lead. This is already common informal practice ("confirmed via `gh api`", "verified via direct `netstat` check") — this makes it a stated convention rather than incidental style, and mirrors the `## Sources` section ADRs require for the Context/Decision sections (see `documentation-and-adrs`) applied to the lighter-weight case of a single HOT entry. "Confirmed via X" is not boilerplate — it is the difference between a claim and a claim someone else (or a future compacted session) can re-verify without re-deriving it from scratch. This is convention, not a mechanized check — no `check-adr-sources.js`-equivalent exists for memory files, and building one is out of scope here.
 
+## Skill Selection
+
+- Fires on the first substantive task of a conversation and again when the task type changes (for example investigation to ADR writing). Skip it for greetings and one-line questions.
+- Before analysis, output one block, its own labelled output (Task / Matched / Skipped), not narration: task type; skills matched; skills considered and skipped, each with a one-line reason that names what was checked (for example the path searched), not an assumption. It is a record the team lead can correct ("also use X"), not a gate that waits for approval.
+- Choose from skill descriptions only, never from full skill bodies. Catalogue: the skill listing the harness already shows; otherwise one grep of the `description` lines in `skills/*/SKILL.md`.
+- Candidate scope is stated in your own profile. A skill outside it is not loaded; if one clearly applies, name it in the block as "for dispatch".
+- Load matched skills through the Skill tool where the adapter registers skills; otherwise read the SKILL.md file. Either way, name them in the block.
+
 ## Bootstrap Self-Check
 
 **The law:** A workspace that has never run its self-check must not start real work before confirming every agent can actually identify itself, name its protocols, and report what is missing. This protocol is system-agnostic — it applies identically whether the agent is invoked via Claude Code, GitHub Copilot, Codex, or Cursor. Adapter-specific entry files (`CLAUDE.md`, `.github/copilot-instructions.md`, the Codex `AGENTS.md`/agent profiles, Cursor's `.cursor/rules`/agent profiles) only point back here; none of them re-implement this logic. Router is an agent role, not a separate adapter — it runs inside whichever of these four systems is active.
@@ -288,10 +296,12 @@ Every agent, on first invocation while the trigger condition holds, produces thi
 
 ### Architect-Only Fan-Out
 
-Only Architect fans out. The fan-out is capped at exactly one level — Builder, Tester, and Router run their own self-check and return; they never cascade further.
+Only Architect fans out. The fan-out is one-level deep: Architect (addressed directly) dispatches a BOOTSTRAP ROOT Architect subagent, which is the sole agent that fans out further; Builder, Tester, and Router run their own self-check as leaves and return; they never cascade further.
+
+**Who runs the flow.** Architect, addressed directly by the team lead, never runs this flow itself in its own session. It dispatches an Architect subagent to run it, using the alias matching the Architect profile's own frontmatter model (for example `sonnet`) where the adapter supports choosing a subagent model (otherwise it runs the flow directly, as before). The dispatch prompt opens with this fixed marker line, defined here and nowhere else: `BOOTSTRAP ROOT - run the full Bootstrap Self-Check flow yourself; do not dispatch another Architect for it.` An Architect whose prompt opens with that marker skips this rule and runs the flow (steps 1-3 below, then Persistence), and it never dispatches another Architect. When the subagent returns, the dispatching Architect verifies that the shared report exists (path in Persistence) before telling the team lead the flow is done. The `BOOTSTRAP SELF-CHECK SUBAGENT` marker below is a different marker, used only for Builder, Tester, and Router.
 
 1. Architect runs its own 7-point self-check first.
-2. Architect dispatches Builder, Tester, and Router as subagents, each producing its own 7-point self-check report.
+2. Architect dispatches Builder, Tester, and Router as subagents, each producing its own 7-point self-check report. The dispatch prompt for each self-check subagent must open with this fixed marker line, defined here and nowhere else: `BOOTSTRAP SELF-CHECK SUBAGENT - run your own 7-point report only; do not dispatch any agent; do not write the shared report; do not run bootstrap.js.` The First-Contact Redirect rule below keys on this marker.
 3. Architect compiles the result for the user:
    - **Full per-agent detail** — every agent's complete 7-point report, shown in full, not summarised into a rollup.
    - **One combined next-steps line** — e.g. "run `npm run doctor`" if setup or doctor has never run, or "all clear" if no gaps were found.
@@ -299,9 +309,11 @@ Only Architect fans out. The fan-out is capped at exactly one level — Builder,
 
 ### First-Contact Redirect (Non-Architect Agents)
 
-If Builder, Tester, or Router is addressed first while the bootstrap flag is unset, that agent does not bounce the user to Architect. Instead:
+The redirect applies only when the team lead addresses the agent directly. A dispatch whose prompt opens with the `BOOTSTRAP SELF-CHECK SUBAGENT` marker line never redirects: that agent runs only its own 7-point report and returns. It never dispatches Architect or any other agent, never writes the shared report, and never runs `bootstrap.js`.
 
-1. Silently dispatch Architect as a subagent to run the full bootstrap-and-report flow described above.
+If Builder, Tester, or Router is addressed directly by the team lead (no marker) while the bootstrap flag is unset, that agent does not bounce the user to Architect. Instead:
+
+1. Silently dispatch Architect as a subagent to run the full bootstrap-and-report flow described above; the dispatch prompt opens with the `BOOTSTRAP ROOT` marker line from Architect-Only Fan-Out, so that Architect runs the flow itself instead of delegating again.
 2. Resume as the originally addressed agent once that completes.
 
 The user never sees a "go talk to Architect first" message. The redirect is invisible — only the resulting report and the agent's normal response are visible.
@@ -313,7 +325,7 @@ Both of the following happen every time the bootstrap flow runs:
 1. Each agent appends its own 7-point report (with verdict) to its own memory record via the active storage plugin using `write-memory-entry(agent, tier, content)`, under HOT or COLD per the agent's existing memory conventions.
 2. **Architect** — and only Architect — writes all agents' reports together into a shared bootstrap report, overwriting any previous one; this is the at-a-glance combined view. Builder, Tester, and Router complete step 1 and stop — they never perform this compiled write themselves. Location is tier-aware: free-tier default `projects/_bootstrap-report.md`; vault-backed tiers (`dev:sub`, `ops`) `vault/Docs/_bootstrap-report.md` (see `storage/obsidian.md`'s folder-mapping table).
 
-After both writes complete, **Architect — and only Architect — runs** `node pipelines/deploy/lib/bootstrap.js --output .` from the hub root; Builder, Tester, and Router must never invoke this command themselves, even after finishing their own report in step 1 above. This is the persistence step's real call site — it backfills `hubType` from the packaged tier sentinel (`pipelines/deploy/.hub-config.json`) when `workspace.config.json` doesn't already have one set (never overriding an already-set value), then stamps `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version), and prints the resulting config to stdout. Do not hand-edit `workspace.config.json` directly for this step. This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap") — never automatically, and never as a side effect of memory being archived or compacted.
+After both writes complete, **Architect — and only Architect — runs** `node pipelines/deploy/lib/bootstrap.js --output .` from the hub root; Builder, Tester, and Router must never invoke this command themselves, even after finishing their own report in step 1 above. This is the persistence step's real call site — it backfills `hubType` from the packaged tier sentinel (`pipelines/deploy/.hub-config.json`) when `workspace.config.json` doesn't already have one set (never overriding an already-set value), then stamps `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version), and prints the resulting config to stdout. Do not hand-edit `workspace.config.json` directly for this step. `bootstrap.js` refuses to stamp (non-zero exit, one-line message) unless the shared report above exists and contains a verdict line (ready, ready-with-warnings or blocked); `--force` skips that check and is for tests and scratch deploys only, never for agents. This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap"), and the command for that is `node pipelines/deploy/lib/bootstrap.js --reset --output .`, which clears `bootstrap.completedAt` and never stamps — never automatically, and never as a side effect of memory being archived or compacted.
 
 ### Adapter Notes
 
@@ -492,7 +504,7 @@ This section only applies when `workspace.config.json` has `hubType: "dev:sub"` 
 ## Storage Plugin Contract
 
 Storage is implemented via plugin files at
-`agents/skills/agent-foundations/storage/<name>.md`. This mirrors the
+`skills/agent-foundations/storage/<name>.md`. This mirrors the
 `trackers/<name>.md` convention in `ticket-lifecycle-mode` — the core skill stays
 generic and never names a specific backend; implementation details live in the plugin
 file. Exactly one storage plugin ships per hub, stamped at deploy time. Skills that
@@ -501,7 +513,7 @@ tool name.
 
 ### Plugin file location
 
-`agents/skills/agent-foundations/storage/<plugin-name>.md`
+`skills/agent-foundations/storage/<plugin-name>.md`
 
 The specific plugin name, backing technology, and tier mapping are intentionally not
 enumerated here — that detail lives entirely in the tier-specific plugin files the

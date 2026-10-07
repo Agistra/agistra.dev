@@ -1,6 +1,6 @@
 ---
 name: security-audit-lens
-description: "Use when: a general codebase assessment, pre-migration/pre-rewrite review, or explicit security-focused request needs a structured, repeatable security audit pass covering hardcoded secrets, injection-prone constructs, auth/debug backdoors, and insecure config defaults. Complements (does not replace) the built-in /security-review command. Not a mandatory gate on every ticket."
+description: "Use when: a general codebase assessment, pre-migration/pre-rewrite review, feasibility question about converting/migrating/rewriting a codebase (how hard, effort), or explicit security-focused request needs a structured, repeatable security audit pass covering hardcoded secrets, injection-prone constructs, auth/debug backdoors, insecure config defaults, and weak credential storage. Complements (does not replace) the built-in /security-review command. Not a mandatory gate on every ticket."
 argument-hint: "Codebase, module, config set, or diff to audit for security findings"
 ---
 
@@ -116,6 +116,15 @@ Search configuration files, infrastructure definitions, and startup code for:
 - overly broad permission grants (file system, database, cloud IAM) used as the default rather than
   least privilege
 
+### 5. Weak Credential Storage
+
+Search for how stored user credentials are protected (distinct from category 1, which finds secrets committed to the repository):
+
+- stored user credentials protected by reversible encryption instead of a salted slow hash
+- hardcoded or config-held encryption keys and IVs used to protect stored credentials
+- fast or unsalted hashes (MD5, SHA-1, plain SHA-256) used for passwords
+- password material round-tripped to the client, or held in page or session state
+
 ## Output Format
 
 Findings are structured records, not free prose. Reuse the Critical/Required/Nit/Optional/FYI
@@ -127,8 +136,10 @@ alongside code review output.
 
 | # | Category | Location | Description | Severity | Confidence | Remediation direction |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | [hardcoded-credentials / injection / auth-backdoor / insecure-config-default] | [file:line] | [what was observed, quoted] | [Critical/Required/Nit/Optional/FYI] | [Confirmed/Likely/Speculative] | [what direction fixes it, not a full patch] |
+| 1 | [hardcoded-credentials / injection / auth-backdoor / insecure-config-default / weak-credential-storage] | [file:line] | [what was observed, quoted] | [Critical/Required/Nit/Optional/FYI] | [Confirmed/Likely/Speculative] | [what direction fixes it, not a full patch] |
 ```
+
+Run each confirmed finding through `pattern-sweep` before listing it as final.
 
 Severity definitions (reused verbatim from `code-review-and-quality`):
 
@@ -146,7 +157,7 @@ Close every audit pass with a short summary block, even when findings are zero:
 ## Audit Summary
 
 - Scope: [what was actually reviewed — paths, modules, or "full repository"]
-- Categories covered: [which of the four checklist categories were actually searched]
+- Categories covered: [which of the five checklist categories were actually searched]
 - Categories not covered / out of scope this pass: [name them explicitly, do not silently omit]
 - Open questions: [suspected issues without located evidence — not reported as findings]
 ```

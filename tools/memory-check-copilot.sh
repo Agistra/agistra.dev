@@ -2,25 +2,46 @@
 # memory-check-copilot.sh — agentStop hook adapter for GitHub Copilot.
 # Called automatically after every agent session via .github/hooks/agent-stop.json.
 #
-# Copilot's agentStop contract: read JSON on stdin (sessionId, cwd, transcriptPath,
-# stopReason — unused here), emit JSON on stdout, exit 0. To force another turn,
-# emit {"decision": "block", "reason": "<text>"}; emit {"decision": "allow"} when clean.
+# Copilot's agentStop contract: read JSON on stdin (sessionId, cwd,
+# transcriptPath, stopReason, stop_hook_active), emit JSON on stdout, exit 0.
+# To force another turn, emit {"decision": "block", "reason": "<text>"}; emit
+# {"decision": "allow"} when clean. stop_hook_active is true when the turn was
+# already forced to continue: never block then. memory-check-core.sh --stamp
+# records the reminder so the same work is blocked on once.
 
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Drain stdin (Copilot sends hook payload JSON) — unused by the core check.
-cat > /dev/null || true
+input="$(cat 2>/dev/null || true)"
 
-status=$("$script_dir/memory-check-core.sh")
+# Vendor re-entry guard (camelCase or snake_case spelling).
+if printf '%s' "$input" | tr -d '\r\n' | grep -qE '"(stop_hook_active|stopHookActive)"[[:space:]]*:[[:space:]]*true'; then
+  echo '{"decision": "allow"}'
+  exit 0
+fi
+
+if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+  hub_root="$CLAUDE_PROJECT_DIR"
+elif [ "$(basename "$script_dir")" = "tools" ]; then
+  hub_root="$(dirname "$script_dir")"
+else
+  hub_root="$script_dir"
+fi
+
+status=$("$script_dir/memory-check-core.sh" --stamp)
 
 if [ "$status" != "dirty" ]; then
   echo '{"decision": "allow"}'
   exit 0
 fi
 
-message=$("$script_dir/memory-check-message.sh")
+# Without a work marker we cannot claim files were changed: neutral wording.
+message_args=()
+if [ ! -f "$hub_root/.claude/.session-work" ]; then
+  message_args=(--neutral)
+fi
+message=$("$script_dir/memory-check-message.sh" ${message_args[@]+"${message_args[@]}"})
 # Strip any CR (the message may carry CRLF line endings on
 # Windows), escape for JSON (backslashes, double quotes), then convert literal
 # newlines to \n.

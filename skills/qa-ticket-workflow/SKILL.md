@@ -23,7 +23,11 @@ When invoked as a subagent by Builder (not by the team lead), Tester operates in
 - Add the ticket to Tester's HOT memory queue so it is tracked.
 - Return to Builder: `READY` (handoff complete) | `INCOMPLETE: [list of missing fields]`.
 
-Full QA requires a direct Tester session because tests use shared browser state that cannot run inside a subagent. After Builder confirms readiness, the team lead triggers full Tester QA in a dedicated session.
+Browser-driven QA requires a direct Tester session because those tests use shared browser state that cannot run inside a subagent. After Builder confirms readiness, the team lead triggers browser-driven Tester QA in a dedicated session.
+
+### Full QA — Architect subagent dispatch (non-browser ticket)
+
+When invoked as a subagent by Architect for a non-browser ticket (CLI, file, hook, deploy, scratch-repo checks), execute the complete workflow below. Do NOT use the browser or the shared tab. If a step turns out to need the browser, mark it NOT RUN with the reason and return; never improvise. Builder-dispatched Tester remains Pre-QA only.
 
 ## Required Handoff
 

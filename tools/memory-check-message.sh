@@ -13,11 +13,14 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 message=""
 if command -v node > /dev/null 2>&1; then
-  message="$(node "$script_dir/memory-check-message.js" 2>/dev/null || true)"
+  message="$(node "$script_dir/memory-check-message.js" "$@" 2>/dev/null || true)"
 fi
 
 if [ -z "$message" ]; then
   message="$(sed 's|{{MEMORY_ROOT}}|memory|g' "$script_dir/memory-check-message.txt")"
+  if [ "${1:-}" = "--neutral" ]; then
+    message="$(printf '%s\n' "$message" | sed '1s/files were changed this session but \(.*\) was not updated\./no update to \1 was found this session./')"
+  fi
 fi
 
 printf '%s\n' "$message"

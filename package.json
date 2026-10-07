@@ -21,6 +21,6 @@
     "memory-index:build": "node pipelines/deploy/lib/memory-index.js build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.31.0"
   }
 }
