@@ -19,8 +19,8 @@ const LOG_FILENAME_RE = /^dispatch-(\d{4}-\d{2}-\d{2})\.log$/;
  */
 function toUtcDateStr(d) {
 	const yyyy = d.getUTCFullYear();
-	const mm   = String(d.getUTCMonth() + 1).padStart(2, '0');
-	const dd   = String(d.getUTCDate()).padStart(2, '0');
+	const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+	const dd = String(d.getUTCDate()).padStart(2, '0');
 	return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -33,7 +33,10 @@ function toUtcDateStr(d) {
  * @param {typeof fs}  [opts.fsMod]   Injectable fs module; defaults to `node:fs`.
  * @returns {{ log: (message: string) => void, pruneOldLogs: (olderThanMs: number) => number }}
  */
-export function createDaemonLogger(hubRoot, { nowFn = () => new Date(), fsMod = fs } = {}) {
+export function createDaemonLogger(
+	hubRoot,
+	{ nowFn = () => new Date(), fsMod = fs } = {},
+) {
 	const logsDir = path.join(hubRoot, 'relay', 'logs');
 
 	/**

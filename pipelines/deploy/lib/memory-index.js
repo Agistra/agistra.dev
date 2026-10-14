@@ -49,7 +49,6 @@ import { fileURLToPath } from 'node:url';
 
 export const INDEX_FILENAME = '.memory-index.json';
 const SCHEMA_VERSION = 1;
-const MEMORY_TIERS = ['HOT', 'WARM', 'COLD'];
 
 // ── tokenizing / keyword extraction ─────────────────────────────────────────
 
@@ -57,19 +56,110 @@ const MEMORY_TIERS = ['HOT', 'WARM', 'COLD'];
 // Deliberately small and generic — this is a lightweight keyword index, not a
 // stemmed/stopword-tuned search engine (deliberately out of scope).
 const STOPWORDS = new Set([
-	'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'being', 'but', 'by',
-	'can', 'did', 'do', 'does', 'down', 'during', 'each', 'few', 'for', 'from',
-	'further', 'had', 'has', 'have', 'he', 'her', 'here', 'him', 'his', 'how',
-	'i', 'if', 'in', 'into', 'is', 'it', 'its', 'let', 'may', 'me', 'more',
-	'most', 'my', 'no', 'nor', 'not', 'now', 'of', 'off', 'on', 'once', 'only',
-	'or', 'other', 'our', 'out', 'over', 'own', 'per', 'put', 'said', 'same',
-	'say', 'she', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'them',
-	'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too',
-	'under', 'until', 'up', 'use', 'very', 'was', 'we', 'were', 'what', 'when',
-	'where', 'which', 'while', 'who', 'will', 'with', 'would', 'you', 'your',
+	'a',
+	'an',
+	'and',
+	'are',
+	'as',
+	'at',
+	'be',
+	'been',
+	'being',
+	'but',
+	'by',
+	'can',
+	'did',
+	'do',
+	'does',
+	'down',
+	'during',
+	'each',
+	'few',
+	'for',
+	'from',
+	'further',
+	'had',
+	'has',
+	'have',
+	'he',
+	'her',
+	'here',
+	'him',
+	'his',
+	'how',
+	'i',
+	'if',
+	'in',
+	'into',
+	'is',
+	'it',
+	'its',
+	'let',
+	'may',
+	'me',
+	'more',
+	'most',
+	'my',
+	'no',
+	'nor',
+	'not',
+	'now',
+	'of',
+	'off',
+	'on',
+	'once',
+	'only',
+	'or',
+	'other',
+	'our',
+	'out',
+	'over',
+	'own',
+	'per',
+	'put',
+	'said',
+	'same',
+	'say',
+	'she',
+	'so',
+	'some',
+	'such',
+	'than',
+	'that',
+	'the',
+	'their',
+	'them',
+	'then',
+	'there',
+	'these',
+	'they',
+	'this',
+	'those',
+	'through',
+	'to',
+	'too',
+	'under',
+	'until',
+	'up',
+	'use',
+	'very',
+	'was',
+	'we',
+	'were',
+	'what',
+	'when',
+	'where',
+	'which',
+	'while',
+	'who',
+	'will',
+	'with',
+	'would',
+	'you',
+	'your',
 ]);
 
-/** Lowercase word/id-shaped token scan — keeps compounds like `task_id`, `#472`, `2026-08-11` intact. */
+/** Lowercase word/id-shaped token scan — keeps compounds like `task_id`, a hash-prefixed number, `2026-08-11` intact. */
 export function tokenize(text) {
 	if (typeof text !== 'string') return [];
 	return text.toLowerCase().match(/[a-z0-9#][a-z0-9_#-]*/g) || [];
@@ -77,7 +167,9 @@ export function tokenize(text) {
 
 /** Unique, sorted, stopword-filtered keyword list for one entry's text. */
 export function extractKeywords(text) {
-	const tokens = tokenize(text).filter(t => t.length >= 2 && !STOPWORDS.has(t));
+	const tokens = tokenize(text).filter(
+		(t) => t.length >= 2 && !STOPWORDS.has(t),
+	);
 	return Array.from(new Set(tokens)).sort();
 }
 
@@ -95,9 +187,13 @@ function sha256(content) {
 export function listMemoryAgents(hubRoot, { fsMod = fs } = {}) {
 	const memoryDir = path.join(hubRoot, 'memory');
 	if (!fsMod.existsSync(memoryDir)) return [];
-	return fsMod.readdirSync(memoryDir, { withFileTypes: true })
-		.filter(e => e.isFile() && e.name.endsWith('.md') && e.name !== 'working-buffer.md')
-		.map(e => e.name.slice(0, -3))
+	return fsMod
+		.readdirSync(memoryDir, { withFileTypes: true })
+		.filter(
+			(e) =>
+				e.isFile() && e.name.endsWith('.md') && e.name !== 'working-buffer.md',
+		)
+		.map((e) => e.name.slice(0, -3))
 		.sort();
 }
 
@@ -125,7 +221,7 @@ export function readMemory(agent, hubRoot, { fsMod = fs } = {}) {
  * `## WARM` / `## COLD` heading. Content outside a recognized tier heading
  * (the file's `# <Agent> — Live Memory` title, stray prose) is ignored.
  * Entries with no leading date (common in WARM/COLD, e.g. `- **task_id
- * (PR #468)** — ...`) get `date: null` rather than being dropped.
+ * (PR reference)** — ...`) get `date: null` rather than being dropped.
  */
 export function parseMemoryEntries(content) {
 	const lines = content.split(/\r?\n/);
@@ -138,7 +234,11 @@ export function parseMemoryEntries(content) {
 			const text = currentLines.join('\n').trim();
 			if (text) {
 				const dateMatch = text.match(/^-\s*\*\*\s*(\d{4}-\d{2}-\d{2})/);
-				entries.push({ tier: currentTier, date: dateMatch ? dateMatch[1] : null, text });
+				entries.push({
+					tier: currentTier,
+					date: dateMatch ? dateMatch[1] : null,
+					text,
+				});
 			}
 		}
 		currentLines = null;
@@ -189,7 +289,10 @@ export function buildIndex(hubRoot, { fsMod = fs } = {}) {
 
 	const agentIds = listMemoryAgents(hubRoot, { fsMod });
 	if (agentIds.length === 0) {
-		return { ok: false, error: `no agent memory files found under ${memoryDir}` };
+		return {
+			ok: false,
+			error: `no agent memory files found under ${memoryDir}`,
+		};
 	}
 
 	const agentsMeta = {};
@@ -210,7 +313,14 @@ export function buildIndex(hubRoot, { fsMod = fs } = {}) {
 		parsed.forEach((entry, idx) => {
 			const id = `${agent}:${entry.tier}:${idx}`;
 			const keywords = extractKeywords(entry.text);
-			entries.push({ id, agent, tier: entry.tier, date: entry.date, text: entry.text, keywords });
+			entries.push({
+				id,
+				agent,
+				tier: entry.tier,
+				date: entry.date,
+				text: entry.text,
+				keywords,
+			});
 			for (const kw of keywords) {
 				if (!byKeyword[kw]) byKeyword[kw] = [];
 				byKeyword[kw].push(id);
@@ -227,7 +337,11 @@ export function buildIndex(hubRoot, { fsMod = fs } = {}) {
 	};
 
 	const indexPath = path.join(hubRoot, INDEX_FILENAME);
-	fsMod.writeFileSync(indexPath, JSON.stringify(index, null, 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(
+		indexPath,
+		JSON.stringify(index, null, 2) + '\n',
+		'utf-8',
+	);
 
 	return {
 		ok: true,
@@ -243,7 +357,9 @@ function loadIndex(hubRoot, { fsMod = fs } = {}) {
 	try {
 		return JSON.parse(fsMod.readFileSync(indexPath, 'utf-8'));
 	} catch (err) {
-		throw new Error(`index file is corrupt (${indexPath}): ${err.message}`);
+		throw new Error(`index file is corrupt (${indexPath}): ${err.message}`, {
+			cause: err,
+		});
 	}
 }
 
@@ -262,7 +378,12 @@ export function checkStaleness(hubRoot, index, { fsMod = fs } = {}) {
 	const indexedAgents = Object.keys(index.agents || {}).sort();
 
 	if (JSON.stringify(currentAgents) !== JSON.stringify(indexedAgents)) {
-		return { stale: true, reason: 'agent set changed since index was built', currentAgents, indexedAgents };
+		return {
+			stale: true,
+			reason: 'agent set changed since index was built',
+			currentAgents,
+			indexedAgents,
+		};
 	}
 
 	for (const agent of currentAgents) {
@@ -273,7 +394,11 @@ export function checkStaleness(hubRoot, index, { fsMod = fs } = {}) {
 
 		const content = fsMod.readFileSync(filePath, 'utf-8');
 		if (sha256(content) !== stored.sha256) {
-			return { stale: true, reason: `memory file changed since index was built: ${agent}`, agent };
+			return {
+				stale: true,
+				reason: `memory file changed since index was built: ${agent}`,
+				agent,
+			};
 		}
 	}
 
@@ -299,14 +424,15 @@ function searchIndex(index, terms) {
 			if (entry.text.toLowerCase().includes(term)) matchingIds.add(entry.id);
 		}
 
-		candidateIds = candidateIds === null
-			? matchingIds
-			: new Set([...candidateIds].filter(id => matchingIds.has(id)));
+		candidateIds =
+			candidateIds === null
+				? matchingIds
+				: new Set([...candidateIds].filter((id) => matchingIds.has(id)));
 		if (candidateIds.size === 0) break;
 	}
 
 	const idSet = candidateIds || new Set();
-	const matched = index.entries.filter(e => idSet.has(e.id));
+	const matched = index.entries.filter((e) => idSet.has(e.id));
 	matched.sort((a, b) => {
 		if (a.date && b.date) return b.date.localeCompare(a.date);
 		if (a.date) return -1;
@@ -314,11 +440,12 @@ function searchIndex(index, terms) {
 		return 0;
 	});
 
-	return matched.map(e => ({
+	return matched.map((e) => ({
 		agent: e.agent,
 		tier: e.tier,
 		date: e.date,
-		snippet: e.text.length > 320 ? `${e.text.slice(0, 320).trimEnd()} …` : e.text,
+		snippet:
+			e.text.length > 320 ? `${e.text.slice(0, 320).trimEnd()} …` : e.text,
 	}));
 }
 
@@ -328,9 +455,17 @@ function searchIndex(index, terms) {
  * index is still searched but the result is explicitly flagged (`stale:
  * true` + a `warning` field) — never silently served as current (AC 5).
  */
-export function findCommand(hubRoot, queryStr, { fsMod = fs, noRebuild = false } = {}) {
+export function findCommand(
+	hubRoot,
+	queryStr,
+	{ fsMod = fs, noRebuild = false } = {},
+) {
 	if (!queryStr || !queryStr.trim()) {
-		return { ok: false, error: 'keyword is required. Usage: npm run memory-index -- find <keyword> [<keyword> ...]' };
+		return {
+			ok: false,
+			error:
+				'keyword is required. Usage: npm run memory-index -- find <keyword> [<keyword> ...]',
+		};
 	}
 
 	let index;
@@ -372,7 +507,8 @@ export function findCommand(hubRoot, queryStr, { fsMod = fs, noRebuild = false }
 		results,
 	};
 	if (stale) {
-		output.warning = 'index is stale (a memory file changed since the last build); results may not reflect the latest content. Re-run without --no-rebuild, or run `build`, to refresh.';
+		output.warning =
+			'index is stale (a memory file changed since the last build); results may not reflect the latest content. Re-run without --no-rebuild, or run `build`, to refresh.';
 	}
 	return output;
 }
@@ -398,10 +534,18 @@ export function runCli(argv, { fsMod = fs } = {}) {
 	const hubRootFlag = extractValueFlag(argv, '--hub-root');
 	const noRebuildFlag = extractBooleanFlag(hubRootFlag.rest, '--no-rebuild');
 
-	if (hubRootFlag.present && (!hubRootFlag.value || !fsMod.existsSync(hubRootFlag.value))) {
-		return { ok: false, error: `--hub-root not found: ${hubRootFlag.value ?? '(missing value)'}` };
+	if (
+		hubRootFlag.present &&
+		(!hubRootFlag.value || !fsMod.existsSync(hubRootFlag.value))
+	) {
+		return {
+			ok: false,
+			error: `--hub-root not found: ${hubRootFlag.value ?? '(missing value)'}`,
+		};
 	}
-	const hubRoot = hubRootFlag.present ? path.resolve(hubRootFlag.value) : process.cwd();
+	const hubRoot = hubRootFlag.present
+		? path.resolve(hubRootFlag.value)
+		: process.cwd();
 
 	const [cmd, ...positional] = noRebuildFlag.rest;
 
@@ -410,7 +554,10 @@ export function runCli(argv, { fsMod = fs } = {}) {
 		case 'index':
 			return buildIndex(hubRoot, { fsMod });
 		case 'find':
-			return findCommand(hubRoot, positional.join(' '), { fsMod, noRebuild: noRebuildFlag.present });
+			return findCommand(hubRoot, positional.join(' '), {
+				fsMod,
+				noRebuild: noRebuildFlag.present,
+			});
 		default:
 			return {
 				ok: false,
@@ -419,8 +566,10 @@ export function runCli(argv, { fsMod = fs } = {}) {
 	}
 }
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	let output;

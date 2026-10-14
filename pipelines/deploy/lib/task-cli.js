@@ -88,7 +88,14 @@ export const DEFAULT_PROJECTS_ROOT = 'projects';
 // project repo `--projects-root` points at — so the default is resolved
 // relative to this module's own location, not the CLI process cwd.
 const __taskCliDir = path.dirname(fileURLToPath(import.meta.url));
-export const DEFAULT_SKILLS_ROOT = path.resolve(__taskCliDir, '..', '..', '..', 'agents', 'skills');
+export const DEFAULT_SKILLS_ROOT = path.resolve(
+	__taskCliDir,
+	'..',
+	'..',
+	'..',
+	'agents',
+	'skills',
+);
 
 /**
  * Resolve a task file path from an id.
@@ -102,7 +109,10 @@ export const DEFAULT_SKILLS_ROOT = path.resolve(__taskCliDir, '..', '..', '..', 
  *
  * Returns the absolute file path, or null if no match was found.
  */
-export function resolveTaskPath(id, { projectsRoot = DEFAULT_PROJECTS_ROOT, fsMod = fs } = {}) {
+export function resolveTaskPath(
+	id,
+	{ projectsRoot = DEFAULT_PROJECTS_ROOT, fsMod = fs } = {},
+) {
 	if (typeof id !== 'string' || id.length === 0) return null;
 
 	if (id.endsWith('.md') && fsMod.existsSync(id)) {
@@ -117,9 +127,10 @@ export function resolveTaskPath(id, { projectsRoot = DEFAULT_PROJECTS_ROOT, fsMo
 	}
 
 	if (!fsMod.existsSync(projectsRoot)) return null;
-	const projects = fsMod.readdirSync(projectsRoot, { withFileTypes: true })
-		.filter(e => e.isDirectory())
-		.map(e => e.name);
+	const projects = fsMod
+		.readdirSync(projectsRoot, { withFileTypes: true })
+		.filter((e) => e.isDirectory())
+		.map((e) => e.name);
 
 	for (const project of projects) {
 		const found = findTaskByQuery(path.join(projectsRoot, project), id);
@@ -146,19 +157,26 @@ export function readTask(id, opts = {}) {
  * optionally filtered by filename-infix state token (e.g. "todo",
  * "in-progress", "ready-for-qa").
  */
-export function listTasks(project, { state, projectsRoot = DEFAULT_PROJECTS_ROOT } = {}) {
+export function listTasks(
+	project,
+	{ state, projectsRoot = DEFAULT_PROJECTS_ROOT } = {},
+) {
 	if (!project) return { ok: false, error: 'project is required' };
 	const all = listAllTasks(projectsRoot);
-	const entry = all.find(e => e.project === project);
+	const entry = all.find((e) => e.project === project);
 	if (!entry) return { ok: false, error: `project not found: ${project}` };
 
 	let tasks = [
-		...entry.todos.map(file => ({ file, state: 'todo' })),
+		...entry.todos.map((file) => ({ file, state: 'todo' })),
 		...entry.inFlight,
-		...entry.dones.map(file => ({ file, state: 'done' })),
-		...entry.unrecognized.map(item => ({ file: item.file, state: 'unrecognized', status: item.status })),
+		...entry.dones.map((file) => ({ file, state: 'done' })),
+		...entry.unrecognized.map((item) => ({
+			file: item.file,
+			state: 'unrecognized',
+			status: item.status,
+		})),
 	];
-	if (state) tasks = tasks.filter(t => t.state === state);
+	if (state) tasks = tasks.filter((t) => t.state === state);
 
 	return { ok: true, project, tasks };
 }
@@ -169,7 +187,10 @@ export function listTasks(project, { state, projectsRoot = DEFAULT_PROJECTS_ROOT
  * transitions state. See module doc comment above for the confirmation-gate
  * contract this command feeds into.
  */
-export function wavesCommand(project, { projectsRoot = DEFAULT_PROJECTS_ROOT } = {}) {
+export function wavesCommand(
+	project,
+	{ projectsRoot = DEFAULT_PROJECTS_ROOT } = {},
+) {
 	return computeWaves(project, { projectsRoot });
 }
 
@@ -186,13 +207,21 @@ export function updateField(id, field, value, opts = {}) {
 	// Secret scan before writing — never partially writes the file.
 	const secretMatch = scanForSecrets(String(value));
 	if (secretMatch) {
-		return { ok: false, error: formatSecretScanError(secretMatch), path: taskPath };
+		return {
+			ok: false,
+			error: formatSecretScanError(secretMatch),
+			path: taskPath,
+		};
 	}
 
 	try {
 		updateTaskFields(taskPath, { [field]: value });
 	} catch (err) {
-		return { ok: false, error: `update-field failed: ${err.message}`, path: taskPath };
+		return {
+			ok: false,
+			error: `update-field failed: ${err.message}`,
+			path: taskPath,
+		};
 	}
 	return { ok: true, path: taskPath, field, value };
 }
@@ -230,7 +259,9 @@ export function extractGithubBodyLine(body) {
  * per call site.
  */
 export function resolveGithubRef(meta, body) {
-	const fromFrontmatter = parseGithubIssueRef(meta.github ?? meta['github-issue']);
+	const fromFrontmatter = parseGithubIssueRef(
+		meta.github ?? meta['github-issue'],
+	);
 	if (fromFrontmatter) return fromFrontmatter;
 	return parseGithubIssueRef(extractGithubBodyLine(body));
 }
@@ -254,7 +285,11 @@ export function resolveGithubRef(meta, body) {
  */
 export function describeUnresolvedGithubRef(meta) {
 	const frontmatterRaw = meta.github ?? meta['github-issue'];
-	if (frontmatterRaw !== undefined && frontmatterRaw !== null && String(frontmatterRaw).trim() !== '') {
+	if (
+		frontmatterRaw !== undefined &&
+		frontmatterRaw !== null &&
+		String(frontmatterRaw).trim() !== ''
+	) {
 		return `skipped (github-issue value could not be parsed: "${frontmatterRaw}")`;
 	}
 	return 'skipped (no tracker configured)';
@@ -292,11 +327,15 @@ export function describeUnresolvedGithubRef(meta) {
  * "no tracker configured" and skip the mirror even though it just supplied a
  * good reference in the same call.
  */
-export function transitionTask(id, newState, {
-	projectsRoot = DEFAULT_PROJECTS_ROOT,
-	execFn = execFileSync,
-	frontmatterUpdates = {},
-} = {}) {
+export function transitionTask(
+	id,
+	newState,
+	{
+		projectsRoot = DEFAULT_PROJECTS_ROOT,
+		execFn = execFileSync,
+		frontmatterUpdates = {},
+	} = {},
+) {
 	const result = { ok: false, steps: [] };
 
 	const taskPath = resolveTaskPath(id, { projectsRoot });
@@ -309,7 +348,9 @@ export function transitionTask(id, newState, {
 	// never partially writes the file. Only the caller-supplied updates are
 	// scanned here (not the file's own pre-existing frontmatter/body), since
 	// those are the only new content this call introduces.
-	const frontmatterUpdatesContent = Object.values(frontmatterUpdates).map(String).join('\n');
+	const frontmatterUpdatesContent = Object.values(frontmatterUpdates)
+		.map(String)
+		.join('\n');
 	const secretMatch = scanForSecrets(frontmatterUpdatesContent);
 	if (secretMatch) {
 		result.error = formatSecretScanError(secretMatch);
@@ -336,10 +377,12 @@ export function transitionTask(id, newState, {
 	// No tracker configured for this task — local-only transition is complete.
 	// Prefer this call's own incoming --github value (if supplied) over the
 	// file's pre-update frontmatter/body — see doc comment above.
-	const incomingGithub = frontmatterUpdates.github ?? frontmatterUpdates['github-issue'];
-	const githubRef = incomingGithub !== undefined
-		? parseGithubIssueRef(incomingGithub)
-		: resolveGithubRef(metaBefore, bodyBefore);
+	const incomingGithub =
+		frontmatterUpdates.github ?? frontmatterUpdates['github-issue'];
+	const githubRef =
+		incomingGithub !== undefined
+			? parseGithubIssueRef(incomingGithub)
+			: resolveGithubRef(metaBefore, bodyBefore);
 	if (!githubRef) {
 		result.ok = true;
 		// The incoming --github value's own unparseable-but-present case keeps
@@ -347,9 +390,10 @@ export function transitionTask(id, newState, {
 		// doesn't resolve to a real issue, e.g. a PR URL, is a caller mistake,
 		// not evidence a tracker field exists on the file) -- only the file's
 		// own frontmatter field gets the more specific message.
-		result.mirror = incomingGithub !== undefined
-			? 'skipped (no tracker configured)'
-			: describeUnresolvedGithubRef(metaBefore);
+		result.mirror =
+			incomingGithub !== undefined
+				? 'skipped (no tracker configured)'
+				: describeUnresolvedGithubRef(metaBefore);
 		return result;
 	}
 
@@ -361,15 +405,27 @@ export function transitionTask(id, newState, {
 	// aborts the transition.
 	if (oldState && oldState.startsWith('state:') && oldState !== newState) {
 		try {
-			execFn('gh', [
-				'issue', 'edit', String(githubRef.number),
-				'--repo', `${githubRef.owner}/${githubRef.repo}`,
-				'--remove-label', oldState,
-			], { encoding: 'utf-8' });
+			execFn(
+				'gh',
+				[
+					'issue',
+					'edit',
+					String(githubRef.number),
+					'--repo',
+					`${githubRef.owner}/${githubRef.repo}`,
+					'--remove-label',
+					oldState,
+				],
+				{ encoding: 'utf-8' },
+			);
 			result.steps.push({ step: 'label-remove', ok: true });
 		} catch (err) {
 			// Non-fatal: record and continue to add-label + verify.
-			result.steps.push({ step: 'label-remove', ok: true, note: `old label not present or removal failed (non-fatal): ${err.message}` });
+			result.steps.push({
+				step: 'label-remove',
+				ok: true,
+				note: `old label not present or removal failed (non-fatal): ${err.message}`,
+			});
 		}
 	}
 
@@ -378,10 +434,17 @@ export function transitionTask(id, newState, {
 	// close the issue instead of attempting a nonexistent label add.
 	if (newState === 'closed') {
 		try {
-			execFn('gh', [
-				'issue', 'close', String(githubRef.number),
-				'--repo', `${githubRef.owner}/${githubRef.repo}`,
-			], { encoding: 'utf-8' });
+			execFn(
+				'gh',
+				[
+					'issue',
+					'close',
+					String(githubRef.number),
+					'--repo',
+					`${githubRef.owner}/${githubRef.repo}`,
+				],
+				{ encoding: 'utf-8' },
+			);
 			result.steps.push({ step: 'issue-close', ok: true });
 		} catch (err) {
 			result.steps.push({ step: 'issue-close', ok: false, error: err.message });
@@ -411,11 +474,19 @@ export function transitionTask(id, newState, {
 	}
 
 	try {
-		execFn('gh', [
-			'issue', 'edit', String(githubRef.number),
-			'--repo', `${githubRef.owner}/${githubRef.repo}`,
-			'--add-label', newState,
-		], { encoding: 'utf-8' });
+		execFn(
+			'gh',
+			[
+				'issue',
+				'edit',
+				String(githubRef.number),
+				'--repo',
+				`${githubRef.owner}/${githubRef.repo}`,
+				'--add-label',
+				newState,
+			],
+			{ encoding: 'utf-8' },
+		);
 		result.steps.push({ step: 'label-add', ok: true });
 	} catch (err) {
 		result.steps.push({ step: 'label-add', ok: false, error: err.message });
@@ -460,13 +531,21 @@ export function appendSection(id, section, content, opts = {}) {
 	// Secret scan before writing — never partially writes the file.
 	const secretMatch = scanForSecrets(content);
 	if (secretMatch) {
-		return { ok: false, error: formatSecretScanError(secretMatch), path: taskPath };
+		return {
+			ok: false,
+			error: formatSecretScanError(secretMatch),
+			path: taskPath,
+		};
 	}
 
 	try {
 		appendTaskSection(taskPath, section, content);
 	} catch (err) {
-		return { ok: false, error: `append-section failed: ${err.message}`, path: taskPath };
+		return {
+			ok: false,
+			error: `append-section failed: ${err.message}`,
+			path: taskPath,
+		};
 	}
 	return { ok: true, path: taskPath, section };
 }
@@ -480,7 +559,11 @@ const FAIL_VERDICTS = new Set(['FAIL', 'PARTIAL', 'PARTIAL PASS']);
  * pass, what the findings are) is entirely the caller's (Tester's)
  * responsibility — this only assembles the supplied pieces into one report.
  */
-export function composeQaReport(id, verdict, { findingsContent, gapsContent } = {}) {
+export function composeQaReport(
+	id,
+	verdict,
+	{ findingsContent, gapsContent } = {},
+) {
 	const lines = [`## QA Report — ${id}`, '', `**Verdict:** ${verdict}`];
 	if (findingsContent && findingsContent.trim()) {
 		lines.push('', findingsContent.trim());
@@ -502,18 +585,33 @@ export function composeQaReport(id, verdict, { findingsContent, gapsContent } = 
  */
 function discoverPrRef(githubRef, execFn) {
 	try {
-		const branch = execFn('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
+		const branch = execFn('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+			encoding: 'utf-8',
+		}).trim();
 		if (!branch || branch === 'HEAD') return null;
-		const out = execFn('gh', [
-			'pr', 'list',
-			'--head', branch,
-			'--repo', `${githubRef.owner}/${githubRef.repo}`,
-			'--state', 'open',
-			'--json', 'number',
-		], { encoding: 'utf-8' });
+		const out = execFn(
+			'gh',
+			[
+				'pr',
+				'list',
+				'--head',
+				branch,
+				'--repo',
+				`${githubRef.owner}/${githubRef.repo}`,
+				'--state',
+				'open',
+				'--json',
+				'number',
+			],
+			{ encoding: 'utf-8' },
+		);
 		const arr = JSON.parse(out);
 		if (Array.isArray(arr) && arr.length > 0) {
-			return { owner: githubRef.owner, repo: githubRef.repo, number: arr[0].number };
+			return {
+				owner: githubRef.owner,
+				repo: githubRef.repo,
+				number: arr[0].number,
+			};
 		}
 		return null;
 	} catch {
@@ -523,13 +621,21 @@ function discoverPrRef(githubRef, execFn) {
 
 function fetchComments(kind, ref, execFn) {
 	const cmd = kind === 'issue' ? 'issue' : 'pr';
-	const out = execFn('gh', [
-		cmd, 'view', String(ref.number),
-		'--repo', `${ref.owner}/${ref.repo}`,
-		'--json', 'comments',
-	], { encoding: 'utf-8' });
+	const out = execFn(
+		'gh',
+		[
+			cmd,
+			'view',
+			String(ref.number),
+			'--repo',
+			`${ref.owner}/${ref.repo}`,
+			'--json',
+			'comments',
+		],
+		{ encoding: 'utf-8' },
+	);
 	const data = JSON.parse(out);
-	return (data.comments || []).map(c => c.body);
+	return (data.comments || []).map((c) => c.body);
 }
 
 /**
@@ -540,11 +646,19 @@ function fetchComments(kind, ref, execFn) {
  */
 function postAndVerify(kind, ref, body, execFn, steps) {
 	try {
-		execFn('gh', [
-			kind === 'issue' ? 'issue' : 'pr', 'comment', String(ref.number),
-			'--repo', `${ref.owner}/${ref.repo}`,
-			'--body', body,
-		], { encoding: 'utf-8' });
+		execFn(
+			'gh',
+			[
+				kind === 'issue' ? 'issue' : 'pr',
+				'comment',
+				String(ref.number),
+				'--repo',
+				`${ref.owner}/${ref.repo}`,
+				'--body',
+				body,
+			],
+			{ encoding: 'utf-8' },
+		);
 		steps.push({ step: `post-${kind}`, ok: true });
 	} catch (err) {
 		steps.push({ step: `post-${kind}`, ok: false, error: err.message });
@@ -553,7 +667,9 @@ function postAndVerify(kind, ref, body, execFn, steps) {
 
 	try {
 		const comments = fetchComments(kind, ref, execFn);
-		if (!comments.some(c => typeof c === 'string' && c.includes(body.trim()))) {
+		if (
+			!comments.some((c) => typeof c === 'string' && c.includes(body.trim()))
+		) {
 			const msg = `QA report comment not found on ${kind} after posting (post-verify failed)`;
 			steps.push({ step: `verify-${kind}`, ok: false, error: msg });
 			return { ok: false, error: msg };
@@ -561,7 +677,10 @@ function postAndVerify(kind, ref, body, execFn, steps) {
 		steps.push({ step: `verify-${kind}`, ok: true });
 	} catch (err) {
 		steps.push({ step: `verify-${kind}`, ok: false, error: err.message });
-		return { ok: false, error: `verifying ${kind} post failed: ${err.message}` };
+		return {
+			ok: false,
+			error: `verifying ${kind} post failed: ${err.message}`,
+		};
 	}
 
 	return { ok: true };
@@ -579,13 +698,17 @@ function postAndVerify(kind, ref, body, execFn, steps) {
  * retry without a partial, silently-inconsistent state (mirrors
  * `transitionTask`'s "no silent success" contract).
  */
-export function qaReport(id, verdict, {
-	gapsPath,
-	findingsPath,
-	projectsRoot = DEFAULT_PROJECTS_ROOT,
-	execFn = execFileSync,
-	fsMod = fs,
-} = {}) {
+export function qaReport(
+	id,
+	verdict,
+	{
+		gapsPath,
+		findingsPath,
+		projectsRoot = DEFAULT_PROJECTS_ROOT,
+		execFn = execFileSync,
+		fsMod = fs,
+	} = {},
+) {
 	const result = { ok: false, steps: [] };
 
 	if (!verdict) {
@@ -594,7 +717,8 @@ export function qaReport(id, verdict, {
 	}
 	const verdictUpper = String(verdict).toUpperCase();
 	const isPass = verdictUpper === 'PASS';
-	const isFail = FAIL_VERDICTS.has(verdictUpper) || verdictUpper.startsWith('PARTIAL');
+	const isFail =
+		FAIL_VERDICTS.has(verdictUpper) || verdictUpper.startsWith('PARTIAL');
 
 	const taskPath = resolveTaskPath(id, { projectsRoot, fsMod });
 	if (!taskPath) {
@@ -624,11 +748,20 @@ export function qaReport(id, verdict, {
 		findingsContent = fsMod.readFileSync(findingsPath, 'utf-8');
 	}
 
-	const reportBody = composeQaReport(id, verdict, { findingsContent, gapsContent });
+	const reportBody = composeQaReport(id, verdict, {
+		findingsContent,
+		gapsContent,
+	});
 
 	const githubRef = resolveGithubRef(meta, body);
 	if (githubRef) {
-		const issueResult = postAndVerify('issue', githubRef, reportBody, execFn, result.steps);
+		const issueResult = postAndVerify(
+			'issue',
+			githubRef,
+			reportBody,
+			execFn,
+			result.steps,
+		);
 		if (!issueResult.ok) {
 			result.error = issueResult.error;
 			return result;
@@ -636,31 +769,56 @@ export function qaReport(id, verdict, {
 
 		const prRef = discoverPrRef(githubRef, execFn);
 		if (prRef) {
-			const prResult = postAndVerify('pr', prRef, reportBody, execFn, result.steps);
+			const prResult = postAndVerify(
+				'pr',
+				prRef,
+				reportBody,
+				execFn,
+				result.steps,
+			);
 			if (!prResult.ok) {
 				result.error = prResult.error;
 				return result;
 			}
 			result.pr = prRef;
 		} else {
-			result.steps.push({ step: 'post-pr', ok: true, note: 'no open PR found for current branch — issue-only posting' });
+			result.steps.push({
+				step: 'post-pr',
+				ok: true,
+				note: 'no open PR found for current branch — issue-only posting',
+			});
 		}
 	} else {
-		result.steps.push({ step: 'post', ok: true, note: 'no tracker configured — skipped' });
+		result.steps.push({
+			step: 'post',
+			ok: true,
+			note: 'no tracker configured — skipped',
+		});
 	}
 
 	try {
 		appendTaskSection(taskPath, 'QA Report', reportBody);
 		result.steps.push({ step: 'append-qa-report', ok: true });
 	} catch (err) {
-		result.steps.push({ step: 'append-qa-report', ok: false, error: err.message });
+		result.steps.push({
+			step: 'append-qa-report',
+			ok: false,
+			error: err.message,
+		});
 		result.error = `append-qa-report failed: ${err.message}`;
 		return result;
 	}
 
 	if (isPass) {
-		const transitionResult = transitionTask(id, 'state:qa-passed', { projectsRoot, execFn });
-		result.steps.push({ step: 'transition', ok: transitionResult.ok, detail: transitionResult });
+		const transitionResult = transitionTask(id, 'state:qa-passed', {
+			projectsRoot,
+			execFn,
+		});
+		result.steps.push({
+			step: 'transition',
+			ok: transitionResult.ok,
+			detail: transitionResult,
+		});
 		if (!transitionResult.ok) {
 			result.error = `transition failed: ${transitionResult.error}`;
 			return result;
@@ -672,7 +830,11 @@ export function qaReport(id, verdict, {
 				appendTaskSection(taskPath, 'Gap Closure', gapsContent);
 				result.steps.push({ step: 'append-gap-closure', ok: true });
 			} catch (err) {
-				result.steps.push({ step: 'append-gap-closure', ok: false, error: err.message });
+				result.steps.push({
+					step: 'append-gap-closure',
+					ok: false,
+					error: err.message,
+				});
 				result.error = `append-gap-closure failed: ${err.message}`;
 				return result;
 			}
@@ -683,8 +845,16 @@ export function qaReport(id, verdict, {
 		const frontmatterUpdates = { 'fail-count': newFailCount };
 		if (newFailCount >= 3) frontmatterUpdates.parked = true;
 
-		const transitionResult = transitionTask(id, 'state:changes-requested', { projectsRoot, execFn, frontmatterUpdates });
-		result.steps.push({ step: 'transition', ok: transitionResult.ok, detail: transitionResult });
+		const transitionResult = transitionTask(id, 'state:changes-requested', {
+			projectsRoot,
+			execFn,
+			frontmatterUpdates,
+		});
+		result.steps.push({
+			step: 'transition',
+			ok: transitionResult.ok,
+			detail: transitionResult,
+		});
 		if (!transitionResult.ok) {
 			result.error = `transition failed: ${transitionResult.error}`;
 			return result;
@@ -695,24 +865,48 @@ export function qaReport(id, verdict, {
 			const failLabel = `qa-fail-${newFailCount}`;
 			if (currentFailCount >= 1) {
 				try {
-					execFn('gh', [
-						'issue', 'edit', String(githubRef.number),
-						'--repo', `${githubRef.owner}/${githubRef.repo}`,
-						'--remove-label', `qa-fail-${currentFailCount}`,
-					], { encoding: 'utf-8' });
+					execFn(
+						'gh',
+						[
+							'issue',
+							'edit',
+							String(githubRef.number),
+							'--repo',
+							`${githubRef.owner}/${githubRef.repo}`,
+							'--remove-label',
+							`qa-fail-${currentFailCount}`,
+						],
+						{ encoding: 'utf-8' },
+					);
 				} catch {
 					// best-effort: prior fail label may not exist
 				}
 			}
 			try {
-				execFn('gh', [
-					'issue', 'edit', String(githubRef.number),
-					'--repo', `${githubRef.owner}/${githubRef.repo}`,
-					'--add-label', failLabel,
-				], { encoding: 'utf-8' });
-				result.steps.push({ step: 'qa-fail-label', ok: true, label: failLabel });
+				execFn(
+					'gh',
+					[
+						'issue',
+						'edit',
+						String(githubRef.number),
+						'--repo',
+						`${githubRef.owner}/${githubRef.repo}`,
+						'--add-label',
+						failLabel,
+					],
+					{ encoding: 'utf-8' },
+				);
+				result.steps.push({
+					step: 'qa-fail-label',
+					ok: true,
+					label: failLabel,
+				});
 			} catch (err) {
-				result.steps.push({ step: 'qa-fail-label', ok: false, error: err.message });
+				result.steps.push({
+					step: 'qa-fail-label',
+					ok: false,
+					error: err.message,
+				});
 				result.error = `qa-fail label sync failed: ${err.message}`;
 				return result;
 			}
@@ -731,7 +925,8 @@ export function qaReport(id, verdict, {
 
 function normalizeGhErrorMessage(err) {
 	if (!err) return 'unknown error';
-	if (typeof err.message === 'string' && err.message.trim()) return err.message.trim();
+	if (typeof err.message === 'string' && err.message.trim())
+		return err.message.trim();
 	return String(err);
 }
 
@@ -745,19 +940,31 @@ function readTextCommand(execFn, cmd, args) {
 }
 
 function fetchDefaultBranch(execFn) {
-	const repo = readJsonCommand(execFn, 'gh', ['repo', 'view', '--json', 'defaultBranchRef']);
+	const repo = readJsonCommand(execFn, 'gh', [
+		'repo',
+		'view',
+		'--json',
+		'defaultBranchRef',
+	]);
 	return repo?.defaultBranchRef?.name ?? null;
 }
 
 function fetchPrState(prNumber, execFn) {
 	try {
 		return readJsonCommand(execFn, 'gh', [
-			'pr', 'view', String(prNumber),
-			'--json', 'number,state,mergedAt,baseRefName,title,url',
+			'pr',
+			'view',
+			String(prNumber),
+			'--json',
+			'number,state,mergedAt,baseRefName,title,url',
 		]);
 	} catch (err) {
 		const message = normalizeGhErrorMessage(err);
-		if (/no pull requests found|could not resolve to a pull request|not found/i.test(message)) {
+		if (
+			/no pull requests found|could not resolve to a pull request|not found/i.test(
+				message,
+			)
+		) {
 			return { error: `PR not found: ${prNumber}` };
 		}
 		return { error: `gh pr view failed: ${message}` };
@@ -774,7 +981,8 @@ export function postMergeCheck(prNumber, { execFn = execFileSync } = {}) {
 		return { ok: false, error: pr.error, prNumber: String(prNumber) };
 	}
 
-	const merged = Boolean(pr.mergedAt) || String(pr.state).toUpperCase() === 'MERGED';
+	const merged =
+		Boolean(pr.mergedAt) || String(pr.state).toUpperCase() === 'MERGED';
 	if (!merged) {
 		return {
 			ok: true,
@@ -788,10 +996,17 @@ export function postMergeCheck(prNumber, { execFn = execFileSync } = {}) {
 
 	const defaultBranch = fetchDefaultBranch(execFn) ?? pr.baseRefName ?? null;
 	if (!defaultBranch) {
-		return { ok: false, error: 'default branch could not be determined', prNumber: String(prNumber) };
+		return {
+			ok: false,
+			error: 'default branch could not be determined',
+			prNumber: String(prNumber),
+		};
 	}
 
-	const currentBranch = readTextCommand(execFn, 'git', ['branch', '--show-current']);
+	const currentBranch = readTextCommand(execFn, 'git', [
+		'branch',
+		'--show-current',
+	]);
 	if (currentBranch !== defaultBranch) {
 		return {
 			ok: false,
@@ -837,7 +1052,11 @@ export function postMergeCheck(prNumber, { execFn = execFileSync } = {}) {
 		};
 	}
 
-	const headInfo = readTextCommand(execFn, 'git', ['log', '-1', '--format=%H%n%s']).split(/\r?\n/);
+	const headInfo = readTextCommand(execFn, 'git', [
+		'log',
+		'-1',
+		'--format=%H%n%s',
+	]).split(/\r?\n/);
 	const [sha = '', subject = ''] = headInfo;
 
 	return {
@@ -890,7 +1109,8 @@ export function extractStateOwnershipParagraph(skillText) {
 	if (typeof skillText !== 'string') return null;
 	const lines = skillText.split(/\r?\n/);
 	const headingIdx = lines.findIndex(
-		l => l.trim() === '## Mandatory dispatch inclusion: ticket-state ownership'
+		(l) =>
+			l.trim() === '## Mandatory dispatch inclusion: ticket-state ownership',
 	);
 	if (headingIdx === -1) return null;
 
@@ -917,7 +1137,9 @@ export function extractStateOwnershipParagraph(skillText) {
 export function extractWorktreeIsolationReminder(skillText) {
 	if (typeof skillText !== 'string') return null;
 	const lines = skillText.split(/\r?\n/);
-	const headingIdx = lines.findIndex(l => l.trim() === '## Security Baseline');
+	const headingIdx = lines.findIndex(
+		(l) => l.trim() === '## Security Baseline',
+	);
 	if (headingIdx === -1) return null;
 
 	let bulletStart = -1;
@@ -934,7 +1156,8 @@ export function extractWorktreeIsolationReminder(skillText) {
 	const bulletLines = [lines[bulletStart].replace(/^-\s+/, '')];
 	for (let i = bulletStart + 1; i < lines.length; i++) {
 		const line = lines[i];
-		if (line.trim() === '' || line.startsWith('- ') || line.startsWith('## ')) break;
+		if (line.trim() === '' || line.startsWith('- ') || line.startsWith('## '))
+			break;
 		bulletLines.push(line.trim());
 	}
 	return bulletLines.join(' ').trim();
@@ -953,11 +1176,14 @@ export function extractWorktreeIsolationReminder(skillText) {
  * Architect still adds task-specific instructions, anchors, and scope notes
  * (AC 2) — this command does not attempt to template the whole prompt.
  */
-export function dispatchContext(id, {
-	projectsRoot = DEFAULT_PROJECTS_ROOT,
-	skillsRoot = DEFAULT_SKILLS_ROOT,
-	fsMod = fs,
-} = {}) {
+export function dispatchContext(
+	id,
+	{
+		projectsRoot = DEFAULT_PROJECTS_ROOT,
+		skillsRoot = DEFAULT_SKILLS_ROOT,
+		fsMod = fs,
+	} = {},
+) {
 	const taskPath = resolveTaskPath(id, { projectsRoot, fsMod });
 	if (!taskPath || !fsMod.existsSync(taskPath)) {
 		return { ok: false, error: `task not found: ${id}` };
@@ -976,22 +1202,32 @@ export function dispatchContext(id, {
 		};
 	}
 
-	const automationFlowText = loadSkillContent(skillsRoot, 'task-automation-flow');
-	const stateOwnershipParagraph = extractStateOwnershipParagraph(automationFlowText);
+	const automationFlowText = loadSkillContent(
+		skillsRoot,
+		'task-automation-flow',
+	);
+	const stateOwnershipParagraph =
+		extractStateOwnershipParagraph(automationFlowText);
 	if (!stateOwnershipParagraph) {
 		return {
 			ok: false,
-			error: 'could not extract the ticket-state-ownership paragraph from task-automation-flow\'s SKILL.md — its heading/blockquote shape may have changed',
+			error:
+				"could not extract the ticket-state-ownership paragraph from task-automation-flow's SKILL.md — its heading/blockquote shape may have changed",
 			path: taskPath,
 		};
 	}
 
-	const agentFoundationsText = loadSkillContent(skillsRoot, 'agent-foundations');
-	const worktreeIsolationReminder = extractWorktreeIsolationReminder(agentFoundationsText);
+	const agentFoundationsText = loadSkillContent(
+		skillsRoot,
+		'agent-foundations',
+	);
+	const worktreeIsolationReminder =
+		extractWorktreeIsolationReminder(agentFoundationsText);
 	if (!worktreeIsolationReminder) {
 		return {
 			ok: false,
-			error: 'could not extract the worktree-isolation reminder from agent-foundations\'s SKILL.md Security Baseline — its shape may have changed',
+			error:
+				"could not extract the worktree-isolation reminder from agent-foundations's SKILL.md Security Baseline — its shape may have changed",
 			path: taskPath,
 		};
 	}
@@ -1026,7 +1262,11 @@ function ensureProjectHubNote(projectsRoot, project, taskFilenameNoExt, fsMod) {
 
 	if (!fsMod.existsSync(hubNotePath)) {
 		fsMod.mkdirSync(path.dirname(hubNotePath), { recursive: true });
-		fsMod.writeFileSync(hubNotePath, `# ${project}\n\n## Tasks\n\n${linkLine}\n`, 'utf-8');
+		fsMod.writeFileSync(
+			hubNotePath,
+			`# ${project}\n\n## Tasks\n\n${linkLine}\n`,
+			'utf-8',
+		);
 		return;
 	}
 
@@ -1061,13 +1301,18 @@ function ensureProjectHubNote(projectsRoot, project, taskFilenameNoExt, fsMod) {
  *    convention unchanged — filename carries the initial status's
  *    filename-infix token (`task_<id>_<token>_<slug>.md`). No hub note.
  */
-export function createTask(project, id, slug, {
-	fields = {},
-	body = '',
-	projectsRoot = DEFAULT_PROJECTS_ROOT,
-	isVaultShaped = false,
-	fsMod = fs,
-} = {}) {
+export function createTask(
+	project,
+	id,
+	slug,
+	{
+		fields = {},
+		body = '',
+		projectsRoot = DEFAULT_PROJECTS_ROOT,
+		isVaultShaped = false,
+		fsMod = fs,
+	} = {},
+) {
 	if (!project) return { ok: false, error: 'project is required' };
 	if (!id) return { ok: false, error: 'id is required' };
 	if (!slug) return { ok: false, error: 'slug is required' };
@@ -1082,7 +1327,9 @@ export function createTask(project, id, slug, {
 	}
 
 	const projectDir = path.join(projectsRoot, project);
-	const filenameNoExt = isVaultShaped ? `task_${id}_${slug}` : `task_${id}_${token}_${slug}`;
+	const filenameNoExt = isVaultShaped
+		? `task_${id}_${slug}`
+		: `task_${id}_${token}_${slug}`;
 	const taskPath = path.join(projectDir, `${filenameNoExt}.md`);
 
 	if (fsMod.existsSync(taskPath)) {
@@ -1165,7 +1412,10 @@ function parseCreateFlags(args) {
 
 	const skillsIdx = rest.indexOf('--skills');
 	if (skillsIdx !== -1) {
-		fields.skills = rest[skillsIdx + 1].split(',').map(s => s.trim()).filter(Boolean);
+		fields.skills = rest[skillsIdx + 1]
+			.split(',')
+			.map((s) => s.trim())
+			.filter(Boolean);
 		rest = [...rest.slice(0, skillsIdx), ...rest.slice(skillsIdx + 2)];
 	}
 
@@ -1201,7 +1451,8 @@ function parseTransitionFlags(args) {
  */
 export function extractProjectsRootFlag(argv) {
 	const idx = argv.indexOf('--projects-root');
-	if (idx === -1) return { present: false, projectsRoot: undefined, rest: argv };
+	if (idx === -1)
+		return { present: false, projectsRoot: undefined, rest: argv };
 	const value = argv[idx + 1];
 	const rest = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
 	return { present: true, projectsRoot: value, rest };
@@ -1224,15 +1475,29 @@ export function extractHubRootFlag(argv) {
 	return { present: true, hubRoot: value, rest };
 }
 
-export function runCli(argv, { fsMod = fs, execFn = execFileSync, cwd = process.cwd() } = {}) {
-	const { present: hubRootPresent, hubRoot: hubRootFlagValue, rest: afterHubRoot } = extractHubRootFlag(argv);
-	const { present, projectsRoot, rest: strippedArgv } = extractProjectsRootFlag(afterHubRoot);
+export function runCli(
+	argv,
+	{ fsMod = fs, execFn = execFileSync, cwd = process.cwd() } = {},
+) {
+	const {
+		present: hubRootPresent,
+		hubRoot: hubRootFlagValue,
+		rest: afterHubRoot,
+	} = extractHubRootFlag(argv);
+	const {
+		present,
+		projectsRoot,
+		rest: strippedArgv,
+	} = extractProjectsRootFlag(afterHubRoot);
 
 	// A `--projects-root` flag with no value, or a value that doesn't resolve
 	// to a real directory, is a clean error — not a silent fall-back to the
 	// cwd-relative default and not a partial write (AC 6).
 	if (present && (!projectsRoot || !fsMod.existsSync(projectsRoot))) {
-		return { ok: false, error: `--projects-root not found: ${projectsRoot ?? '(missing value)'}` };
+		return {
+			ok: false,
+			error: `--projects-root not found: ${projectsRoot ?? '(missing value)'}`,
+		};
 	}
 
 	// Default-root behavior: when neither flag is given AND a
@@ -1246,7 +1511,11 @@ export function runCli(argv, { fsMod = fs, execFn = execFileSync, cwd = process.
 	// `--projects-root` flag always wins over this default.
 	let effectiveHubRootPresent = hubRootPresent;
 	let hubRoot = hubRootFlagValue;
-	if (!present && !hubRootPresent && fsMod.existsSync(path.join(cwd, 'workspace.config.json'))) {
+	if (
+		!present &&
+		!hubRootPresent &&
+		fsMod.existsSync(path.join(cwd, 'workspace.config.json'))
+	) {
 		effectiveHubRootPresent = true;
 		hubRoot = cwd;
 	}
@@ -1264,11 +1533,17 @@ export function runCli(argv, { fsMod = fs, execFn = execFileSync, cwd = process.
 	// — only fall back to hub-derived resolution when it was NOT supplied.
 	if (!present && effectiveHubRootPresent) {
 		if (!hubRoot || !fsMod.existsSync(hubRoot)) {
-			return { ok: false, error: `--hub-root not found: ${hubRoot ?? '(missing value)'}` };
+			return {
+				ok: false,
+				error: `--hub-root not found: ${hubRoot ?? '(missing value)'}`,
+			};
 		}
 		const hubConfigPath = path.join(hubRoot, 'workspace.config.json');
 		if (!fsMod.existsSync(hubConfigPath)) {
-			return { ok: false, error: `--hub-root given but no workspace.config.json found under it: ${hubConfigPath}` };
+			return {
+				ok: false,
+				error: `--hub-root given but no workspace.config.json found under it: ${hubConfigPath}`,
+			};
 		}
 		const hubConfig = readJsonSafe(hubConfigPath, fsMod);
 		hubType = hubConfig?.hubType;
@@ -1290,7 +1565,10 @@ export function runCli(argv, { fsMod = fs, execFn = execFileSync, cwd = process.
 		case 'transition': {
 			const { github, rest: transitionArgs } = parseTransitionFlags(rest);
 			const frontmatterUpdates = github ? { github } : {};
-			output = transitionTask(transitionArgs[0], transitionArgs[1], { ...rootOpts, frontmatterUpdates });
+			output = transitionTask(transitionArgs[0], transitionArgs[1], {
+				...rootOpts,
+				frontmatterUpdates,
+			});
 			break;
 		}
 		case 'update-field':
@@ -1313,7 +1591,12 @@ export function runCli(argv, { fsMod = fs, execFn = execFileSync, cwd = process.
 		}
 		case 'qa-report': {
 			const { gapsPath, findingsPath } = parseQaReportFlags(rest);
-			output = qaReport(rest[0], rest[1], { gapsPath, findingsPath, execFn, ...rootOpts });
+			output = qaReport(rest[0], rest[1], {
+				gapsPath,
+				findingsPath,
+				execFn,
+				...rootOpts,
+			});
 			break;
 		}
 		case 'post-merge-check': {
@@ -1357,8 +1640,10 @@ function readStdinSync() {
 	}
 }
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	let output;

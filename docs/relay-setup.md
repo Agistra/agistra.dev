@@ -75,7 +75,7 @@ When `relay.primaryRuntime: "claude-code"` and `relay.autoDispatch: true` are se
 **Manual start** (Cursor, troubleshooting, or before hook is installed):
 
 ```bash
-npm run relay -- --hub D:/path/to/your/hub
+npm.cmd run relay -- --hub D:/path/to/your/hub
 ```
 
 From a **deployed hub** (the deploy pipeline copies the relay to `pipelines/deploy/relay/`):
@@ -144,7 +144,7 @@ Module reference: `pipelines/deploy/relay/README.md` in setchin-agent-profiles.
 | Symptom | Fix |
 | ------- | --- |
 | `relay MCP` doctor FAIL | Re-run `npm run setup`; confirm `mcpServers.relay` in Claude settings or `.cursor/mcp.json` |
-| `relay daemon` doctor WARN | Start `npm run relay -- --hub <hub>` |
+| `relay daemon` doctor WARN | Start `npm.cmd run relay -- --hub <hub>` |
 | MCP tools missing in session | Restart Claude/Cursor after setup |
 | Outbound works, inbound silent | Message must address Router (`Atlas, …` or `@bot`); see inbound runbook |
 | `pipelines/deploy/relay/mcp/server.js` not found on hub | Rerun the tier-specific deploy command to copy `pipelines/deploy/relay/` |

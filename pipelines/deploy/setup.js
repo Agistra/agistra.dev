@@ -33,7 +33,10 @@ import {
 	removeNightlyDreamingTask as removeNightlyDreamingTaskDefault,
 	isNightlyDreamingTaskRegistered as isNightlyDreamingTaskRegisteredDefault,
 } from './lib/nightly-dreaming.js';
-import { offerTaskCliPermissions as offerTaskCliPermissionsDefault, TASK_PERMISSION_CONFIG_KEY } from './lib/task-permission.js';
+import {
+	offerTaskCliPermissions as offerTaskCliPermissionsDefault,
+	TASK_PERMISSION_CONFIG_KEY,
+} from './lib/task-permission.js';
 import { ensureHubRootDepsInstalled as ensureHubRootDepsInstalledDefault } from './lib/hub-root-install.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -69,11 +72,15 @@ const __dirname = path.dirname(__filename);
  *   Defaults to this file's own lib/ dir (production). Overridable for testing.
  * @returns {Promise<void>}
  */
-export async function defaultSetupTierPlugin(opts, { libDir = path.join(__dirname, 'lib') } = {}) {
-	let pluginFiles = [];
+export async function defaultSetupTierPlugin(
+	opts,
+	{ libDir = path.join(__dirname, 'lib') } = {},
+) {
+	let pluginFiles;
 	try {
-		pluginFiles = fs.readdirSync(libDir)
-			.filter(f => f.endsWith('.setup-plugin.js'))
+		pluginFiles = fs
+			.readdirSync(libDir)
+			.filter((f) => f.endsWith('.setup-plugin.js'))
 			.sort();
 	} catch {
 		pluginFiles = [];
@@ -86,7 +93,13 @@ export async function defaultSetupTierPlugin(opts, { libDir = path.join(__dirnam
 // Source-repo agents/profiles/ dir, relative to this script's own location (not cliOutputRoot).
 // Present when running `npm run setup` from inside the setchin-agent-profiles repo itself.
 // Absent in a deployed hub (agents/profiles/ is a source-repo-only concept there).
-const SOURCE_PROFILES_ROOT = path.resolve(__dirname, '..', '..', 'agents', 'profiles');
+const SOURCE_PROFILES_ROOT = path.resolve(
+	__dirname,
+	'..',
+	'..',
+	'agents',
+	'profiles',
+);
 
 // ── Claude Code statusline (exported for testing) ──────────────────────────────
 
@@ -120,7 +133,9 @@ export const STATUSLINE_COMMAND_UNIX = `bash ~/.claude/${STATUSLINE_SCRIPT_FILEN
  * @returns {string}
  */
 export function resolveStatuslineScriptFilename(platform = process.platform) {
-	return platform === 'win32' ? STATUSLINE_SCRIPT_FILENAME_WINDOWS : STATUSLINE_SCRIPT_FILENAME_UNIX;
+	return platform === 'win32'
+		? STATUSLINE_SCRIPT_FILENAME_WINDOWS
+		: STATUSLINE_SCRIPT_FILENAME_UNIX;
 }
 
 /**
@@ -152,7 +167,11 @@ export function resolveStatuslineScriptSourcePath(platform = process.platform) {
  */
 export function buildStatuslineCommand(homeDir, platform = process.platform) {
 	if (platform === 'win32') {
-		const scriptPath = path.join(homeDir, '.claude', STATUSLINE_SCRIPT_FILENAME_WINDOWS);
+		const scriptPath = path.join(
+			homeDir,
+			'.claude',
+			STATUSLINE_SCRIPT_FILENAME_WINDOWS,
+		);
 		return `powershell -NoProfile -File "${scriptPath}"`;
 	}
 	return STATUSLINE_COMMAND_UNIX;
@@ -165,8 +184,14 @@ export function buildStatuslineCommand(homeDir, platform = process.platform) {
  * @param {NodeJS.Platform} [platform] Defaults to the real process.platform.
  * @returns {{type: 'command', command: string}}
  */
-export function buildStatuslineSettingsEntry(homeDir, platform = process.platform) {
-	return { type: 'command', command: buildStatuslineCommand(homeDir, platform) };
+export function buildStatuslineSettingsEntry(
+	homeDir,
+	platform = process.platform,
+) {
+	return {
+		type: 'command',
+		command: buildStatuslineCommand(homeDir, platform),
+	};
 }
 
 /**
@@ -180,11 +205,17 @@ export function buildStatuslineSettingsEntry(homeDir, platform = process.platfor
  * @param {NodeJS.Platform} [platform] Defaults to the real process.platform.
  * @returns {boolean}
  */
-export function isAgistraStatusline(statusLineEntry, homeDir, platform = process.platform) {
-	return !!statusLineEntry
-		&& typeof statusLineEntry === 'object'
-		&& statusLineEntry.type === 'command'
-		&& statusLineEntry.command === buildStatuslineCommand(homeDir, platform);
+export function isAgistraStatusline(
+	statusLineEntry,
+	homeDir,
+	platform = process.platform,
+) {
+	return (
+		!!statusLineEntry &&
+		typeof statusLineEntry === 'object' &&
+		statusLineEntry.type === 'command' &&
+		statusLineEntry.command === buildStatuslineCommand(homeDir, platform)
+	);
 }
 
 /**
@@ -215,22 +246,40 @@ export function isAgistraStatusline(statusLineEntry, homeDir, platform = process
  * @param {function(string): void} [opts.log]
  * @returns {Promise<{installed: boolean, skippedExisting?: boolean, refreshed?: boolean, error?: string}>}
  */
-export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSourcePath, platform = process.platform, log = (s) => process.stdout.write(s) }) {
+export async function maybeInstallStatusline({
+	askYN,
+	fsMod,
+	homeDir,
+	scriptSourcePath,
+	platform = process.platform,
+	log = (s) => process.stdout.write(s),
+}) {
 	const claudeDir = path.join(homeDir, '.claude');
 	const settingsPath = path.join(claudeDir, 'settings.json');
-	const scriptTargetPath = path.join(claudeDir, resolveStatuslineScriptFilename(platform));
+	const scriptTargetPath = path.join(
+		claudeDir,
+		resolveStatuslineScriptFilename(platform),
+	);
 
 	// A settings file that does not parse is never rewritten: it would lose every
 	// other key the user has in it. Skip the install and say why.
 	const settingsRead = readSettingsForMerge(settingsPath, { fsMod });
 	if (settingsRead.status === 'unusable') {
-		const reason = unusableSettingsMessage(settingsPath, settingsRead.reason, 'The statusline was not installed.');
+		const reason = unusableSettingsMessage(
+			settingsPath,
+			settingsRead.reason,
+			'The statusline was not installed.',
+		);
 		log(`  WARNING: ${reason}\n`);
 		return { installed: false, error: reason };
 	}
 	const existingSettings = settingsRead.settings;
 	const existingStatusLine = existingSettings?.statusLine;
-	const alreadyInstalledByThisMechanism = isAgistraStatusline(existingStatusLine, homeDir, platform);
+	const alreadyInstalledByThisMechanism = isAgistraStatusline(
+		existingStatusLine,
+		homeDir,
+		platform,
+	);
 
 	// Already installed by this exact mechanism on a prior `npm run setup` run —
 	// skip the initial install prompt entirely and go straight to a silent
@@ -249,7 +298,9 @@ export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSour
 				false,
 			);
 			if (!overwrite) {
-				log('  Skipping statusline install — existing statusLine command left untouched.\n');
+				log(
+					'  Skipping statusline install — existing statusLine command left untouched.\n',
+				);
 				return { installed: false, skippedExisting: true };
 			}
 		}
@@ -259,7 +310,9 @@ export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSour
 	try {
 		scriptSource = fsMod.readFileSync(scriptSourcePath, 'utf-8');
 	} catch (err) {
-		log(`  WARNING: could not read the statusline script (${err.message}) — skipping install.\n`);
+		log(
+			`  WARNING: could not read the statusline script (${err.message}) — skipping install.\n`,
+		);
 		return { installed: false, error: err.message };
 	}
 
@@ -269,10 +322,19 @@ export async function maybeInstallStatusline({ askYN, fsMod, homeDir, scriptSour
 	// improvements reach the customer on a later `npm run setup` re-run.
 	fsMod.writeFileSync(scriptTargetPath, scriptSource, 'utf-8');
 
-	const updatedSettings = { ...(existingSettings ?? {}), statusLine: buildStatuslineSettingsEntry(homeDir, platform) };
-	fsMod.writeFileSync(settingsPath, stringifySettings(updatedSettings, settingsRead.indent, 2), 'utf-8');
+	const updatedSettings = {
+		...(existingSettings ?? {}),
+		statusLine: buildStatuslineSettingsEntry(homeDir, platform),
+	};
+	fsMod.writeFileSync(
+		settingsPath,
+		stringifySettings(updatedSettings, settingsRead.indent, 2),
+		'utf-8',
+	);
 
-	log(`  Statusline ${alreadyInstalledByThisMechanism ? 'refreshed' : 'installed'} → ${scriptTargetPath}\n`);
+	log(
+		`  Statusline ${alreadyInstalledByThisMechanism ? 'refreshed' : 'installed'} → ${scriptTargetPath}\n`,
+	);
 	return { installed: true, refreshed: alreadyInstalledByThisMechanism };
 }
 
@@ -324,7 +386,12 @@ export function readHubConfig(deployDir = __dirname) {
  * @param {function(string): void} deps.warn        Writer for warning lines (e.g. process.stdout.write).
  * @returns {Promise<string>} the resolved hubType to store.
  */
-export async function resolveHubType({ prevHubType, packagedHubType, askYN, warn }) {
+export async function resolveHubType({
+	prevHubType,
+	packagedHubType,
+	askYN,
+	warn,
+}) {
 	if (!prevHubType) {
 		// First run (or an unparsable/absent previous config) — trust the
 		// packaged sentinel if present, else fall back to the free "dev" tier.
@@ -339,14 +406,16 @@ export async function resolveHubType({ prevHubType, packagedHubType, askYN, warn
 	// tier. Never silently let either value win — warn and ask.
 	warn(
 		`\n  WARNING: stored hub type "${prevHubType}" does not match this package's hub type "${packagedHubType}".\n` +
-		'  This can happen if an old workspace.config.json survived from a previous setup in this same directory.\n',
+			'  This can happen if an old workspace.config.json survived from a previous setup in this same directory.\n',
 	);
 	const acceptPackaged = await askYN(
 		`Correct hubType to the packaged value ("${packagedHubType}")?`,
 		true,
 	);
 	if (acceptPackaged) return packagedHubType;
-	warn(`  Keeping stored hubType "${prevHubType}". Re-run setup later if this was unintentional.\n`);
+	warn(
+		`  Keeping stored hubType "${prevHubType}". Re-run setup later if this was unintentional.\n`,
+	);
 	return prevHubType;
 }
 
@@ -494,14 +563,17 @@ export function buildPersonalisationContent(config) {
 		}
 
 		if (rt.telegram) {
-			lines.push('- **Telegram bot token:** see workspace.config.json → remoteTeam.telegram.botToken');
+			lines.push(
+				'- **Telegram bot token:** see workspace.config.json → remoteTeam.telegram.botToken',
+			);
 		}
 	}
 
 	return lines.join('\n');
 }
 
-const GENERATED_HEADER = '<!-- Generated by setup.js — do not edit manually -->';
+const GENERATED_HEADER =
+	'<!-- Generated by setup.js — do not edit manually -->';
 
 /**
  * Generate .cursor/rules/workspace-identity.mdc for the given workspace root.
@@ -523,7 +595,11 @@ export function generateCursorIdentity(root, config) {
 	const body = buildPersonalisationContent(config);
 	const content = `${GENERATED_HEADER}\n${frontmatter}\n\n${body}\n`;
 
-	fs.writeFileSync(path.join(rulesDir, 'workspace-identity.mdc'), content, 'utf-8');
+	fs.writeFileSync(
+		path.join(rulesDir, 'workspace-identity.mdc'),
+		content,
+		'utf-8',
+	);
 }
 
 /**
@@ -539,7 +615,11 @@ export function generateGithubCopilotInstructions(root, config) {
 	const body = buildPersonalisationContent(config);
 	const content = `${GENERATED_HEADER}\n\n${body}\n`;
 
-	fs.writeFileSync(path.join(githubDir, 'copilot-instructions.md'), content, 'utf-8');
+	fs.writeFileSync(
+		path.join(githubDir, 'copilot-instructions.md'),
+		content,
+		'utf-8',
+	);
 }
 
 // ── Token sentinel (exported for testing) ─────────────────────────────────────
@@ -604,6 +684,15 @@ export const TOKEN_SENTINEL = '[token set — press Enter to keep]';
  *   TTY on both stdin and stdout never adds permission rules or records a decline.
  * @param {boolean} [deps.askPermissions]
  *   Ask about the task-CLI rules again even after a recorded decline (--ask-permissions).
+ * @param {object} [deps.cliArgs]
+ *   Raw parsed CLI flags (see parseCliArgs() below), forwarded verbatim into every
+ *   discovered tier plugin's opts as `cliArgs` — a generic passthrough, deliberately
+ *   never destructured or named here. This is how a tier plugin's own non-interactive
+ *   flags (e.g. an enable/disable pair for one of that plugin's own opt-in features)
+ *   reach the plugin's run() without setup.js itself ever naming that flag or the
+ *   feature it controls — unlike tierPluginPort/hubType below, which setup.js's own
+ *   generic wiring needs by value and so names explicitly. Defaults to {} so callers
+ *   that never pass cliArgs behave exactly as before this parameter existed.
  * @returns {function(): Promise<void>}
  */
 export function createRun({
@@ -617,6 +706,7 @@ export function createRun({
 	readHubConfig: readHubConfigFn = readHubConfig,
 	setupTierPlugin = defaultSetupTierPlugin,
 	tierPluginPort,
+	cliArgs = {},
 	platform = process.platform,
 	registerNightlyDreamingTask = registerNightlyDreamingTaskDefault,
 	removeNightlyDreamingTask = removeNightlyDreamingTaskDefault,
@@ -663,13 +753,18 @@ export function createRun({
 
 		// ── Prompts ────────────────────────────────────────────────────────────────
 
-		process.stdout.write('\n╔══════════════════════════════════════════════╗\n');
+		process.stdout.write(
+			'\n╔══════════════════════════════════════════════╗\n',
+		);
 		process.stdout.write('║           Agent Workspace Setup              ║\n');
 		process.stdout.write('╚══════════════════════════════════════════════╝\n');
 
 		line('You ');
 		const userName = await ask('Your name', prev.user?.name ?? '');
-		const userRole = await ask('Your role (e.g. Technical Lead)', prev.user?.role ?? 'Technical Lead');
+		const userRole = await ask(
+			'Your role (e.g. Technical Lead)',
+			prev.user?.role ?? 'Technical Lead',
+		);
 
 		line('Organisation ');
 		const orgName = await ask('Organisation or team name', prev.org ?? '');
@@ -680,39 +775,69 @@ export function createRun({
 		const agents = {};
 		for (const id of agentIds) {
 			const prevDisplayName = prevAgents[id]?.displayName ?? '';
-			const displayName = await ask(`Display name for ${id} (optional)`, prevDisplayName);
+			const displayName = await ask(
+				`Display name for ${id} (optional)`,
+				prevDisplayName,
+			);
 			if (displayName) {
 				agents[id] = { displayName };
 			}
 		}
 
 		line('Remote team ');
-		const hasRemoteTeam = await askYN('Do you work with a remote team?', prevRemoteTeam.enabled === true);
+		const hasRemoteTeam = await askYN(
+			'Do you work with a remote team?',
+			prevRemoteTeam.enabled === true,
+		);
 
 		let remoteTeam = { enabled: false };
 		let telegramMcp = null;
 		if (hasRemoteTeam) {
-			const remoteTeamName = await ask('Remote team name', prevRemoteTeam.name ?? 'Remote Team');
-			const remoteAgentName = await ask('Remote agent name', prevRemoteTeam.agentName ?? 'Remote Agent');
+			const remoteTeamName = await ask(
+				'Remote team name',
+				prevRemoteTeam.name ?? 'Remote Team',
+			);
+			const remoteAgentName = await ask(
+				'Remote agent name',
+				prevRemoteTeam.agentName ?? 'Remote Agent',
+			);
 			const hasTelegram = await askYN(
 				'Does the remote team use Telegram?',
 				prevRemoteTeam.telegram != null,
 			);
 			if (hasTelegram) {
-				const telegramHandle = await ask('Telegram bot handle (e.g. @mybot)', prevTgHandle);
+				const telegramHandle = await ask(
+					'Telegram bot handle (e.g. @mybot)',
+					prevTgHandle,
+				);
 				const tokenDefault = prevBotToken ? TOKEN_SENTINEL : '';
-				const tokenAnswer = await ask('Telegram bot token (from @BotFather)', tokenDefault);
-				const telegramToken = tokenAnswer === TOKEN_SENTINEL ? prevBotToken : tokenAnswer;
-				const telegramGroupId = await ask('Relay group ID (e.g. -1001234567890)', prevTgGroupId);
+				const tokenAnswer = await ask(
+					'Telegram bot token (from @BotFather)',
+					tokenDefault,
+				);
+				const telegramToken =
+					tokenAnswer === TOKEN_SENTINEL ? prevBotToken : tokenAnswer;
+				const telegramGroupId = await ask(
+					'Relay group ID (e.g. -1001234567890)',
+					prevTgGroupId,
+				);
 				remoteTeam = {
 					enabled: true,
 					name: remoteTeamName,
 					agentName: remoteAgentName,
 					telegram: { handle: telegramHandle },
 				};
-				telegramMcp = { enabled: true, bot_token: telegramToken, relay_group_id: telegramGroupId };
+				telegramMcp = {
+					enabled: true,
+					bot_token: telegramToken,
+					relay_group_id: telegramGroupId,
+				};
 			} else {
-				remoteTeam = { enabled: true, name: remoteTeamName, agentName: remoteAgentName };
+				remoteTeam = {
+					enabled: true,
+					name: remoteTeamName,
+					agentName: remoteAgentName,
+				};
 			}
 		}
 
@@ -734,9 +859,7 @@ export function createRun({
 						'  Install it with:  winget install --id GitHub.cli --source winget\n',
 					);
 				} else if (platform === 'darwin') {
-					process.stdout.write(
-						'  Install it with:  brew install gh\n',
-					);
+					process.stdout.write('  Install it with:  brew install gh\n');
 				} else {
 					process.stdout.write(
 						'  Install instructions for your platform: https://github.com/cli/cli/blob/trunk/docs/install_linux.md\n',
@@ -758,12 +881,18 @@ export function createRun({
 
 		if (platforms.cursor) {
 			line('Cursor ');
-			configureCursor = await askYN('Generate Cursor workspace identity rule?', true);
+			configureCursor = await askYN(
+				'Generate Cursor workspace identity rule?',
+				true,
+			);
 		}
 
 		if (platforms.github) {
 			line('GitHub ');
-			configureGithub = await askYN('Generate GitHub Copilot instructions?', true);
+			configureGithub = await askYN(
+				'Generate GitHub Copilot instructions?',
+				true,
+			);
 		}
 
 		let relayBlock = { ...prevRelay };
@@ -842,18 +971,26 @@ export function createRun({
 			// wrote via registerProject() (pipelines/deploy/lib/bootstrap.js).
 			...(prev.projects ? { projects: prev.projects } : {}),
 			// Preserve a recorded task-CLI permission decline across re-runs of setup.
-			...(prev[TASK_PERMISSION_CONFIG_KEY] ? { [TASK_PERMISSION_CONFIG_KEY]: prev[TASK_PERMISSION_CONFIG_KEY] } : {}),
+			...(prev[TASK_PERMISSION_CONFIG_KEY]
+				? { [TASK_PERMISSION_CONFIG_KEY]: prev[TASK_PERMISSION_CONFIG_KEY] }
+				: {}),
 		};
 
 		fsMod.mkdirSync(cliOutputRoot, { recursive: true });
-		fsMod.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+		fsMod.writeFileSync(
+			configPath,
+			JSON.stringify(config, null, 2) + '\n',
+			'utf-8',
+		);
 
 		// Warn if .gitignore does not cover the config file
 		const gitignorePath = path.join(cliOutputRoot, '.gitignore');
 		let gitignoreCovers = false;
 		if (fsMod.existsSync(gitignorePath)) {
 			const gi = fsMod.readFileSync(gitignorePath, 'utf-8');
-			gitignoreCovers = gi.split('\n').some(l => l.trim() === 'workspace.config.json');
+			gitignoreCovers = gi
+				.split('\n')
+				.some((l) => l.trim() === 'workspace.config.json');
 		}
 
 		// Wire relay MCP into detected platform configs
@@ -863,7 +1000,11 @@ export function createRun({
 				...(platforms.cursor ? ['cursor'] : []),
 			];
 			line('Relay MCP ');
-			const { wrote, skipped = [] } = wireRelayMcp({ config, workspaceRoot: cliOutputRoot, targets });
+			const { wrote, skipped = [] } = wireRelayMcp({
+				config,
+				workspaceRoot: cliOutputRoot,
+				targets,
+			});
 			if (wrote.length > 0) {
 				for (const f of wrote) process.stdout.write(`  MCP wired → ${f}\n`);
 			}
@@ -871,13 +1012,29 @@ export function createRun({
 				process.stdout.write(`  WARNING: ${message}\n`);
 			}
 			if (platforms.claude) {
-				const settingsPath = path.join(cliOutputRoot, '.claude', 'settings.json');
-				const read = readSettingsForMerge(settingsPath, { fsMod, expect: SETTINGS_SHAPE.sessionStartHook });
+				const settingsPath = path.join(
+					cliOutputRoot,
+					'.claude',
+					'settings.json',
+				);
+				const read = readSettingsForMerge(settingsPath, {
+					fsMod,
+					expect: SETTINGS_SHAPE.sessionStartHook,
+				});
 				if (read.status === 'unusable') {
-					process.stdout.write(`  WARNING: ${unusableSettingsMessage(settingsPath, read.reason, 'The relay autostart hook was not added.')}\n`);
+					process.stdout.write(
+						`  WARNING: ${unusableSettingsMessage(settingsPath, read.reason, 'The relay autostart hook was not added.')}\n`,
+					);
 				} else {
-					const existing = read.settings ?? { enableAllProjectMcpServers: true };
-					writeJsonSafe(settingsPath, mergeRelaySessionStartHook(existing), fsMod, read.indent);
+					const existing = read.settings ?? {
+						enableAllProjectMcpServers: true,
+					};
+					writeJsonSafe(
+						settingsPath,
+						mergeRelaySessionStartHook(existing),
+						fsMod,
+						read.indent,
+					);
 					process.stdout.write(`  Relay autostart hook → ${settingsPath}\n`);
 				}
 			}
@@ -919,6 +1076,11 @@ export function createRun({
 			hubType: config.hubType,
 			readJsonSafe: (p) => readJsonSafe(p, fsMod),
 			writeJsonSafe: (p, v) => writeJsonSafe(p, v, fsMod),
+			// Generic passthrough of every raw CLI flag this run was invoked with — see
+			// createRun()'s own doc comment on cliArgs above. setup.js never inspects or
+			// names any specific flag inside this object; only a tier plugin's own run()
+			// interprets whichever flag names are its concern.
+			cliArgs,
 		};
 
 		if (config.hubType === 'dev:sub') {
@@ -980,13 +1142,14 @@ export function createRun({
 			line('Nightly dreaming (Windows only) ');
 			process.stdout.write(
 				'  Nightly dreaming runs "Good night Team" automatically every night via a\n' +
-				'  Windows Scheduled Task, so end-of-day memory consolidation does not depend\n' +
-				'  on remembering to say it. Off by default; you can turn it off again at any\n' +
-				'  time (npm run setup -- --disable-nightly-dreaming, or decline here).\n',
+					'  Windows Scheduled Task, so end-of-day memory consolidation does not depend\n' +
+					'  on remembering to say it. Off by default; you can turn it off again at any\n' +
+					'  time (npm.cmd run setup -- --disable-nightly-dreaming, or decline here).\n',
 			);
 			const prevNightlyDreaming = prev.nightlyDreaming ?? {};
 			const prevNightlyEnabled = prevNightlyDreaming.enabled === true;
-			const prevNightlyTaskName = prevNightlyDreaming.taskName ?? NIGHTLY_DREAMING_TASK_NAME;
+			const prevNightlyTaskName =
+				prevNightlyDreaming.taskName ?? NIGHTLY_DREAMING_TASK_NAME;
 			// Presence-check before prompting: if the wizard's own record already says
 			// nightly dreaming is enabled AND the live Windows Scheduled Task is confirmed
 			// still registered, this run is a true no-op re-run — skip the interactive
@@ -999,7 +1162,9 @@ export function createRun({
 
 			let nightlyDreaming;
 			if (prevNightlyEnabled && liveTaskRegistered) {
-				process.stdout.write(`  Nightly dreaming already enabled — task ${prevNightlyTaskName} is registered.\n`);
+				process.stdout.write(
+					`  Nightly dreaming already enabled — task ${prevNightlyTaskName} is registered.\n`,
+				);
 				nightlyDreaming = { enabled: true, taskName: prevNightlyTaskName };
 			} else {
 				const enableNightlyDreaming = await askYN(
@@ -1013,18 +1178,29 @@ export function createRun({
 					// overwrite a first hub's already-registered task. See
 					// computeNightlyDreamingTaskName's doc comment in lib/nightly-dreaming.js.
 					const taskName = computeNightlyDreamingTaskName(cliOutputRoot);
-					const result = registerNightlyDreamingTask({ hubRoot: cliOutputRoot, taskName });
+					const result = registerNightlyDreamingTask({
+						hubRoot: cliOutputRoot,
+						taskName,
+					});
 					if (result.ok) {
-						process.stdout.write(`  Nightly Scheduled Task registered (${taskName}).\n`);
+						process.stdout.write(
+							`  Nightly Scheduled Task registered (${taskName}).\n`,
+						);
 						nightlyDreaming = { enabled: true, taskName };
 					} else {
-						process.stdout.write(`  WARNING: could not register the nightly Scheduled Task: ${result.error}\n`);
-						process.stdout.write('  Setup will continue — re-run npm run setup to retry.\n');
+						process.stdout.write(
+							`  WARNING: could not register the nightly Scheduled Task: ${result.error}\n`,
+						);
+						process.stdout.write(
+							'  Setup will continue — re-run npm run setup to retry.\n',
+						);
 						nightlyDreaming = { enabled: false };
 					}
 				} else {
 					if (prevNightlyEnabled) {
-						const removeResult = removeNightlyDreamingTask({ taskName: prevNightlyTaskName });
+						const removeResult = removeNightlyDreamingTask({
+							taskName: prevNightlyTaskName,
+						});
 						if (removeResult.ok) {
 							process.stdout.write('  Nightly Scheduled Task removed.\n');
 						} else {
@@ -1040,7 +1216,11 @@ export function createRun({
 			const onDisk = fsMod.existsSync(configPath)
 				? JSON.parse(fsMod.readFileSync(configPath, 'utf-8'))
 				: config;
-			fsMod.writeFileSync(configPath, JSON.stringify({ ...onDisk, nightlyDreaming }, null, 2) + '\n', 'utf-8');
+			fsMod.writeFileSync(
+				configPath,
+				JSON.stringify({ ...onDisk, nightlyDreaming }, null, 2) + '\n',
+				'utf-8',
+			);
 		}
 
 		line('Done ');
@@ -1048,23 +1228,35 @@ export function createRun({
 
 		if (configureCursor) {
 			generateCursorIdentity(cliOutputRoot, config);
-			process.stdout.write(`  Cursor identity → ${path.join(cliOutputRoot, '.cursor', 'rules', 'workspace-identity.mdc')}\n`);
+			process.stdout.write(
+				`  Cursor identity → ${path.join(cliOutputRoot, '.cursor', 'rules', 'workspace-identity.mdc')}\n`,
+			);
 		}
 
 		if (configureGithub) {
 			generateGithubCopilotInstructions(cliOutputRoot, config);
-			process.stdout.write(`  GitHub Copilot → ${path.join(cliOutputRoot, '.github', 'copilot-instructions.md')}\n`);
+			process.stdout.write(
+				`  GitHub Copilot → ${path.join(cliOutputRoot, '.github', 'copilot-instructions.md')}\n`,
+			);
 		}
 
 		if (!gitignoreCovers) {
-			process.stdout.write('\n  WARNING: workspace.config.json is not listed in .gitignore.\n');
-			process.stdout.write('  Add the following line to prevent committing personal config:\n\n');
+			process.stdout.write(
+				'\n  WARNING: workspace.config.json is not listed in .gitignore.\n',
+			);
+			process.stdout.write(
+				'  Add the following line to prevent committing personal config:\n\n',
+			);
 			process.stdout.write('    workspace.config.json\n');
 		}
 
 		if (!remoteTeam.enabled) {
-			process.stdout.write('\n  Remote team disabled — Router will run in minimal mode.\n');
-			process.stdout.write('  Re-run setup and enable remote team to unlock relay skills.\n');
+			process.stdout.write(
+				'\n  Remote team disabled — Router will run in minimal mode.\n',
+			);
+			process.stdout.write(
+				'  Re-run setup and enable remote team to unlock relay skills.\n',
+			);
 		}
 
 		process.stdout.write('\n');
@@ -1098,7 +1290,9 @@ export function runDisableNightlyDreaming({
 	log = (s) => process.stdout.write(s),
 }) {
 	if (platform !== 'win32') {
-		log('Nightly dreaming is Windows-only — nothing to disable on this platform.\n');
+		log(
+			'Nightly dreaming is Windows-only — nothing to disable on this platform.\n',
+		);
 		return { ok: true, skipped: true };
 	}
 	const result = removeTask({ taskName });
@@ -1109,7 +1303,9 @@ export function runDisableNightlyDreaming({
 				: 'Nightly dreaming Scheduled Task was not registered — nothing to remove.\n',
 		);
 	} else {
-		log(`ERROR: could not remove nightly dreaming Scheduled Task: ${result.error}\n`);
+		log(
+			`ERROR: could not remove nightly dreaming Scheduled Task: ${result.error}\n`,
+		);
 	}
 
 	const configPath = path.join(cliOutputRoot, 'workspace.config.json');
@@ -1118,7 +1314,11 @@ export function runDisableNightlyDreaming({
 			const cfg = JSON.parse(fsMod.readFileSync(configPath, 'utf-8'));
 			if (cfg.nightlyDreaming) {
 				cfg.nightlyDreaming.enabled = false;
-				fsMod.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + '\n', 'utf-8');
+				fsMod.writeFileSync(
+					configPath,
+					JSON.stringify(cfg, null, 2) + '\n',
+					'utf-8',
+				);
 			}
 		} catch {
 			// Unparseable/unreadable config — never block the disable flow on this.
@@ -1141,7 +1341,7 @@ export function parseCliArgs(argv) {
 			}
 			const key = arg.slice(2);
 			const next = argv[i + 1];
-			result[key] = (next && !next.startsWith('--')) ? next : true;
+			result[key] = next && !next.startsWith('--') ? next : true;
 			if (next && !next.startsWith('--')) i++;
 		}
 	}
@@ -1150,7 +1350,9 @@ export function parseCliArgs(argv) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	const cliArgs = parseCliArgs(process.argv.slice(2));
-	const cliOutputRoot = cliArgs.output ? path.resolve(cliArgs.output) : path.resolve('.');
+	const cliOutputRoot = cliArgs.output
+		? path.resolve(cliArgs.output)
+		: path.resolve('.');
 
 	if (cliArgs['disable-nightly-dreaming']) {
 		const result = runDisableNightlyDreaming({ cliOutputRoot });
@@ -1161,12 +1363,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 	function ask(question, defaultValue = '') {
 		const hint = defaultValue ? ` [${defaultValue}]` : '';
-		return rl.question(`${question}${hint}: `).then(a => a.trim() || defaultValue);
+		return rl
+			.question(`${question}${hint}: `)
+			.then((a) => a.trim() || defaultValue);
 	}
 
 	function askYN(question, defaultYes = false) {
 		const hint = defaultYes ? ' [Y/n]' : ' [y/N]';
-		return rl.question(`${question}${hint}: `).then(a => {
+		return rl.question(`${question}${hint}: `).then((a) => {
 			const v = a.trim().toLowerCase();
 			if (!v) return defaultYes;
 			return v === 'y' || v === 'yes';
@@ -1181,7 +1385,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		const hasMasking = typeof rl._writeToOutput === 'function';
 		if (!hasMasking) {
 			// Fallback: no masking hook available — still don't log the value anywhere.
-			return rl.question(prompt).then(a => a.trim());
+			return rl.question(prompt).then((a) => a.trim());
 		}
 		const originalWrite = rl._writeToOutput.bind(rl);
 		let promptWritten = false;
@@ -1197,7 +1401,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 			}
 			// Suppress echo of typed characters.
 		};
-		return rl.question(prompt).then(answer => {
+		return rl.question(prompt).then((answer) => {
 			rl._writeToOutput = originalWrite;
 			return answer.trim();
 		});
@@ -1210,15 +1414,24 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 	const tierPluginPort = cliArgs['tier-plugin-port'];
 	const run = createRun({
-		ask, askYN, askSecret, line, fsMod: fs, cliOutputRoot, tierPluginPort,
+		ask,
+		askYN,
+		askSecret,
+		line,
+		fsMod: fs,
+		cliOutputRoot,
+		tierPluginPort,
+		cliArgs,
 		askPermissions: Boolean(cliArgs['ask-permissions']),
 	});
 
-	run().then(() => {
-		rl.close();
-	}).catch(err => {
-		rl.close();
-		process.stderr.write(err.message + '\n');
-		process.exit(1);
-	});
+	run()
+		.then(() => {
+			rl.close();
+		})
+		.catch((err) => {
+			rl.close();
+			process.stderr.write(err.message + '\n');
+			process.exit(1);
+		});
 }

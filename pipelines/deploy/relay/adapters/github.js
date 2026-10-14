@@ -14,7 +14,9 @@ export function parseTrackingIssue(ref) {
 	const trimmed = (ref ?? '').trim();
 	const match = trimmed.match(TRACKING_ISSUE_RE);
 	if (!match) {
-		throw new Error('tracking issue must be owner/repo#N (e.g. Agistra/setchin-agent-profiles#60)');
+		throw new Error(
+			'tracking issue must be owner/repo#N (e.g. Agistra/setchin-agent-profiles#60)',
+		);
 	}
 	return {
 		owner: match[1],
@@ -37,7 +39,9 @@ export function buildInboundComment(job) {
 	if (job.pr) lines.push(`- pr: ${job.pr}`);
 	if (job.branch) lines.push(`- branch: ${job.branch}`);
 	if (job.requested_action) lines.push(`- action: ${job.requested_action}`);
-	lines.push(`- raw: ${(job.raw_text ?? '').replace(/\n/g, ' ').slice(0, 500)}`);
+	lines.push(
+		`- raw: ${(job.raw_text ?? '').replace(/\n/g, ' ').slice(0, 500)}`,
+	);
 	return lines.join('\n');
 }
 
@@ -46,7 +50,9 @@ export function buildInboundComment(job) {
  * @returns {boolean}
  */
 export function shouldNotifyGithub(config) {
-	return config.primaryRuntime === 'github' && Boolean(config.githubTrackingIssue);
+	return (
+		config.primaryRuntime === 'github' && Boolean(config.githubTrackingIssue)
+	);
 }
 
 /**
@@ -58,7 +64,12 @@ export function shouldNotifyGithub(config) {
  * @param {string} [options.token] GITHUB_TOKEN — falls back to process.env.GITHUB_TOKEN
  * @param {typeof fetch} [options.fetchFn]
  */
-export async function postInboundComment({ job, config, token, fetchFn = fetch }) {
+export async function postInboundComment({
+	job,
+	config,
+	token,
+	fetchFn = fetch,
+}) {
 	const authToken = token ?? process.env.GITHUB_TOKEN;
 	if (!authToken) {
 		throw new Error('GITHUB_TOKEN is required to post GitHub relay comments');
@@ -67,7 +78,9 @@ export async function postInboundComment({ job, config, token, fetchFn = fetch }
 		throw new Error('relay.github.trackingIssue is not configured');
 	}
 
-	const { owner, repo, issueNumber } = parseTrackingIssue(config.githubTrackingIssue);
+	const { owner, repo, issueNumber } = parseTrackingIssue(
+		config.githubTrackingIssue,
+	);
 	const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
 	const body = buildInboundComment(job);
 

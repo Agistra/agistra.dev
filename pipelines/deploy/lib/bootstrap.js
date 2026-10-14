@@ -101,7 +101,10 @@ export function isBootstrapPending(workspaceRoot, fsMod = fs) {
  * @param {string} [options.version] Version override (for tests).
  * @returns {object} The updated config object that was written to disk.
  */
-export function markBootstrapCompleted(workspaceRoot, { fsMod = fs, completedAt, version } = {}) {
+export function markBootstrapCompleted(
+	workspaceRoot,
+	{ fsMod = fs, completedAt, version } = {},
+) {
 	const configPath = path.join(workspaceRoot, 'workspace.config.json');
 	const existing = readWorkspaceConfig(workspaceRoot, fsMod) ?? {};
 	const updated = {
@@ -112,7 +115,11 @@ export function markBootstrapCompleted(workspaceRoot, { fsMod = fs, completedAt,
 		},
 	};
 	fsMod.mkdirSync(workspaceRoot, { recursive: true });
-	fsMod.writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(
+		configPath,
+		JSON.stringify(updated, null, 2) + '\n',
+		'utf-8',
+	);
 	return updated;
 }
 
@@ -133,7 +140,11 @@ export function resetBootstrap(workspaceRoot, fsMod = fs) {
 		bootstrap: { completedAt: null, version: readPackageVersion(fsMod) },
 	};
 	fsMod.mkdirSync(workspaceRoot, { recursive: true });
-	fsMod.writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(
+		configPath,
+		JSON.stringify(updated, null, 2) + '\n',
+		'utf-8',
+	);
 	return updated;
 }
 
@@ -155,7 +166,10 @@ export function resetBootstrap(workspaceRoot, fsMod = fs) {
  * @param {number} [options.exitCode] Exit code of the doctor run.
  * @returns {object} The updated config object that was written to disk.
  */
-export function markDoctorRun(workspaceRoot, { fsMod = fs, ranAt, exitCode } = {}) {
+export function markDoctorRun(
+	workspaceRoot,
+	{ fsMod = fs, ranAt, exitCode } = {},
+) {
 	const configPath = path.join(workspaceRoot, 'workspace.config.json');
 	const existing = readWorkspaceConfig(workspaceRoot, fsMod) ?? {};
 	const updated = {
@@ -166,7 +180,11 @@ export function markDoctorRun(workspaceRoot, { fsMod = fs, ranAt, exitCode } = {
 		},
 	};
 	fsMod.mkdirSync(workspaceRoot, { recursive: true });
-	fsMod.writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(
+		configPath,
+		JSON.stringify(updated, null, 2) + '\n',
+		'utf-8',
+	);
 	return updated;
 }
 
@@ -189,7 +207,11 @@ export function setHubType(workspaceRoot, hubType, fsMod = fs) {
 		hubType,
 	};
 	fsMod.mkdirSync(workspaceRoot, { recursive: true });
-	fsMod.writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(
+		configPath,
+		JSON.stringify(updated, null, 2) + '\n',
+		'utf-8',
+	);
 	return updated;
 }
 
@@ -213,7 +235,12 @@ export function setHubType(workspaceRoot, hubType, fsMod = fs) {
  *   project was already registered, in which case the unchanged existing
  *   config is returned without a write).
  */
-export function registerProject(workspaceRoot, projectName, fields, fsMod = fs) {
+export function registerProject(
+	workspaceRoot,
+	projectName,
+	fields,
+	fsMod = fs,
+) {
 	const configPath = path.join(workspaceRoot, 'workspace.config.json');
 	const existing = readWorkspaceConfig(workspaceRoot, fsMod) ?? {};
 	if (existing.projects?.[projectName]) {
@@ -227,7 +254,11 @@ export function registerProject(workspaceRoot, projectName, fields, fsMod = fs) 
 		},
 	};
 	fsMod.mkdirSync(workspaceRoot, { recursive: true });
-	fsMod.writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(
+		configPath,
+		JSON.stringify(updated, null, 2) + '\n',
+		'utf-8',
+	);
 	return updated;
 }
 
@@ -261,7 +292,8 @@ export function hasValidVerdictLine(text) {
 	// Match status values with hyphen-aware boundaries (not just word boundaries).
 	// Longest-first to avoid "ready" matching inside "ready-with-warnings".
 	// (?<![\w-]) and (?![\w-]) prevent partial matches within compound words.
-	const statusRegex = /(?<![\w-])(ready-with-warnings|ready|blocked)(?![\w-])/gi;
+	const statusRegex =
+		/(?<![\w-])(ready-with-warnings|ready|blocked)(?![\w-])/gi;
 
 	for (const line of lines) {
 		if (!/verdict/i.test(line)) continue;
@@ -297,9 +329,11 @@ export function hasValidVerdictLine(text) {
  */
 export function checkBootstrapReport(hubRoot, hubType, fsMod = fs) {
 	const expected = bootstrapReportPaths(hubType);
-	const ok = expected.some(rel => {
+	const ok = expected.some((rel) => {
 		try {
-			return hasValidVerdictLine(fsMod.readFileSync(path.join(hubRoot, rel), 'utf-8'));
+			return hasValidVerdictLine(
+				fsMod.readFileSync(path.join(hubRoot, rel), 'utf-8'),
+			);
 		} catch {
 			return false;
 		}
@@ -321,14 +355,17 @@ export function checkBootstrapReport(hubRoot, hubType, fsMod = fs) {
 // skip-setup path only ever fills an unset value, it never reconciles a
 // disagreement).
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	const outputIdx = process.argv.indexOf('--output');
-	const hubRoot = outputIdx !== -1
-		? path.resolve(process.argv[outputIdx + 1])
-		: process.cwd();
+	const hubRoot =
+		outputIdx !== -1
+			? path.resolve(process.argv[outputIdx + 1])
+			: process.cwd();
 
 	if (process.argv.includes('--reset')) {
 		const reset = resetBootstrap(hubRoot);
@@ -342,7 +379,10 @@ if (isMain) {
 		: readHubConfig(path.join(hubRoot, 'pipelines', 'deploy'))?.hubType;
 
 	if (!process.argv.includes('--force')) {
-		const gate = checkBootstrapReport(hubRoot, existing?.hubType ?? sentinelHubType);
+		const gate = checkBootstrapReport(
+			hubRoot,
+			existing?.hubType ?? sentinelHubType,
+		);
 		if (!gate.ok) {
 			process.stderr.write(
 				`bootstrap.js refused: no shared bootstrap report containing a verdict line (ready, ready-with-warnings or blocked) at ${gate.expected.join(' or ')}; run the Bootstrap Self-Check protocol (agent-foundations skill) and write the report first.\n`,

@@ -51,13 +51,23 @@ export function buildPortablePrompt(profileDir, skillsRoot, declaredSkills) {
 	// has no skills/ directory to read them from on demand.
 	const normalizedSkills = normalizeSkillList(declaredSkills)
 		.filter(({ optional }) => !optional)
-		.filter(({ hubType, requiresGraphify }) => skillShipsToHubType(hubType, null, { requiresGraphify, withGraphify: false }));
+		.filter(({ hubType, requiresGraphify }) =>
+			skillShipsToHubType(hubType, null, {
+				requiresGraphify,
+				withGraphify: false,
+			}),
+		);
 
 	const sections = [openingLines.join('\n\n'), soulBody];
 
 	if (normalizedSkills.length > 0) {
 		const skillLines = normalizedSkills.map(({ name }) => `- ${name}`);
-		sections.push(['Behavioral disciplines you follow (source: setchin-agent-profiles skills):', ...skillLines].join('\n'));
+		sections.push(
+			[
+				'Behavioral disciplines you follow (source: setchin-agent-profiles skills):',
+				...skillLines,
+			].join('\n'),
+		);
 	}
 
 	// Normalize to LF for cross-platform consistency

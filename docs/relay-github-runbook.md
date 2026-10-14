@@ -6,7 +6,7 @@ GitHub Copilot can use the same **relay MCP** as Claude/Cursor once wired in rep
 
 ## Prerequisites
 
-- Relay daemon running: `npm run relay -- --hub <hub-path>`
+- Relay daemon running: `npm.cmd run relay -- --hub <hub-path>`
 - `workspace.config.json` configured via setup wizard:
   - `relay.github.trackingIssue`: `owner/repo#N`
   - `relay.primaryRuntime`: `github` (when GitHub is the only agent platform)
@@ -65,7 +65,7 @@ Invoke-RestMethod http://127.0.0.1:17391/outbound -Method Post `
 When `.github/agents/` is detected and remote team is enabled:
 
 ```bash
-npm run setup -- --output <hub-path>
+npm.cmd run setup -- --output <hub-path>
 ```
 
 Prompts for `Relay tracking issue (owner/repo#N)` and writes `relay.github.trackingIssue`.

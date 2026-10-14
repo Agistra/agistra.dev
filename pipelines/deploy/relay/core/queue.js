@@ -41,8 +41,9 @@ export class InboundQueue {
 	 * @returns {InboundJob | null}
 	 */
 	peekNext() {
-		const pending = this._listByStatus('pending')
-			.sort((a, b) => a.received_at.localeCompare(b.received_at));
+		const pending = this._listByStatus('pending').sort((a, b) =>
+			a.received_at.localeCompare(b.received_at),
+		);
 		if (pending.length === 0) return null;
 		const job = { ...pending[0], status: 'processing' };
 		this._writeJob(job);
@@ -70,10 +71,10 @@ export class InboundQueue {
 	stats() {
 		const all = this._listAll();
 		return {
-			pending: all.filter(j => j.status === 'pending').length,
-			processing: all.filter(j => j.status === 'processing').length,
-			done: all.filter(j => j.status === 'done').length,
-			failed: all.filter(j => j.status === 'failed').length,
+			pending: all.filter((j) => j.status === 'pending').length,
+			processing: all.filter((j) => j.status === 'processing').length,
+			done: all.filter((j) => j.status === 'done').length,
+			failed: all.filter((j) => j.status === 'failed').length,
 		};
 	}
 
@@ -87,8 +88,9 @@ export class InboundQueue {
 	resetStaleProcessing(processingTimeoutMs) {
 		const now = Date.now();
 		const stale = this._listAll().filter(
-			j => j.status === 'processing'
-				&& now - new Date(j.received_at).getTime() > processingTimeoutMs,
+			(j) =>
+				j.status === 'processing' &&
+				now - new Date(j.received_at).getTime() > processingTimeoutMs,
 		);
 		for (const job of stale) {
 			this._writeJob({ ...job, status: 'pending' });
@@ -108,8 +110,9 @@ export class InboundQueue {
 	pruneOldDone(olderThanMs) {
 		const now = Date.now();
 		const old = this._listAll().filter(
-			j => j.status === 'done'
-				&& now - new Date(j.received_at).getTime() > olderThanMs,
+			(j) =>
+				j.status === 'done' &&
+				now - new Date(j.received_at).getTime() > olderThanMs,
 		);
 		let count = 0;
 		for (const job of old) {
@@ -136,7 +139,11 @@ export class InboundQueue {
 	}
 
 	_writeJob(job) {
-		this.fsMod.writeFileSync(this._jobPath(job.id), JSON.stringify(job, null, 2) + '\n', 'utf-8');
+		this.fsMod.writeFileSync(
+			this._jobPath(job.id),
+			JSON.stringify(job, null, 2) + '\n',
+			'utf-8',
+		);
 	}
 
 	_readJob(id) {
@@ -151,11 +158,14 @@ export class InboundQueue {
 
 	_listAll() {
 		if (!this.fsMod.existsSync(this.inboxDir)) return [];
-		return this.fsMod.readdirSync(this.inboxDir)
-			.filter(f => f.endsWith('.json'))
-			.map(f => {
+		return this.fsMod
+			.readdirSync(this.inboxDir)
+			.filter((f) => f.endsWith('.json'))
+			.map((f) => {
 				try {
-					return JSON.parse(this.fsMod.readFileSync(path.join(this.inboxDir, f), 'utf-8'));
+					return JSON.parse(
+						this.fsMod.readFileSync(path.join(this.inboxDir, f), 'utf-8'),
+					);
 				} catch {
 					return null;
 				}
@@ -164,6 +174,6 @@ export class InboundQueue {
 	}
 
 	_listByStatus(status) {
-		return this._listAll().filter(j => j.status === status);
+		return this._listAll().filter((j) => j.status === status);
 	}
 }

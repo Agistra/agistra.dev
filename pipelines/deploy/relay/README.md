@@ -19,7 +19,7 @@ Future channels (e.g. Slack) add `pipelines/deploy/relay/slack-relay/` implement
 ## Quick start
 
 1. **Setup:** `npm run setup` in hub — wires `mcpServers.relay` + `workspace.config.json`
-2. **Daemon:** from profiles repo `npm run relay -- --hub <hub>` — or from deployed hub `npm run relay`
+2. **Daemon:** from profiles repo `npm.cmd run relay -- --hub <hub>` — or from deployed hub `npm run relay`
 3. **Verify:** `npm run doctor` — relay MCP + telegram config; WARN if daemon not running
 4. **Docs:** `docs/relay-setup.md` in hub after deploy
 
@@ -27,7 +27,7 @@ Future channels (e.g. Slack) add `pipelines/deploy/relay/slack-relay/` implement
 
 | Command | Where | Purpose |
 | ------- | ----- | ------- |
-| `npm run relay -- --hub <hub>` | setchin-agent-profiles | Start telegram-relay daemon |
+| `npm.cmd run relay -- --hub <hub>` | setchin-agent-profiles | Start telegram-relay daemon |
 | `npm run relay` | deployed hub | Start daemon (`--hub .`) |
 | `npm run relay:status` | either | GET `/health` on daemon port |
 | `npm run doctor` | hub | Config checks including relay MCP |

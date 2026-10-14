@@ -42,8 +42,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseFrontmatter, filenameInfix, statusToInfix, doneTasksDir, droppedTasksDir } from './tasks.js';
-import { resolveTasksRoot, isVaultBackedHubType } from './memory-root.js';
+import {
+	parseFrontmatter,
+	filenameInfix,
+	statusToInfix,
+	doneTasksDir,
+	droppedTasksDir,
+} from './tasks.js';
+import { resolveTasksRoot } from './memory-root.js';
 import { readJsonSafe } from '../wizard.js';
 
 /**
@@ -94,8 +100,8 @@ const STALE_OPEN_INFIXES = ['qa-passed', 'done'];
 
 /**
  * Extract an owner/repo + issue number from a `github:` frontmatter value.
- * Accepts a full issue URL (e.g. https://github.com/owner/repo/issues/123)
- * or the short form `owner/repo#123`. A bare number is deliberately not
+ * Accepts a full issue URL (e.g. https://github.com/owner/repo/issues/<n>)
+ * or the short form `owner/repo#<n>`. A bare number is deliberately not
  * resolvable: it carries no repository.
  * Returns null if the value matches neither form.
  */
@@ -104,13 +110,23 @@ export function parseGithubIssueRef(value) {
 	const text = String(value);
 	const urlMatch = text.match(/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/);
 	if (urlMatch) {
-		return { owner: urlMatch[1], repo: urlMatch[2], number: parseInt(urlMatch[3], 10) };
+		return {
+			owner: urlMatch[1],
+			repo: urlMatch[2],
+			number: parseInt(urlMatch[3], 10),
+		};
 	}
 	// The leading boundary keeps the tail of a longer URL (`.../repo#5` after a
 	// slash) from being read as `owner/repo#5`.
-	const shortMatch = text.match(/(?:^|[\s`'"(<])([\w.-]+)\/([\w.-]+)#(\d+)(?![\w])/);
+	const shortMatch = text.match(
+		/(?:^|[\s`'"(<])([\w.-]+)\/([\w.-]+)#(\d+)(?![\w])/,
+	);
 	if (shortMatch) {
-		return { owner: shortMatch[1], repo: shortMatch[2], number: parseInt(shortMatch[3], 10) };
+		return {
+			owner: shortMatch[1],
+			repo: shortMatch[2],
+			number: parseInt(shortMatch[3], 10),
+		};
 	}
 	return null;
 }
@@ -123,16 +139,24 @@ export function parseGithubIssueRef(value) {
  * @param {function} [execFn] Injectable exec (defaults to execFileSync).
  */
 export function fetchIssueState(ref, execFn = execFileSync) {
-	const out = execFn('gh', [
-		'issue', 'view', String(ref.number),
-		'--repo', `${ref.owner}/${ref.repo}`,
-		'--json', 'labels,state,stateReason',
-	], { encoding: 'utf-8' });
+	const out = execFn(
+		'gh',
+		[
+			'issue',
+			'view',
+			String(ref.number),
+			'--repo',
+			`${ref.owner}/${ref.repo}`,
+			'--json',
+			'labels,state,stateReason',
+		],
+		{ encoding: 'utf-8' },
+	);
 	const data = JSON.parse(out);
 	return {
 		state: data.state,
 		stateReason: data.stateReason ?? null,
-		labels: (data.labels || []).map(l => l.name),
+		labels: (data.labels || []).map((l) => l.name),
 	};
 }
 
@@ -144,7 +168,7 @@ export function fetchIssueState(ref, execFn = execFileSync) {
  */
 export function scanTaskFiles(tasksDir, fsMod = fs) {
 	if (!fsMod.existsSync(tasksDir)) return [];
-	const files = fsMod.readdirSync(tasksDir).filter(f => f.endsWith('.md'));
+	const files = fsMod.readdirSync(tasksDir).filter((f) => f.endsWith('.md'));
 	const results = [];
 	for (const file of files) {
 		const filePath = path.join(tasksDir, file);
@@ -191,7 +215,11 @@ export function readWorkspaceConfig(hubRoot, fsMod = fs) {
  * therefore not resolvable by this function and is not flagged as drift — see
  * `detectMissingTrackerRefs` below.
  */
-export function resolveKnownGithubRepo({ workspaceConfig, projectName, existingRefs }) {
+export function resolveKnownGithubRepo({
+	workspaceConfig,
+	projectName,
+	existingRefs,
+}) {
 	const declared = workspaceConfig?.projects?.[projectName]?.githubRepo;
 	if (declared) return declared;
 	if (existingRefs.length > 0) {
@@ -233,12 +261,17 @@ export function resolveKnownGithubRepo({ workspaceConfig, projectName, existingR
  * @param {object} [options.fsMod]
  * @returns {Array<{file:string, description:string}>}
  */
-export function detectMissingTrackerRefs({ tasksDir, projectName, workspaceConfig, fsMod = fs }) {
+export function detectMissingTrackerRefs({
+	tasksDir,
+	projectName,
+	workspaceConfig,
+	fsMod = fs,
+}) {
 	if (workspaceConfig?.githubWorkflows?.enabled !== true) return [];
 	if (!fsMod.existsSync(tasksDir)) return [];
 
-	const files = fsMod.readdirSync(tasksDir).filter(f => f.endsWith('.md'));
-	const parsed = files.map(file => {
+	const files = fsMod.readdirSync(tasksDir).filter((f) => f.endsWith('.md'));
+	const parsed = files.map((file) => {
 		const raw = fsMod.readFileSync(path.join(tasksDir, file), 'utf-8');
 		const { meta } = parseFrontmatter(raw);
 		return { file, meta };
@@ -248,7 +281,11 @@ export function detectMissingTrackerRefs({ tasksDir, projectName, workspaceConfi
 		.map(({ meta }) => parseGithubIssueRef(meta.github))
 		.filter(Boolean);
 
-	const knownRepo = resolveKnownGithubRepo({ workspaceConfig, projectName, existingRefs });
+	const knownRepo = resolveKnownGithubRepo({
+		workspaceConfig,
+		projectName,
+		existingRefs,
+	});
 	if (!knownRepo) return [];
 
 	const drifts = [];
@@ -277,7 +314,7 @@ export function detectMissingTrackerRefs({ tasksDir, projectName, workspaceConfi
 export function detectEntryDrift(entry, issueState) {
 	const { file, meta } = entry;
 	const localStatus = meta.status;
-	const stateLabels = issueState.labels.filter(l => l.startsWith('state:'));
+	const stateLabels = issueState.labels.filter((l) => l.startsWith('state:'));
 
 	// Shape 1: status/label mismatch (only meaningful when at least one state:* label present)
 	if (stateLabels.length > 0 && !stateLabels.includes(localStatus)) {
@@ -299,7 +336,11 @@ export function detectEntryDrift(entry, issueState) {
 
 	// Shape 4: stale-todo — filename infix says pre-dispatch but the GitHub issue
 	// is already CLOSED/COMPLETED. Inverse of stale-open.
-	if (PRE_DISPATCH_INFIXES.includes(infix) && issueState.state === 'CLOSED' && issueState.stateReason === 'COMPLETED') {
+	if (
+		PRE_DISPATCH_INFIXES.includes(infix) &&
+		issueState.state === 'CLOSED' &&
+		issueState.stateReason === 'COMPLETED'
+	) {
 		return `${file}: filename infix "${infix}" but GitHub issue is CLOSED/COMPLETED (stale-todo)`;
 	}
 
@@ -328,7 +369,13 @@ export function detectEntryDrift(entry, issueState) {
  * @param {function} [options.fetchIssue] Injectable (ref) => {state, labels}. Defaults to fetchIssueState.
  * @returns {Array<{file:string, description:string}>}
  */
-export function runDriftCheck({ tasksDir, projectName, workspaceConfig = null, fsMod = fs, fetchIssue = (ref) => fetchIssueState(ref) }) {
+export function runDriftCheck({
+	tasksDir,
+	projectName,
+	workspaceConfig = null,
+	fsMod = fs,
+	fetchIssue = (ref) => fetchIssueState(ref),
+}) {
 	const entries = scanTaskFiles(tasksDir, fsMod);
 	const drifts = [];
 	for (const entry of entries) {
@@ -336,7 +383,10 @@ export function runDriftCheck({ tasksDir, projectName, workspaceConfig = null, f
 		try {
 			issueState = fetchIssue(entry.githubRef);
 		} catch (err) {
-			drifts.push({ file: entry.file, description: `${entry.file}: could not fetch GitHub issue state (${err.message})` });
+			drifts.push({
+				file: entry.file,
+				description: `${entry.file}: could not fetch GitHub issue state (${err.message})`,
+			});
 			continue;
 		}
 		const description = detectEntryDrift(entry, issueState);
@@ -346,7 +396,14 @@ export function runDriftCheck({ tasksDir, projectName, workspaceConfig = null, f
 	}
 
 	if (projectName) {
-		drifts.push(...detectMissingTrackerRefs({ tasksDir, projectName, workspaceConfig, fsMod }));
+		drifts.push(
+			...detectMissingTrackerRefs({
+				tasksDir,
+				projectName,
+				workspaceConfig,
+				fsMod,
+			}),
+		);
 	}
 
 	return drifts;
@@ -375,7 +432,8 @@ export const DEFAULT_TASKS_DIR = 'projects/setchin-agent-profiles';
  */
 export function extractProjectsRootFlag(argv) {
 	const idx = argv.indexOf('--projects-root');
-	if (idx === -1) return { present: false, projectsRoot: undefined, rest: argv };
+	if (idx === -1)
+		return { present: false, projectsRoot: undefined, rest: argv };
 	const value = argv[idx + 1];
 	const rest = [...argv.slice(0, idx), ...argv.slice(idx + 2)];
 	return { present: true, projectsRoot: value, rest };
@@ -403,7 +461,12 @@ export function extractHubRootFlag(argv) {
  * hubRoot is the hub root (for workspace.config.json reads), and hubType is
  * derived from workspace.config.json when --hub-root is used (may be undefined).
  */
-export function resolveTasksRootPath({ projectsRootFlag, hubRootFlag, cwd = process.cwd(), fsMod = fs } = {}) {
+export function resolveTasksRootPath({
+	projectsRootFlag,
+	hubRootFlag,
+	cwd = process.cwd(),
+	fsMod = fs,
+} = {}) {
 	if (projectsRootFlag) {
 		if (!fsMod.existsSync(projectsRootFlag)) {
 			throw new Error(`--projects-root not found: ${projectsRootFlag}`);
@@ -417,7 +480,9 @@ export function resolveTasksRootPath({ projectsRootFlag, hubRootFlag, cwd = proc
 		}
 		const hubConfigPath = path.join(hubRootFlag, 'workspace.config.json');
 		if (!fsMod.existsSync(hubConfigPath)) {
-			throw new Error(`--hub-root given but no workspace.config.json found under it: ${hubConfigPath}`);
+			throw new Error(
+				`--hub-root given but no workspace.config.json found under it: ${hubConfigPath}`,
+			);
 		}
 		const hubConfig = readJsonSafe(hubConfigPath, fsMod);
 		const hubType = hubConfig?.hubType;
@@ -443,9 +508,11 @@ export function countTaskFilesInRoot(tasksDir, fsMod = fs) {
 
 	// Count files in root directory
 	try {
-		const rootFiles = fsMod.readdirSync(tasksDir).filter(f => f.endsWith('.md'));
+		const rootFiles = fsMod
+			.readdirSync(tasksDir)
+			.filter((f) => f.endsWith('.md'));
 		count += rootFiles.length;
-	} catch (err) {
+	} catch {
 		// Directory not readable or doesn't exist
 	}
 
@@ -453,10 +520,12 @@ export function countTaskFilesInRoot(tasksDir, fsMod = fs) {
 	const doneDir = doneTasksDir(tasksDir);
 	try {
 		if (fsMod.existsSync(doneDir)) {
-			const doneFiles = fsMod.readdirSync(doneDir).filter(f => f.endsWith('.md'));
+			const doneFiles = fsMod
+				.readdirSync(doneDir)
+				.filter((f) => f.endsWith('.md'));
 			count += doneFiles.length;
 		}
-	} catch (err) {
+	} catch {
 		// Directory not readable
 	}
 
@@ -464,10 +533,12 @@ export function countTaskFilesInRoot(tasksDir, fsMod = fs) {
 	const droppedDir = droppedTasksDir(tasksDir);
 	try {
 		if (fsMod.existsSync(droppedDir)) {
-			const droppedFiles = fsMod.readdirSync(droppedDir).filter(f => f.endsWith('.md'));
+			const droppedFiles = fsMod
+				.readdirSync(droppedDir)
+				.filter((f) => f.endsWith('.md'));
 			count += droppedFiles.length;
 		}
-	} catch (err) {
+	} catch {
 		// Directory not readable
 	}
 
@@ -476,8 +547,10 @@ export function countTaskFilesInRoot(tasksDir, fsMod = fs) {
 
 // ── CLI entry point ────────────────────────────────────────────────────────────
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	// Legacy --tasks-dir flag support (deprecated in favor of --projects-root/--hub-root)
@@ -488,17 +561,24 @@ if (isMain) {
 		const tasksDirValue = process.argv[legacyTasksDirIdx + 1];
 		argv = argv.filter((v, i) => {
 			const globalIdx = i + 2; // argv starts at index 2
-			return globalIdx !== legacyTasksDirIdx && globalIdx !== legacyTasksDirIdx + 1;
+			return (
+				globalIdx !== legacyTasksDirIdx && globalIdx !== legacyTasksDirIdx + 1
+			);
 		});
 		argv = ['--projects-root', tasksDirValue, ...argv];
 	}
 
-	const { present: hubRootPresent, hubRoot: hubRootFlag, rest: afterHubRoot } = extractHubRootFlag(argv);
-	const { present: projectsRootPresent, projectsRoot: projectsRootFlag } = extractProjectsRootFlag(afterHubRoot);
+	const {
+		present: hubRootPresent,
+		hubRoot: hubRootFlag,
+		rest: afterHubRoot,
+	} = extractHubRootFlag(argv);
+	const { present: projectsRootPresent, projectsRoot: projectsRootFlag } =
+		extractProjectsRootFlag(afterHubRoot);
 
-	let tasksDir, hubRoot, hubType;
+	let tasksDir, hubRoot;
 	try {
-		({ tasksDir, hubRoot, hubType } = resolveTasksRootPath({
+		({ tasksDir, hubRoot } = resolveTasksRootPath({
 			projectsRootFlag: projectsRootPresent ? projectsRootFlag : undefined,
 			hubRootFlag: hubRootPresent ? hubRootFlag : undefined,
 		}));
@@ -512,9 +592,7 @@ if (isMain) {
 
 	// Exit non-zero if no task files found at the resolved root
 	if (taskFileCount === 0) {
-		process.stderr.write(
-			`Warning: no task files found in ${tasksDir}\n`
-		);
+		process.stderr.write(`Warning: no task files found in ${tasksDir}\n`);
 		process.exit(1);
 	}
 

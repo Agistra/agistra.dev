@@ -20,7 +20,7 @@ From the profiles repo (reads config from the hub):
 
 ```powershell
 cd D:\dev\setchin-agent-profiles
-npm run relay -- --hub D:/dev/agistra.dev
+npm.cmd run relay -- --hub D:/dev/agistra.dev
 ```
 
 Verify health:
@@ -40,8 +40,8 @@ Redeploy agents after these relay tools land so Router's manifest includes them:
 
 ```bash
 # Use your hub's tier-specific deploy command
-npm run deploy:ops -- --output <hub-path>
-# or npm run deploy:dev:sub -- --output <hub-path>
+npm.cmd run deploy:ops -- --output <hub-path>
+# or npm.cmd run deploy:dev:sub -- --output <hub-path>
 ```
 
 ### 3. Dispatch Router with a valid state transition

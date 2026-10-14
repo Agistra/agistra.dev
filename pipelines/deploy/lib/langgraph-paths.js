@@ -19,7 +19,11 @@ import path from 'node:path';
  * Relative path (from outputRoot/hubRoot) of the directory generated prompt
  * artifacts are written to.
  */
-export const LANGGRAPH_GENERATED_DIR = path.join('runtime', 'langgraph', 'generated');
+export const LANGGRAPH_GENERATED_DIR = path.join(
+	'runtime',
+	'langgraph',
+	'generated',
+);
 
 /**
  * Relative path (from outputRoot/hubRoot) of the runtime source directory

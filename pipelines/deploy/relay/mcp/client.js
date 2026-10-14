@@ -18,13 +18,17 @@ export function createRelayClient({ hubRoot, fetchFn = fetch, fsMod = fs }) {
 		try {
 			response = await fetchFn(`${baseUrl}${urlPath}`, {
 				method,
-				headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+				headers:
+					body !== undefined
+						? { 'Content-Type': 'application/json' }
+						: undefined,
 				body: body !== undefined ? JSON.stringify(body) : undefined,
 			});
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			throw new Error(
-				`relay daemon not reachable at ${baseUrl} — start with: npm run relay -- --hub ${hubRoot} (${msg})`,
+				`relay daemon not reachable at ${baseUrl} — start with: npm.cmd run relay -- --hub ${hubRoot} (${msg})`,
+				{ cause: err },
 			);
 		}
 
@@ -32,7 +36,9 @@ export function createRelayClient({ hubRoot, fetchFn = fetch, fsMod = fs }) {
 		try {
 			data = await response.json();
 		} catch {
-			throw new Error(`relay daemon returned non-JSON response (${response.status})`);
+			throw new Error(
+				`relay daemon returned non-JSON response (${response.status})`,
+			);
 		}
 
 		if (!response.ok || data.ok === false) {
@@ -46,6 +52,6 @@ export function createRelayClient({ hubRoot, fetchFn = fetch, fsMod = fs }) {
 		send: ({ text, reply_to_message_id }) =>
 			request('POST', '/outbound', { text, reply_to_message_id }),
 		inboxPeek: () => request('GET', '/inbox/next'),
-		inboxAck: job_id => request('POST', '/inbox/ack', { job_id }),
+		inboxAck: (job_id) => request('POST', '/inbox/ack', { job_id }),
 	};
 }

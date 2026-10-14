@@ -16,10 +16,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { CLAUDE_SETTINGS_PATH, readJsonSafe, readSettingsForMerge } from './wizard.js';
+import {
+	CLAUDE_SETTINGS_PATH,
+	readJsonSafe,
+	readSettingsForMerge,
+} from './wizard.js';
 import { resolveRouterModel, parseProfileModel } from './lib/models.js';
 import { scaffoldMemoryFile } from './lib/memory-scaffold.js';
-import { resolveMemoryRootSegment, resolveTasksRootSegment } from './lib/memory-root.js';
+import {
+	resolveMemoryRootSegment,
+	resolveTasksRootSegment,
+} from './lib/memory-root.js';
 import {
 	isNightlyDreamingTaskRegistered,
 	NIGHTLY_DREAMING_TASK_NAME,
@@ -27,12 +34,24 @@ import {
 	findMostRecentArchiveDate,
 } from './lib/nightly-dreaming.js';
 import { markDoctorRun } from './lib/bootstrap.js';
-import { discoverProfileDirs, readAgentManifest, readProfileIdentity } from './lib/profiles.js';
+import {
+	discoverProfileDirs,
+	readAgentManifest,
+	readProfileIdentity,
+} from './lib/profiles.js';
 import { buildPortablePrompt } from './lib/compose-portable-prompt.js';
 import { normalise } from './lib/validate-utils.js';
-import { LANGGRAPH_RUNTIME_DIR, LANGGRAPH_GENERATED_DIR, langGraphArtifactFileName } from './lib/langgraph-paths.js';
+import {
+	LANGGRAPH_RUNTIME_DIR,
+	LANGGRAPH_GENERATED_DIR,
+	langGraphArtifactFileName,
+} from './lib/langgraph-paths.js';
 import { checkHubRootDepsCurrent } from './lib/hub-root-install.js';
-import { readTaskPermissionState, TASK_PERMISSION_STATES, detectPartialTaskCliRules } from './lib/task-permission.js';
+import {
+	readTaskPermissionState,
+	TASK_PERMISSION_STATES,
+	detectPartialTaskCliRules,
+} from './lib/task-permission.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -64,49 +83,80 @@ function checkWorkspaceConfig({ hubRoot, fsMod }) {
 	if (fsMod.existsSync(p)) {
 		return pass(1, 'workspace config', 'workspace.config.json found');
 	}
-	return fail(1, 'workspace config', 'workspace.config.json not found',
-		'run: npm run setup');
+	return fail(
+		1,
+		'workspace config',
+		'workspace.config.json not found',
+		'run: npm run setup',
+	);
 }
 
 function checkGitignore({ hubRoot, fsMod }) {
 	const p = path.join(hubRoot, '.gitignore');
 	if (!fsMod.existsSync(p)) {
-		return fail(2, '.gitignore entries', '.gitignore not found',
-			'rerun the tier-specific deploy command');
+		return fail(
+			2,
+			'.gitignore entries',
+			'.gitignore not found',
+			'rerun the tier-specific deploy command',
+		);
 	}
 	const content = fsMod.readFileSync(p, 'utf-8');
-	const lines = content.split('\n').map(l => l.trim());
+	const lines = content.split('\n').map((l) => l.trim());
 	const missing = [];
-	if (!lines.includes('workspace.config.json')) missing.push('workspace.config.json');
-	if (!lines.includes('.claude/settings.local.json')) missing.push('.claude/settings.local.json');
-	if (!lines.includes('workspace-identity.mdc')) missing.push('workspace-identity.mdc');
-	if (!lines.includes('copilot-instructions.md')) missing.push('copilot-instructions.md');
+	if (!lines.includes('workspace.config.json'))
+		missing.push('workspace.config.json');
+	if (!lines.includes('.claude/settings.local.json'))
+		missing.push('.claude/settings.local.json');
+	if (!lines.includes('workspace-identity.mdc'))
+		missing.push('workspace-identity.mdc');
+	if (!lines.includes('copilot-instructions.md'))
+		missing.push('copilot-instructions.md');
 	if (missing.length === 0) {
 		return pass(2, '.gitignore entries', 'all personal files covered');
 	}
-	return fail(2, '.gitignore entries', `missing entries: ${missing.join(', ')}`,
-		'rerun the tier-specific deploy command');
+	return fail(
+		2,
+		'.gitignore entries',
+		`missing entries: ${missing.join(', ')}`,
+		'rerun the tier-specific deploy command',
+	);
 }
 
 function checkGitattributes({ hubRoot, fsMod }) {
 	const p = path.join(hubRoot, '.gitattributes');
 	if (!fsMod.existsSync(p)) {
-		return fail(3, '.gitattributes', '.gitattributes not found',
-			'rerun the tier-specific deploy command');
+		return fail(
+			3,
+			'.gitattributes',
+			'.gitattributes not found',
+			'rerun the tier-specific deploy command',
+		);
 	}
 	const content = fsMod.readFileSync(p, 'utf-8');
 	const missing = [];
-	if (!/memory\/\*\.md\s+(?:\S+[ \t]+)*merge=ours/.test(content)) missing.push('memory/*.md merge=ours');
-	if (!/.cursor\/rules\/workspace-identity\.mdc\s+(?:\S+[ \t]+)*merge=ours/.test(content)) {
+	if (!/memory\/\*\.md\s+(?:\S+[ \t]+)*merge=ours/.test(content))
+		missing.push('memory/*.md merge=ours');
+	if (
+		!/.cursor\/rules\/workspace-identity\.mdc\s+(?:\S+[ \t]+)*merge=ours/.test(
+			content,
+		)
+	) {
 		missing.push('.cursor/rules/workspace-identity.mdc merge=ours');
 	}
-	if (!/tools\/\*\.sh\s+(?:text\s+)?eol=lf/.test(content)) missing.push('tools/*.sh eol=lf');
-	if (!/tools\/\*\.txt\s+(?:text\s+)?eol=lf/.test(content)) missing.push('tools/*.txt eol=lf');
+	if (!/tools\/\*\.sh\s+(?:text\s+)?eol=lf/.test(content))
+		missing.push('tools/*.sh eol=lf');
+	if (!/tools\/\*\.txt\s+(?:text\s+)?eol=lf/.test(content))
+		missing.push('tools/*.txt eol=lf');
 	if (missing.length === 0) {
 		return pass(3, '.gitattributes', 'merge=ours entries present');
 	}
-	return fail(3, '.gitattributes', `missing entries: ${missing.join(', ')}`,
-		'rerun the tier-specific deploy command');
+	return fail(
+		3,
+		'.gitattributes',
+		`missing entries: ${missing.join(', ')}`,
+		'rerun the tier-specific deploy command',
+	);
 }
 
 /**
@@ -119,9 +169,10 @@ function discoverDeployedAgentIds({ hubRoot, fsMod }) {
 	const dir = path.join(hubRoot, '.claude', 'agents');
 	if (!fsMod.existsSync(dir)) return [];
 	try {
-		return fsMod.readdirSync(dir)
-			.filter(f => f.endsWith('.md'))
-			.map(f => f.slice(0, -'.md'.length));
+		return fsMod
+			.readdirSync(dir)
+			.filter((f) => f.endsWith('.md'))
+			.map((f) => f.slice(0, -'.md'.length));
 	} catch {
 		return [];
 	}
@@ -153,8 +204,12 @@ function checkMemoryFiles({ hubRoot, fsMod }) {
 	// time by lib/extras.js — same precedent already established for
 	// vault/Tasks (see checkProjectsDir below).
 	if (segment !== 'memory' && !fsMod.existsSync(memoryRoot)) {
-		return warn(4, 'memory files', `${displaySegment}/ directory not found`,
-			'run the tier-specific deploy command (e.g. npm run deploy:dev:sub) to scaffold the vault-canonical memory root');
+		return warn(
+			4,
+			'memory files',
+			`${displaySegment}/ directory not found`,
+			'run the tier-specific deploy command (e.g. npm run deploy:dev:sub) to scaffold the vault-canonical memory root',
+		);
 	}
 	const scaffolded = [];
 	for (const agentId of agentIds) {
@@ -163,40 +218,69 @@ function checkMemoryFiles({ hubRoot, fsMod }) {
 		}
 	}
 	if (scaffolded.length === 0) {
-		return pass(4, 'memory files', `all ${agentIds.length} agent memory file(s) present`);
+		return pass(
+			4,
+			'memory files',
+			`all ${agentIds.length} agent memory file(s) present`,
+		);
 	}
-	return pass(4, 'memory files', `${scaffolded.length} file(s) scaffolded: ${scaffolded.join(', ')}`);
+	return pass(
+		4,
+		'memory files',
+		`${scaffolded.length} file(s) scaffolded: ${scaffolded.join(', ')}`,
+	);
 }
 
 function checkMcpJson({ hubRoot, fsMod }) {
 	const p = path.join(hubRoot, '.mcp.json');
 	if (!fsMod.existsSync(p)) {
-		return fail(5, '.mcp.json', '.mcp.json not found',
-			'rerun the tier-specific deploy command');
+		return fail(
+			5,
+			'.mcp.json',
+			'.mcp.json not found',
+			'rerun the tier-specific deploy command',
+		);
 	}
 	let data;
 	try {
 		data = JSON.parse(fsMod.readFileSync(p, 'utf-8'));
 	} catch {
-		return fail(5, '.mcp.json', '.mcp.json is not valid JSON',
-			'rerun the tier-specific deploy command');
+		return fail(
+			5,
+			'.mcp.json',
+			'.mcp.json is not valid JSON',
+			'rerun the tier-specific deploy command',
+		);
 	}
 	if (data?.mcpServers?.['agent-browser']) {
 		return pass(5, '.mcp.json', 'agent-browser wired');
 	}
-	return fail(5, '.mcp.json', 'mcpServers.agent-browser missing',
-		'rerun the tier-specific deploy command');
+	return fail(
+		5,
+		'.mcp.json',
+		'mcpServers.agent-browser missing',
+		'rerun the tier-specific deploy command',
+	);
 }
 
 export function readHubConfig(hubRoot, fsMod) {
 	const configPath = path.join(hubRoot, 'workspace.config.json');
 	if (!fsMod.existsSync(configPath)) {
-		return { config: null, skipReason: 'workspace.config.json absent — skipping relay check' };
+		return {
+			config: null,
+			skipReason: 'workspace.config.json absent — skipping relay check',
+		};
 	}
 	try {
-		return { config: JSON.parse(fsMod.readFileSync(configPath, 'utf-8')), skipReason: null };
+		return {
+			config: JSON.parse(fsMod.readFileSync(configPath, 'utf-8')),
+			skipReason: null,
+		};
 	} catch {
-		return { config: null, skipReason: 'workspace.config.json unreadable — skipping relay check' };
+		return {
+			config: null,
+			skipReason: 'workspace.config.json unreadable — skipping relay check',
+		};
 	}
 }
 
@@ -208,7 +292,11 @@ async function checkRelayDaemonAsync({ hubRoot, fsMod, probeHealth }) {
 	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
 	if (skipReason) return skip(6, 'relay daemon', skipReason);
 	if (!isRemoteTeamEnabled(config)) {
-		return skip(6, 'relay daemon', 'remoteTeam not enabled — relay check skipped');
+		return skip(
+			6,
+			'relay daemon',
+			'remoteTeam not enabled — relay check skipped',
+		);
 	}
 
 	// relay/core/config.js is only present on hubs where relay/ was deployed
@@ -223,9 +311,14 @@ async function checkRelayDaemonAsync({ hubRoot, fsMod, probeHealth }) {
 	if (result === 'ok') {
 		return pass(6, 'relay daemon', `GET localhost:${port}/health returned ok`);
 	}
-	return warn(6, 'relay daemon',
-		result === 'bad' ? `daemon on port ${port} did not return ok` : `daemon not reachable on port ${port}`,
-		'start: npm run relay -- --hub . (from profiles repo) or npm run relay (deployed hub)');
+	return warn(
+		6,
+		'relay daemon',
+		result === 'bad'
+			? `daemon on port ${port} did not return ok`
+			: `daemon not reachable on port ${port}`,
+		'start: npm.cmd run relay -- --hub . (from profiles repo) or npm run relay (deployed hub)',
+	);
 }
 
 function checkRelayMcp({ hubRoot, fsMod }) {
@@ -242,25 +335,40 @@ function checkRelayMcp({ hubRoot, fsMod }) {
 	const hasCursor = Boolean(cursorSettings?.mcpServers?.relay);
 
 	if (hasClaude && hasCursor) {
-		return pass(7, 'relay MCP', 'mcpServers.relay in Claude settings and .cursor/mcp.json');
+		return pass(
+			7,
+			'relay MCP',
+			'mcpServers.relay in Claude settings and .cursor/mcp.json',
+		);
 	}
 	if (hasClaude) {
-		return pass(7, 'relay MCP', 'mcpServers.relay present in ~/.claude/settings.json');
+		return pass(
+			7,
+			'relay MCP',
+			'mcpServers.relay present in ~/.claude/settings.json',
+		);
 	}
 	if (hasCursor) {
 		return pass(7, 'relay MCP', 'mcpServers.relay present in .cursor/mcp.json');
 	}
 
-	return fail(7, 'relay MCP',
+	return fail(
+		7,
+		'relay MCP',
 		'remoteTeam enabled but mcpServers.relay missing in Claude settings and .cursor/mcp.json',
-		'run: npm run setup (re-enter telegram credentials to wire relay MCP)');
+		'run: npm run setup (re-enter telegram credentials to wire relay MCP)',
+	);
 }
 
 function checkTelegramConfig({ hubRoot, fsMod }) {
 	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
 	if (skipReason) return skip(8, 'telegram config', skipReason);
 	if (!isRemoteTeamEnabled(config)) {
-		return skip(8, 'telegram config', 'remoteTeam not enabled — telegram check skipped');
+		return skip(
+			8,
+			'telegram config',
+			'remoteTeam not enabled — telegram check skipped',
+		);
 	}
 
 	const telegram = config?.telegram;
@@ -270,51 +378,90 @@ function checkTelegramConfig({ hubRoot, fsMod }) {
 	if (!telegram?.relay_group_id) missing.push('telegram.relay_group_id');
 
 	if (missing.length === 0) {
-		return pass(8, 'telegram config', 'telegram credentials complete in workspace.config.json');
+		return pass(
+			8,
+			'telegram config',
+			'telegram credentials complete in workspace.config.json',
+		);
 	}
-	return fail(8, 'telegram config',
+	return fail(
+		8,
+		'telegram config',
 		`incomplete telegram block: missing ${missing.join(', ')}`,
-		'run: npm run setup');
+		'run: npm run setup',
+	);
 }
 
 function checkAgentProfiles({ hubRoot, fsMod }) {
 	const dir = path.join(hubRoot, '.claude', 'agents');
 	if (!fsMod.existsSync(dir)) {
-		return fail(9, 'agent profiles', '.claude/agents/ directory not found',
-			'rerun the tier-specific deploy command');
+		return fail(
+			9,
+			'agent profiles',
+			'.claude/agents/ directory not found',
+			'rerun the tier-specific deploy command',
+		);
 	}
 	let entries;
 	try {
-		entries = fsMod.readdirSync(dir).filter(f => f.endsWith('.md'));
+		entries = fsMod.readdirSync(dir).filter((f) => f.endsWith('.md'));
 	} catch {
-		return fail(9, 'agent profiles', 'could not read .claude/agents/',
-			'rerun the tier-specific deploy command');
+		return fail(
+			9,
+			'agent profiles',
+			'could not read .claude/agents/',
+			'rerun the tier-specific deploy command',
+		);
 	}
 	if (entries.length === 0) {
-		return fail(9, 'agent profiles', '.claude/agents/ is empty',
-			'rerun the tier-specific deploy command');
+		return fail(
+			9,
+			'agent profiles',
+			'.claude/agents/ is empty',
+			'rerun the tier-specific deploy command',
+		);
 	}
-	return pass(9, 'agent profiles', `${entries.length} agent profile(s) found in .claude/agents/`);
+	return pass(
+		9,
+		'agent profiles',
+		`${entries.length} agent profile(s) found in .claude/agents/`,
+	);
 }
 
 function checkCodexAgentProfiles({ hubRoot, fsMod }) {
 	const dir = path.join(hubRoot, '.codex', 'agents');
 	if (!fsMod.existsSync(dir)) {
-		return fail(10, 'codex agent profiles', '.codex/agents/ directory not found',
-			'rerun the tier-specific deploy command');
+		return fail(
+			10,
+			'codex agent profiles',
+			'.codex/agents/ directory not found',
+			'rerun the tier-specific deploy command',
+		);
 	}
 	let entries;
 	try {
-		entries = fsMod.readdirSync(dir).filter(f => f.endsWith('.toml'));
+		entries = fsMod.readdirSync(dir).filter((f) => f.endsWith('.toml'));
 	} catch {
-		return fail(10, 'codex agent profiles', 'could not read .codex/agents/',
-			'rerun the tier-specific deploy command');
+		return fail(
+			10,
+			'codex agent profiles',
+			'could not read .codex/agents/',
+			'rerun the tier-specific deploy command',
+		);
 	}
 	if (entries.length === 0) {
-		return fail(10, 'codex agent profiles', '.codex/agents/ is empty',
-			'rerun the tier-specific deploy command');
+		return fail(
+			10,
+			'codex agent profiles',
+			'.codex/agents/ is empty',
+			'rerun the tier-specific deploy command',
+		);
 	}
-	return pass(10, 'codex agent profiles', `${entries.length} Codex agent profile(s) found in .codex/agents/`);
+	return pass(
+		10,
+		'codex agent profiles',
+		`${entries.length} Codex agent profile(s) found in .codex/agents/`,
+	);
 }
 
 function isAutoDispatchEnabled(config) {
@@ -324,62 +471,108 @@ function isAutoDispatchEnabled(config) {
 function checkAutoDispatchClaude({ hubRoot, fsMod, execFn }) {
 	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
 	if (skipReason || !isAutoDispatchEnabled(config)) {
-		return skip(11, 'auto-dispatch: claude', 'autoDispatch not enabled — check skipped');
+		return skip(
+			11,
+			'auto-dispatch: claude',
+			'autoDispatch not enabled — check skipped',
+		);
 	}
 	try {
 		execFn('claude', ['--version'], { stdio: 'pipe' });
 		return pass(11, 'auto-dispatch: claude', '`claude` found on PATH');
 	} catch {
-		return fail(11, 'auto-dispatch: claude', '`claude` not found on PATH',
-			'install Claude Code CLI: https://claude.ai/download');
+		return fail(
+			11,
+			'auto-dispatch: claude',
+			'`claude` not found on PATH',
+			'install Claude Code CLI: https://claude.ai/download',
+		);
 	}
 }
 
 function checkAutoDispatchRouterProfile({ hubRoot, fsMod }) {
 	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
 	if (skipReason || !isAutoDispatchEnabled(config)) {
-		return skip(12, 'auto-dispatch: router profile', 'autoDispatch not enabled — check skipped');
+		return skip(
+			12,
+			'auto-dispatch: router profile',
+			'autoDispatch not enabled — check skipped',
+		);
 	}
 	const profilePath = path.join(hubRoot, '.claude', 'agents', 'router.md');
 	if (fsMod.existsSync(profilePath)) {
-		return pass(12, 'auto-dispatch: router profile', '.claude/agents/router.md found');
+		return pass(
+			12,
+			'auto-dispatch: router profile',
+			'.claude/agents/router.md found',
+		);
 	}
-	return fail(12, 'auto-dispatch: router profile', '.claude/agents/router.md not found',
-		'rerun the tier-specific deploy command');
+	return fail(
+		12,
+		'auto-dispatch: router profile',
+		'.claude/agents/router.md not found',
+		'rerun the tier-specific deploy command',
+	);
 }
 
 function checkAutoDispatchRouterModel({ hubRoot, fsMod, profilesRoot }) {
 	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
 	if (skipReason || !isRemoteTeamEnabled(config)) {
-		return skip(13, 'router model tier', 'remoteTeam not enabled — check skipped');
+		return skip(
+			13,
+			'router model tier',
+			'remoteTeam not enabled — check skipped',
+		);
 	}
 	const profilePath = path.join(hubRoot, '.claude', 'agents', 'router.md');
 	if (!fsMod.existsSync(profilePath)) {
-		return skip(13, 'router model tier', '.claude/agents/router.md absent — skipping model check');
+		return skip(
+			13,
+			'router model tier',
+			'.claude/agents/router.md absent — skipping model check',
+		);
 	}
 	let deployedModel;
 	try {
 		deployedModel = parseProfileModel(fsMod.readFileSync(profilePath, 'utf-8'));
 	} catch {
-		return skip(13, 'router model tier', 'could not read router profile — skipping model check');
+		return skip(
+			13,
+			'router model tier',
+			'could not read router profile — skipping model check',
+		);
 	}
 	let expectedModel;
 	try {
 		expectedModel = resolveRouterModel(profilesRoot, fsMod);
 	} catch {
-		return skip(13, 'router model tier', 'router manifest unavailable — skipping model check');
+		return skip(
+			13,
+			'router model tier',
+			'router manifest unavailable — skipping model check',
+		);
 	}
 	if (!deployedModel) {
-		return warn(13, 'router model tier',
+		return warn(
+			13,
+			'router model tier',
 			'deployed router.md has no model field — economy tier not enforced',
-			`rerun the tier-specific deploy command (expected model: ${expectedModel})`);
+			`rerun the tier-specific deploy command (expected model: ${expectedModel})`,
+		);
 	}
 	if (deployedModel !== expectedModel) {
-		return warn(13, 'router model tier',
+		return warn(
+			13,
+			'router model tier',
 			`deployed model (${deployedModel}) ≠ manifest economy tier (${expectedModel})`,
-			'rerun the tier-specific deploy command');
+			'rerun the tier-specific deploy command',
+		);
 	}
-	return pass(13, 'router model tier', `router uses economy model ${deployedModel}`);
+	return pass(
+		13,
+		'router model tier',
+		`router uses economy model ${deployedModel}`,
+	);
 }
 
 function checkProjectsDir({ hubRoot, fsMod }) {
@@ -407,26 +600,44 @@ function checkProjectsDir({ hubRoot, fsMod }) {
 	const displaySegment = segment.replace(/\\/g, '/');
 	const tasksPath = path.join(hubRoot, segment);
 	if (fsMod.existsSync(tasksPath)) {
-		return pass(14, 'projects directory', `${displaySegment}/ directory present`);
+		return pass(
+			14,
+			'projects directory',
+			`${displaySegment}/ directory present`,
+		);
 	}
 	if (segment !== 'projects') {
-		return warn(14, 'projects directory', `${displaySegment}/ directory not found`,
-			'run the tier-specific deploy command (e.g. npm run deploy:dev:sub) to scaffold the vault-canonical tasks root');
+		return warn(
+			14,
+			'projects directory',
+			`${displaySegment}/ directory not found`,
+			'run the tier-specific deploy command (e.g. npm run deploy:dev:sub) to scaffold the vault-canonical tasks root',
+		);
 	}
 	// Auto-scaffold: create the directory in the same run (free-tier default only)
 	fsMod.mkdirSync(tasksPath, { recursive: true });
-	return pass(14, 'projects directory', `${displaySegment}/ directory scaffolded`);
+	return pass(
+		14,
+		'projects directory',
+		`${displaySegment}/ directory scaffolded`,
+	);
 }
 
 const HUB_TYPE_DEV_REQUIRED = ['architect', 'builder', 'tester', 'router'];
 // Profiles only the subscription and ops tiers deploy; a dev hub that carries one is flagged.
 const HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES = ['cao'];
-const HUB_TYPE_DEV_SUB_REQUIRED = [...HUB_TYPE_DEV_REQUIRED, ...HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES];
-const HUB_TYPE_OPS_REQUIRED = [...HUB_TYPE_DEV_REQUIRED, ...HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES];
+const HUB_TYPE_DEV_SUB_REQUIRED = [
+	...HUB_TYPE_DEV_REQUIRED,
+	...HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES,
+];
+const HUB_TYPE_OPS_REQUIRED = [
+	...HUB_TYPE_DEV_REQUIRED,
+	...HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES,
+];
 
 /** Subscription-only profile ids present in a hub that should not carry them. */
 function unexpectedProfiles(agentSet) {
-	return HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES.filter(id => agentSet.has(id));
+	return HUB_TYPE_SUBSCRIPTION_ONLY_PROFILES.filter((id) => agentSet.has(id));
 }
 
 /**
@@ -450,67 +661,109 @@ function checkHubType({ hubRoot, fsMod }) {
 
 	if (!hubType || !['dev', 'dev:graph', 'ops', 'dev:sub'].includes(hubType)) {
 		// Warn and fall back to dev checks
-		const missingDev = HUB_TYPE_DEV_REQUIRED.filter(a => !agentSet.has(a));
+		const missingDev = HUB_TYPE_DEV_REQUIRED.filter((a) => !agentSet.has(a));
 		if (missingDev.length > 0) {
-			return warn(15, 'hub type',
+			return warn(
+				15,
+				'hub type',
 				`hubType not set — defaulting to dev checks; missing profiles: ${missingDev.join(', ')}`,
-				'set hubType in workspace.config.json ("dev", "dev:graph", "ops", or "dev:sub"), then redeploy');
+				'set hubType in workspace.config.json ("dev", "dev:graph", "ops", or "dev:sub"), then redeploy',
+			);
 		}
-		return warn(15, 'hub type',
+		return warn(
+			15,
+			'hub type',
 			'hubType not set in workspace.config.json — defaulting to dev verification',
-			'set hubType: "dev", "dev:graph", "ops", or "dev:sub" in workspace.config.json');
+			'set hubType: "dev", "dev:graph", "ops", or "dev:sub" in workspace.config.json',
+		);
 	}
 
 	if (hubType === 'dev:graph') {
-		const missingAgents = HUB_TYPE_DEV_REQUIRED.filter(a => !agentSet.has(a));
+		const missingAgents = HUB_TYPE_DEV_REQUIRED.filter((a) => !agentSet.has(a));
 		if (missingAgents.length > 0) {
-			return fail(15, 'hub type',
+			return fail(
+				15,
+				'hub type',
 				`hubType=dev:graph but missing profiles: ${missingAgents.join(', ')}`,
-				'run: npm run package:dev:graph then unzip to reinstall the hub');
+				'run: npm run package:dev:graph then unzip to reinstall the hub',
+			);
 		}
 		const unexpected = unexpectedProfiles(agentSet);
 		if (unexpected.length > 0) {
-			return warn(15, 'hub type',
+			return warn(
+				15,
+				'hub type',
 				`hubType=dev:graph but unexpected profile found: ${unexpected.join(', ')} — not part of a dev:graph hub`,
-				'remove the profile or change hubType in workspace.config.json');
+				'remove the profile or change hubType in workspace.config.json',
+			);
 		}
-		return pass(15, 'hub type', 'hubType=dev:graph — architect, builder, tester, router all present');
+		return pass(
+			15,
+			'hub type',
+			'hubType=dev:graph — architect, builder, tester, router all present',
+		);
 	}
 
 	if (hubType === 'dev:sub') {
-		const missingAgents = HUB_TYPE_DEV_SUB_REQUIRED.filter(a => !agentSet.has(a));
+		const missingAgents = HUB_TYPE_DEV_SUB_REQUIRED.filter(
+			(a) => !agentSet.has(a),
+		);
 		if (missingAgents.length > 0) {
-			return fail(15, 'hub type',
+			return fail(
+				15,
+				'hub type',
 				`hubType=dev:sub but missing profiles: ${missingAgents.join(', ')}`,
-				'run: npm run deploy:dev:sub (redeploy subscriber hub)');
+				'run: npm run deploy:dev:sub (redeploy subscriber hub)',
+			);
 		}
-		return pass(15, 'hub type', `hubType=dev:sub — ${HUB_TYPE_DEV_SUB_REQUIRED.join(', ')} all present`);
+		return pass(
+			15,
+			'hub type',
+			`hubType=dev:sub — ${HUB_TYPE_DEV_SUB_REQUIRED.join(', ')} all present`,
+		);
 	}
 
 	if (hubType === 'dev') {
-		const missingAgents = HUB_TYPE_DEV_REQUIRED.filter(a => !agentSet.has(a));
+		const missingAgents = HUB_TYPE_DEV_REQUIRED.filter((a) => !agentSet.has(a));
 		if (missingAgents.length > 0) {
-			return fail(15, 'hub type',
+			return fail(
+				15,
+				'hub type',
 				`hubType=dev but missing profiles: ${missingAgents.join(', ')}`,
-				'run: npm run deploy:dev (redeploy dev hub)');
+				'run: npm run deploy:dev (redeploy dev hub)',
+			);
 		}
 		const unexpected = unexpectedProfiles(agentSet);
 		if (unexpected.length > 0) {
-			return warn(15, 'hub type',
+			return warn(
+				15,
+				'hub type',
 				`hubType=dev but unexpected profile found: ${unexpected.join(', ')} — not part of a dev hub`,
-				'remove the profile or change hubType in workspace.config.json');
+				'remove the profile or change hubType in workspace.config.json',
+			);
 		}
-		return pass(15, 'hub type', 'hubType=dev — architect, builder, tester, router all present');
+		return pass(
+			15,
+			'hub type',
+			'hubType=dev — architect, builder, tester, router all present',
+		);
 	}
 
 	// hubType === 'ops'
-	const missingAgents = HUB_TYPE_OPS_REQUIRED.filter(a => !agentSet.has(a));
+	const missingAgents = HUB_TYPE_OPS_REQUIRED.filter((a) => !agentSet.has(a));
 	if (missingAgents.length > 0) {
-		return fail(15, 'hub type',
+		return fail(
+			15,
+			'hub type',
 			`hubType=ops but missing profiles: ${missingAgents.join(', ')}`,
-			'run: npm run deploy:ops (redeploy ops hub)');
+			'run: npm run deploy:ops (redeploy ops hub)',
+		);
 	}
-	return pass(15, 'hub type', `hubType=ops — ${HUB_TYPE_OPS_REQUIRED.join(', ')} all present`);
+	return pass(
+		15,
+		'hub type',
+		`hubType=ops — ${HUB_TYPE_OPS_REQUIRED.join(', ')} all present`,
+	);
 }
 
 /**
@@ -529,9 +782,18 @@ function checkHubType({ hubRoot, fsMod }) {
  * API usage without being asked is exactly what this feature's own scope decision rules
  * out.
  */
-function checkNightlyDreamingTask({ hubRoot, fsMod, execFn, platform = process.platform }) {
+function checkNightlyDreamingTask({
+	hubRoot,
+	fsMod,
+	execFn,
+	platform = process.platform,
+}) {
 	if (platform !== 'win32') {
-		return skip(18, 'nightly dreaming', 'Windows-only feature — not applicable on this platform');
+		return skip(
+			18,
+			'nightly dreaming',
+			'Windows-only feature — not applicable on this platform',
+		);
 	}
 	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
 	if (skipReason) return skip(18, 'nightly dreaming', skipReason);
@@ -540,12 +802,19 @@ function checkNightlyDreamingTask({ hubRoot, fsMod, execFn, platform = process.p
 	if (!nightlyDreaming) {
 		// Never configured — the exact hubs-set-up-before-this-shipped case AC4 targets.
 		// No need to query schtasks to know the answer here.
-		return warn(18, 'nightly dreaming',
+		return warn(
+			18,
+			'nightly dreaming',
 			'not configured — opt-in nightly end-of-day memory consolidation is available',
-			'run: npm run setup (enable nightly automated end-of-day memory consolidation)');
+			'run: npm run setup (enable nightly automated end-of-day memory consolidation)',
+		);
 	}
 	if (nightlyDreaming.enabled !== true) {
-		return skip(18, 'nightly dreaming', 'disabled by choice (declined during setup)');
+		return skip(
+			18,
+			'nightly dreaming',
+			'disabled by choice (declined during setup)',
+		);
 	}
 
 	// Config says enabled — cross-check reality rather than trusting the config value
@@ -553,11 +822,18 @@ function checkNightlyDreamingTask({ hubRoot, fsMod, execFn, platform = process.p
 	// manually removed via the Task Scheduler GUI after setup registered it.
 	const taskName = nightlyDreaming.taskName ?? NIGHTLY_DREAMING_TASK_NAME;
 	if (isNightlyDreamingTaskRegistered({ taskName, execFn })) {
-		return pass(18, 'nightly dreaming', `Scheduled Task "${taskName}" registered`);
+		return pass(
+			18,
+			'nightly dreaming',
+			`Scheduled Task "${taskName}" registered`,
+		);
 	}
-	return warn(18, 'nightly dreaming',
+	return warn(
+		18,
+		'nightly dreaming',
 		`enabled in workspace.config.json but Scheduled Task "${taskName}" is not registered`,
-		'run: npm run setup (re-enable nightly dreaming to re-register the Scheduled Task)');
+		'run: npm run setup (re-enable nightly dreaming to re-register the Scheduled Task)',
+	);
 }
 
 // A dated archive snapshot older than this many days, despite the Scheduled Task's last
@@ -578,16 +854,29 @@ const NIGHTLY_DREAMING_STALE_ARCHIVE_DAYS = 2;
  * happened" pattern that made the original regression invisible until someone asked by
  * hand.
  */
-function checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, platform = process.platform }) {
+function checkNightlyDreamingConsolidationFreshness({
+	hubRoot,
+	fsMod,
+	execFn,
+	platform = process.platform,
+}) {
 	if (platform !== 'win32') {
-		return skip(19, 'nightly dreaming freshness', 'Windows-only feature — not applicable on this platform');
+		return skip(
+			19,
+			'nightly dreaming freshness',
+			'Windows-only feature — not applicable on this platform',
+		);
 	}
 	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
 	if (skipReason) return skip(19, 'nightly dreaming freshness', skipReason);
 
 	const nightlyDreaming = config?.nightlyDreaming;
 	if (!nightlyDreaming || nightlyDreaming.enabled !== true) {
-		return skip(19, 'nightly dreaming freshness', 'nightly dreaming not enabled — nothing to check');
+		return skip(
+			19,
+			'nightly dreaming freshness',
+			'nightly dreaming not enabled — nothing to check',
+		);
 	}
 
 	// Deliberately does not call isNightlyDreamingTaskRegistered() separately — that
@@ -597,30 +886,46 @@ function checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, pl
 	// correct skip either way — check 18 is still the authoritative source for the
 	// registered/not-registered distinction itself.
 	const taskName = nightlyDreaming.taskName ?? NIGHTLY_DREAMING_TASK_NAME;
-	const { lastRunTime, lastResult } = getNightlyDreamingTaskRuntimeInfo({ taskName, execFn });
+	const { lastRunTime, lastResult } = getNightlyDreamingTaskRuntimeInfo({
+		taskName,
+		execFn,
+	});
 	if (!lastRunTime || /^(N\/A|Never)$/i.test(lastRunTime)) {
-		return skip(19, 'nightly dreaming freshness', 'Scheduled Task not registered or has not run yet — see check 18');
+		return skip(
+			19,
+			'nightly dreaming freshness',
+			'Scheduled Task not registered or has not run yet — see check 18',
+		);
 	}
 
 	const latestArchiveDate = findMostRecentArchiveDate({
-		hubRoot, agent: 'architect', hubType: config?.hubType ?? null, fsMod,
+		hubRoot,
+		agent: 'architect',
+		hubType: config?.hubType ?? null,
+		fsMod,
 	});
 	const staleDays = latestArchiveDate
 		? Math.floor((Date.now() - Date.parse(latestArchiveDate)) / 86_400_000)
 		: Infinity;
 
 	if (lastResult === 0 && staleDays > NIGHTLY_DREAMING_STALE_ARCHIVE_DAYS) {
-		return fail(19, 'nightly dreaming freshness',
+		return fail(
+			19,
+			'nightly dreaming freshness',
 			`Scheduled Task last reported success (exit 0, ${lastRunTime}) but the newest archived ` +
-			`memory snapshot (<memory root>/archive/architect-*.md) is ${latestArchiveDate ?? 'missing entirely'}` +
-			`${latestArchiveDate ? ` (${staleDays} days old)` : ''} — the task reported success but ` +
-			'consolidation did not actually run',
-			`inspect logs/nightly-dreaming-<date>.log; re-run manually via: schtasks /run /tn ${taskName}`);
+				`memory snapshot (<memory root>/archive/architect-*.md) is ${latestArchiveDate ?? 'missing entirely'}` +
+				`${latestArchiveDate ? ` (${staleDays} days old)` : ''} — the task reported success but ` +
+				'consolidation did not actually run',
+			`inspect logs/nightly-dreaming-<date>.log; re-run manually via: schtasks /run /tn ${taskName}`,
+		);
 	}
-	return pass(19, 'nightly dreaming freshness',
+	return pass(
+		19,
+		'nightly dreaming freshness',
 		latestArchiveDate
 			? `most recent archived snapshot: ${latestArchiveDate} (task last ran ${lastRunTime}, exit ${lastResult})`
-			: `task last ran ${lastRunTime} (exit ${lastResult}); no stale-success gap detected`);
+			: `task last ran ${lastRunTime} (exit ${lastResult}); no stale-success gap detected`,
+	);
 }
 
 /**
@@ -646,7 +951,11 @@ function checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, pl
 function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 	const runtimeDir = path.join(hubRoot, LANGGRAPH_RUNTIME_DIR);
 	if (!fsMod.existsSync(runtimeDir)) {
-		return skip(21, 'langgraph compile target', 'runtime/langgraph/ not present — nothing to check');
+		return skip(
+			21,
+			'langgraph compile target',
+			'runtime/langgraph/ not present — nothing to check',
+		);
 	}
 
 	const agentsProfilesRoot = path.join(profilesRoot, 'agents', 'profiles');
@@ -656,16 +965,29 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 	try {
 		profileDirs = discoverProfileDirs(agentsProfilesRoot);
 	} catch {
-		return warn(21, 'langgraph compile target', 'could not read agents/profiles/ to determine eligible profiles',
-			'run from a setchin-agent-profiles checkout, or pass --profiles-root explicitly');
+		return warn(
+			21,
+			'langgraph compile target',
+			'could not read agents/profiles/ to determine eligible profiles',
+			'run from a setchin-agent-profiles checkout, or pass --profiles-root explicitly',
+		);
 	}
 
 	const eligible = profileDirs
-		.map(profileDir => ({ profileDir, manifest: readAgentManifest(profileDir) }))
-		.filter(({ manifest }) => manifest?.exports?.generatePortablePrompt === true);
+		.map((profileDir) => ({
+			profileDir,
+			manifest: readAgentManifest(profileDir),
+		}))
+		.filter(
+			({ manifest }) => manifest?.exports?.generatePortablePrompt === true,
+		);
 
 	if (eligible.length === 0) {
-		return skip(21, 'langgraph compile target', 'no profile declares exports.generatePortablePrompt: true — nothing to check');
+		return skip(
+			21,
+			'langgraph compile target',
+			'no profile declares exports.generatePortablePrompt: true — nothing to check',
+		);
 	}
 
 	const generatedDir = path.join(hubRoot, LANGGRAPH_GENERATED_DIR);
@@ -673,16 +995,27 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 	const fresh = [];
 	for (const { profileDir, manifest } of eligible) {
 		const identity = readProfileIdentity(profileDir);
-		const artifactPath = path.join(generatedDir, langGraphArtifactFileName(identity.id));
+		const artifactPath = path.join(
+			generatedDir,
+			langGraphArtifactFileName(identity.id),
+		);
 		if (!fsMod.existsSync(artifactPath)) {
-			problems.push(`${identity.id}: artifact missing (${path.relative(hubRoot, artifactPath)})`);
+			problems.push(
+				`${identity.id}: artifact missing (${path.relative(hubRoot, artifactPath)})`,
+			);
 			continue;
 		}
 		let expected;
 		try {
-			expected = buildPortablePrompt(profileDir, agentsSkillsRoot, manifest.skills ?? []);
+			expected = buildPortablePrompt(
+				profileDir,
+				agentsSkillsRoot,
+				manifest.skills ?? [],
+			);
 		} catch (err) {
-			problems.push(`${identity.id}: could not regenerate expected prompt (${err.message})`);
+			problems.push(
+				`${identity.id}: could not regenerate expected prompt (${err.message})`,
+			);
 			continue;
 		}
 		const actual = fsMod.readFileSync(artifactPath, 'utf-8');
@@ -700,10 +1033,18 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 		// deploy pipeline is file-sync only, never an auto-restart — see the
 		// runbook below). Point remediation at both: regenerate the artifact,
 		// then restart the runtime process per the documented lifecycle.
-		return fail(21, 'langgraph compile target', problems.join('; '),
-			'run: npm run compile:langgraph, then restart the runtime process — see docs/langgraph-runtime-lifecycle.md');
+		return fail(
+			21,
+			'langgraph compile target',
+			problems.join('; '),
+			'run: npm run compile:langgraph, then restart the runtime process — see docs/langgraph-runtime-lifecycle.md',
+		);
 	}
-	return pass(21, 'langgraph compile target', `compiled prompt artifact(s) present and fresh: ${fresh.join(', ')}`);
+	return pass(
+		21,
+		'langgraph compile target',
+		`compiled prompt artifact(s) present and fresh: ${fresh.join(', ')}`,
+	);
 }
 
 /**
@@ -742,18 +1083,33 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 function checkHubRootDependencies({ hubRoot, fsMod }) {
 	const pkgPath = path.join(hubRoot, 'package.json');
 	if (!fsMod.existsSync(pkgPath)) {
-		return skip(22, 'hub-root dependencies', 'package.json not found — nothing to check');
+		return skip(
+			22,
+			'hub-root dependencies',
+			'package.json not found — nothing to check',
+		);
 	}
 	const { declared, missing } = checkHubRootDepsCurrent({ hubRoot, fsMod });
 	if (declared.length === 0) {
-		return pass(22, 'hub-root dependencies', 'no runtime dependencies declared in package.json');
+		return pass(
+			22,
+			'hub-root dependencies',
+			'no runtime dependencies declared in package.json',
+		);
 	}
 	if (missing.length === 0) {
-		return pass(22, 'hub-root dependencies', `all ${declared.length} declared dependenc${declared.length === 1 ? 'y' : 'ies'} present in node_modules/`);
+		return pass(
+			22,
+			'hub-root dependencies',
+			`all ${declared.length} declared dependenc${declared.length === 1 ? 'y' : 'ies'} present in node_modules/`,
+		);
 	}
-	return fail(22, 'hub-root dependencies',
+	return fail(
+		22,
+		'hub-root dependencies',
 		`node_modules/ missing ${missing.length} declared dependenc${missing.length === 1 ? 'y' : 'ies'}: ${missing.join(', ')}`,
-		'run: npm install');
+		'run: npm install',
+	);
 }
 
 /**
@@ -768,30 +1124,54 @@ function checkTaskPermission({ hubRoot, fsMod }) {
 	const state = readTaskPermissionState({ hubRoot, fsMod });
 	switch (state) {
 		case TASK_PERMISSION_STATES.ENABLED:
-			return pass(23, 'task permission', 'enabled — all 10 task CLI allow rules present in .claude/settings.json');
+			return pass(
+				23,
+				'task permission',
+				'enabled — all 10 task CLI allow rules present in .claude/settings.json',
+			);
 		case TASK_PERMISSION_STATES.DECLINED:
-			return skip(23, 'task permission', 'declined by choice — re-ask with: npm run setup -- --ask-permissions');
+			return skip(
+				23,
+				'task permission',
+				'declined by choice — re-ask with: npm.cmd run setup -- --ask-permissions',
+			);
 		case TASK_PERMISSION_STATES.NOT_APPLICABLE:
-			return skip(23, 'task permission', 'not applicable — no Claude Code adapter deployed');
-		default:
+			return skip(
+				23,
+				'task permission',
+				'not applicable — no Claude Code adapter deployed',
+			);
+		default: {
 			// For MISSING state, check if it's partial or none
 			const settingsPath = path.join(hubRoot, '.claude', 'settings.json');
 			const read = readSettingsForMerge(settingsPath, { fsMod });
 			if (read.status === 'unusable') {
-				return warn(23, 'task permission',
+				return warn(
+					23,
+					'task permission',
 					'settings file unparseable — cannot determine task CLI rules',
-					'check .claude/settings.json format and repair if needed');
+					'check .claude/settings.json format and repair if needed',
+				);
 			}
 			const partial = detectPartialTaskCliRules(read.settings);
 			if (partial) {
-				const missing = partial.missing.map(r => r.split('(')[1].split(')')[0]).join(', ');
-				return warn(23, 'task permission',
+				const missing = partial.missing
+					.map((r) => r.split('(')[1].split(')')[0])
+					.join(', ');
+				return warn(
+					23,
+					'task permission',
 					`partial — ${partial.count} of 10 task CLI rules present; missing: ${missing}; agents will be prompted for missing commands`,
-					'run: npm run setup (interactive terminal) to add the missing rules');
+					'run: npm run setup (interactive terminal) to add the missing rules',
+				);
 			}
-			return warn(23, 'task permission',
+			return warn(
+				23,
+				'task permission',
 				'missing — no task CLI allow rules in .claude/settings.json; agents will be prompted on every task command',
-				'run: npm run setup (interactive terminal) and accept the task CLI permission offer');
+				'run: npm run setup (interactive terminal) and accept the task CLI permission offer',
+			);
+		}
 	}
 }
 
@@ -814,26 +1194,47 @@ function checkTaskPermission({ hubRoot, fsMod }) {
  * feature details.
  */
 async function checkOptionalTierReadiness({
-	hubRoot, fsMod, execFn, platform = process.platform, env = process.env,
-	fetchFn = globalThis.fetch, pluginOptions = {},
+	hubRoot,
+	fsMod,
+	execFn,
+	platform = process.platform,
+	env = process.env,
+	fetchFn = globalThis.fetch,
+	pluginOptions = {},
 }) {
-	let pluginFiles = [];
+	let pluginFiles;
 	try {
-		pluginFiles = fs.readdirSync(path.join(__dirname, 'lib'))
-			.filter(f => f.endsWith('.doctor-plugin.js'))
+		pluginFiles = fs
+			.readdirSync(path.join(__dirname, 'lib'))
+			.filter((f) => f.endsWith('.doctor-plugin.js'))
 			.sort();
 	} catch {
 		pluginFiles = [];
 	}
 	if (pluginFiles.length === 0) {
-		return [skip(16, 'optional tier readiness', 'no optional tier-specific checks present in this hub')];
+		return [
+			skip(
+				16,
+				'optional tier readiness',
+				'no optional tier-specific checks present in this hub',
+			),
+		];
 	}
 	const results = [];
 	for (const file of pluginFiles) {
 		const mod = await import(`./lib/${file}`);
 		const result = await mod.check({
-			hubRoot, fsMod, execFn, platform, env, fetchFn,
-			readHubConfig, pass, fail, warn, skip,
+			hubRoot,
+			fsMod,
+			execFn,
+			platform,
+			env,
+			fetchFn,
+			readHubConfig,
+			pass,
+			fail,
+			warn,
+			skip,
 			...pluginOptions,
 		});
 		// A plugin's check() may return either a single check object (the
@@ -892,7 +1293,11 @@ export async function runChecks({
 	fsMod = fs,
 	probeHealth = probeRelayHealth,
 	execFn = execFileSync,
-	profilesRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..'),
+	profilesRoot = path.resolve(
+		path.dirname(fileURLToPath(import.meta.url)),
+		'..',
+		'..',
+	),
 	platform = process.platform,
 	env = process.env,
 	fetchFn = globalThis.fetch,
@@ -915,11 +1320,24 @@ export async function runChecks({
 		checkProjectsDir({ hubRoot, fsMod }),
 		checkHubType({ hubRoot, fsMod }),
 		checkNightlyDreamingTask({ hubRoot, fsMod, execFn, platform }),
-		checkNightlyDreamingConsolidationFreshness({ hubRoot, fsMod, execFn, platform }),
+		checkNightlyDreamingConsolidationFreshness({
+			hubRoot,
+			fsMod,
+			execFn,
+			platform,
+		}),
 		checkHubRootDependencies({ hubRoot, fsMod }),
 		checkTaskPermission({ hubRoot, fsMod }),
 		checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }),
-		...(await checkOptionalTierReadiness({ hubRoot, fsMod, execFn, platform, env, fetchFn, pluginOptions })),
+		...(await checkOptionalTierReadiness({
+			hubRoot,
+			fsMod,
+			execFn,
+			platform,
+			env,
+			fetchFn,
+			pluginOptions,
+		})),
 	];
 }
 
@@ -932,8 +1350,8 @@ export async function runChecks({
  * @returns {0|1|2}  0 = all pass/skip, 1 = any fail, 2 = warnings only (no fails)
  */
 export function computeExitCode(checks) {
-	if (checks.some(c => c.status === 'fail')) return 1;
-	if (checks.some(c => c.status === 'warn')) return 2;
+	if (checks.some((c) => c.status === 'fail')) return 1;
+	if (checks.some((c) => c.status === 'warn')) return 2;
 	return 0;
 }
 
@@ -950,10 +1368,17 @@ function formatCheck(check, useColor) {
 
 	let sym;
 	switch (check.status) {
-		case 'pass': sym = `${green}✓${reset}`; break;
-		case 'fail': sym = `${red}✗${reset}`; break;
-		case 'warn': sym = `${yellow}⚠${reset}`; break;
-		default: sym = '-';
+		case 'pass':
+			sym = `${green}✓${reset}`;
+			break;
+		case 'fail':
+			sym = `${red}✗${reset}`;
+			break;
+		case 'warn':
+			sym = `${yellow}⚠${reset}`;
+			break;
+		default:
+			sym = '-';
 	}
 
 	const label = check.label.padEnd(LABEL_WIDTH);
@@ -999,11 +1424,13 @@ export function formatReport(checks, useColor = false) {
 		const red = useColor ? '\x1b[31m' : '';
 		const yellow = useColor ? '\x1b[33m' : '';
 		const reset = useColor ? '\x1b[0m' : '';
-		const fails = checks.filter(c => c.status === 'fail').length;
-		const warns = checks.filter(c => c.status === 'warn').length;
+		const fails = checks.filter((c) => c.status === 'fail').length;
+		const warns = checks.filter((c) => c.status === 'warn').length;
 		const parts = [];
-		if (fails > 0) parts.push(`${red}${fails} error${fails > 1 ? 's' : ''}${reset}`);
-		if (warns > 0) parts.push(`${yellow}${warns} warning${warns > 1 ? 's' : ''}${reset}`);
+		if (fails > 0)
+			parts.push(`${red}${fails} error${fails > 1 ? 's' : ''}${reset}`);
+		if (warns > 0)
+			parts.push(`${yellow}${warns} warning${warns > 1 ? 's' : ''}${reset}`);
 		lines.push(`  NOT READY — ${parts.join(', ')}`);
 	}
 
@@ -1014,14 +1441,17 @@ export function formatReport(checks, useColor = false) {
 
 // ── CLI entry point ────────────────────────────────────────────────────────────
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	const outputIdx = process.argv.indexOf('--output');
-	const hubRoot = outputIdx !== -1
-		? path.resolve(process.argv[outputIdx + 1])
-		: process.cwd();
+	const hubRoot =
+		outputIdx !== -1
+			? path.resolve(process.argv[outputIdx + 1])
+			: process.cwd();
 
 	const checks = await runChecks({ hubRoot });
 	const useColor = Boolean(process.stdout.isTTY);

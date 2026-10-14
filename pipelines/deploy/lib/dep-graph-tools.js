@@ -6,13 +6,15 @@
 export const DEP_GRAPH_TOOLS = [
 	{
 		name: 'scan',
-		description: 'Scan a JS/TS project directory for dependency cycles and fan-in/fan-out coupling.',
+		description:
+			'Scan a JS/TS project directory for dependency cycles and fan-in/fan-out coupling.',
 		inputSchema: {
 			type: 'object',
 			properties: {
 				path: {
 					type: 'string',
-					description: 'Absolute or relative path to the project directory to scan',
+					description:
+						'Absolute or relative path to the project directory to scan',
 				},
 			},
 			required: ['path'],
@@ -20,17 +22,20 @@ export const DEP_GRAPH_TOOLS = [
 	},
 	{
 		name: 'baseline',
-		description: 'Save the most recent scan() result as the baseline for its scanned directory.',
+		description:
+			'Save the most recent scan() result as the baseline for its scanned directory.',
 		inputSchema: { type: 'object', properties: {} },
 	},
 	{
 		name: 'diff',
-		description: 'Re-scan the last-scanned directory and compare the result against the saved baseline.',
+		description:
+			'Re-scan the last-scanned directory and compare the result against the saved baseline.',
 		inputSchema: { type: 'object', properties: {} },
 	},
 	{
 		name: 'check',
-		description: 'Rule-gate: fail if any new dependency cycle was introduced since the saved baseline.',
+		description:
+			'Rule-gate: fail if any new dependency cycle was introduced since the saved baseline.',
 		inputSchema: { type: 'object', properties: {} },
 	},
 ];

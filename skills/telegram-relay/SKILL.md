@@ -61,7 +61,7 @@ When spawning Builder or Tester, pass:
 
 ### Tester-as-subagent constraint
 
-Subagent-spawned Tester cannot run live tests — browser-driven QA needs the shared browser tab and a direct Tester session. On `qa_requested` inbound, Tester operates in **Pre-QA Readiness Check mode only** (see `qa-ticket-workflow`):
+Relay-spawned Tester is Pre-QA Readiness Check only; full QA is Architect's decision (non-browser subagent, or a direct Tester session for browser-driven QA). On `qa_requested` inbound, Tester operates in **Pre-QA Readiness Check mode only** (see `qa-ticket-workflow`):
 
 - confirms the Developer → QA handoff payload is complete
 - queues the ticket in Tester's HOT memory

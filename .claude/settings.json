@@ -69,5 +69,19 @@
 			}
 		]
 	},
-	"enableAllProjectMcpServers": true
+	"enableAllProjectMcpServers": true,
+	"permissions": {
+		"allow": [
+			"Bash(npm run task -- read:*)",
+			"Bash(npm run task -- list:*)",
+			"Bash(npm run task -- transition:*)",
+			"Bash(npm run task -- update-field:*)",
+			"Bash(npm run task -- waves:*)",
+			"Bash(npm run task -- append-section:*)",
+			"Bash(npm run task -- qa-report:*)",
+			"Bash(npm run task -- post-merge-check:*)",
+			"Bash(npm run task -- dispatch-context:*)",
+			"Bash(npm run task -- create:*)"
+		]
+	}
 }

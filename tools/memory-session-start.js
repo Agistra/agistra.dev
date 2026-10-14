@@ -14,7 +14,11 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { resolveHubRoot, SESSION_MARKER_RELATIVE_PATH, WORK_MARKER_RELATIVE_PATH } from './memory-check-core.js';
+import {
+	resolveHubRoot,
+	SESSION_MARKER_RELATIVE_PATH,
+	WORK_MARKER_RELATIVE_PATH,
+} from './memory-check-core.js';
 
 try {
 	const markerPath = path.join(resolveHubRoot(), SESSION_MARKER_RELATIVE_PATH);
@@ -23,7 +27,10 @@ try {
 	// Initialise the work marker at the Unix epoch when absent: "present but older
 	// than the session marker" means no work yet (silent), whereas an absent
 	// marker means the adapter has no post-tool hook (marker-only fallback).
-	const workPath = path.join(path.dirname(markerPath), path.basename(WORK_MARKER_RELATIVE_PATH));
+	const workPath = path.join(
+		path.dirname(markerPath),
+		path.basename(WORK_MARKER_RELATIVE_PATH),
+	);
 	if (!fs.existsSync(workPath)) {
 		fs.writeFileSync(workPath, '');
 		fs.utimesSync(workPath, 0, 0);

@@ -8,7 +8,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadRelayConfig, resolveHubRoot, DEFAULT_DAEMON_PORT } from './config.js';
+import {
+	loadRelayConfig,
+	resolveHubRoot,
+	DEFAULT_DAEMON_PORT,
+} from './config.js';
 import { lockFilePath } from './lock.js';
 import { probeRelayHealth } from '../../../../tools/ensure-relay-daemon.js';
 
@@ -17,7 +21,7 @@ const DEFAULT_WAIT_MS = 5000;
 const POLL_MS = 200;
 
 function sleep(ms) {
-	return new Promise(resolve => setTimeout(resolve, ms));
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isProcessAlive(pid, killFn = process.kill.bind(process)) {
@@ -109,7 +113,8 @@ export async function stopRelayDaemon({
 	try {
 		killFn(targetPid, 'SIGTERM');
 	} catch (err) {
-		const code = err && typeof err === 'object' && 'code' in err ? err.code : null;
+		const code =
+			err && typeof err === 'object' && 'code' in err ? err.code : null;
 		if (code !== 'ESRCH') {
 			throw err;
 		}
@@ -121,7 +126,7 @@ export async function stopRelayDaemon({
 	const deadline = Date.now() + waitMs;
 	while (Date.now() < deadline) {
 		await sleep(POLL_MS);
-		if (await probeRelayHealth(port, fetchFn) === 'unreachable') {
+		if ((await probeRelayHealth(port, fetchFn)) === 'unreachable') {
 			removeLockIfSafe(hubRoot, targetPid, fsMod);
 			removeDispatchLock(hubRoot, fsMod);
 			return { action: 'stopped', pid: targetPid, port };
@@ -137,8 +142,10 @@ export async function stopRelayDaemon({
 	return { action: 'stop_timeout', pid: targetPid, port };
 }
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	const hubRoot = resolveHubRoot(process.argv.slice(2));
@@ -150,7 +157,9 @@ if (isMain) {
 				process.exit(0);
 				break;
 			case 'stale_lock_cleared':
-				process.stdout.write(`relay not running — cleared stale lock (pid ${result.pid})\n`);
+				process.stdout.write(
+					`relay not running — cleared stale lock (pid ${result.pid})\n`,
+				);
 				process.exit(0);
 				break;
 			case 'already_stopped':
@@ -174,11 +183,15 @@ if (isMain) {
 				process.exit(1);
 				break;
 			default:
-				process.stderr.write(`relay stop: unexpected result ${result.action}\n`);
+				process.stderr.write(
+					`relay stop: unexpected result ${result.action}\n`,
+				);
 				process.exit(1);
 		}
 	} catch (err) {
-		process.stderr.write(`relay stop: ${err instanceof Error ? err.message : String(err)}\n`);
+		process.stderr.write(
+			`relay stop: ${err instanceof Error ? err.message : String(err)}\n`,
+		);
 		process.exit(1);
 	}
 }

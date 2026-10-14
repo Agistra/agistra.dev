@@ -53,7 +53,9 @@ export function loadRelayConfig({ hubRoot, fsMod = fs }) {
 		throw new Error('telegram.bot_token is required in workspace.config.json');
 	}
 	if (!telegram.relay_group_id) {
-		throw new Error('telegram.relay_group_id is required in workspace.config.json');
+		throw new Error(
+			'telegram.relay_group_id is required in workspace.config.json',
+		);
 	}
 
 	const relay = raw?.relay ?? {};
@@ -68,17 +70,22 @@ export function loadRelayConfig({ hubRoot, fsMod = fs }) {
 		dispatchTimeoutSec: Number(relay.dispatchTimeoutSec) || 300,
 		recoveryPollSec: Number(relay.recoveryPollSec) || 60,
 		processingTimeoutSec: Number(relay.processingTimeoutSec) || 600,
-		inboxRetentionDays: (Number.isFinite(Number(relay.inboxRetentionDays)) && Number(relay.inboxRetentionDays) > 0)
-			? Number(relay.inboxRetentionDays)
-			: 7,
-		logRetentionDays: (Number.isFinite(Number(relay.logRetentionDays)) && Number(relay.logRetentionDays) > 0)
-			? Number(relay.logRetentionDays)
-			: 30,
+		inboxRetentionDays:
+			Number.isFinite(Number(relay.inboxRetentionDays)) &&
+			Number(relay.inboxRetentionDays) > 0
+				? Number(relay.inboxRetentionDays)
+				: 7,
+		logRetentionDays:
+			Number.isFinite(Number(relay.logRetentionDays)) &&
+			Number(relay.logRetentionDays) > 0
+				? Number(relay.logRetentionDays)
+				: 30,
 		remoteTeamEnabled: Boolean(raw?.remoteTeam?.enabled),
 		allowedSenders: Array.isArray(relay.allowedSenders)
 			? relay.allowedSenders.map(String)
 			: [],
-		routerDisplayName: (raw?.agents?.router?.displayName ?? '').trim() || 'Router',
+		routerDisplayName:
+			(raw?.agents?.router?.displayName ?? '').trim() || 'Router',
 		remoteAgentName: raw?.remoteTeam?.agentName ?? 'remote agent',
 		routerTelegramHandle: raw?.remoteTeam?.telegram?.handle ?? '',
 		githubTrackingIssue: relay.github?.trackingIssue ?? '',

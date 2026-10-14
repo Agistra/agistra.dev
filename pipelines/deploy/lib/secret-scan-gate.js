@@ -52,15 +52,25 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scanForSecrets, formatSecretScanError } from './secret-scan.js';
 
-const ALLOW_PRE_TOOL_USE = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } };
+const ALLOW_PRE_TOOL_USE = {
+	hookSpecificOutput: {
+		hookEventName: 'PreToolUse',
+		permissionDecision: 'allow',
+	},
+};
 
 /**
  * Top-level folder names (case-insensitive) this gate scans under. Free-tier
  * and vault-tier shapes both included — see doc comment above.
  */
 const SCOPED_TOP_LEVEL_DIRS = new Set([
-	'memory', 'projects', 'docs', '.learnings', // free-tier (repo-files.md)
-	'tasks', 'research', 'drafts', // vault-tier additions (storage/obsidian.md) — 'memory'/'docs' already covered above (case-insensitive)
+	'memory',
+	'projects',
+	'docs',
+	'.learnings', // free-tier (repo-files.md)
+	'tasks',
+	'research',
+	'drafts', // vault-tier additions (storage/obsidian.md) — 'memory'/'docs' already covered above (case-insensitive)
 ]);
 
 /**
@@ -79,7 +89,9 @@ const SCOPED_TOP_LEVEL_DIRS = new Set([
 export function isScopedPath(filePath) {
 	if (!filePath || typeof filePath !== 'string') return false;
 	const segments = filePath.split(/[\\/]/).filter(Boolean);
-	return segments.some(segment => SCOPED_TOP_LEVEL_DIRS.has(segment.toLowerCase()));
+	return segments.some((segment) =>
+		SCOPED_TOP_LEVEL_DIRS.has(segment.toLowerCase()),
+	);
 }
 
 /**
@@ -99,7 +111,8 @@ export function decidePreToolUse(hookInput) {
 	} else if (toolName === 'Edit') {
 		content = hookInput?.tool_input?.new_string;
 	}
-	if (typeof content !== 'string' || content.length === 0) return ALLOW_PRE_TOOL_USE;
+	if (typeof content !== 'string' || content.length === 0)
+		return ALLOW_PRE_TOOL_USE;
 
 	const match = scanForSecrets(content);
 	if (!match) return ALLOW_PRE_TOOL_USE;
@@ -142,13 +155,19 @@ export function readStdinSync(fsMod = fs) {
  * @param {function(string): void} [options.stderrWrite]
  * @returns {number} process exit code (always 0 — fail-open never exits non-zero)
  */
-export function runGate({ fsMod = fs, stdoutWrite = (s) => process.stdout.write(s), stderrWrite = (s) => process.stderr.write(s) } = {}) {
+export function runGate({
+	fsMod = fs,
+	stdoutWrite = (s) => process.stdout.write(s),
+	stderrWrite = (s) => process.stderr.write(s),
+} = {}) {
 	let hookInput;
 	try {
 		const raw = readStdinSync(fsMod);
 		hookInput = raw ? JSON.parse(raw) : {};
 	} catch (err) {
-		stderrWrite(`secret-scan-gate: failed to parse hook input JSON (failing open): ${err.message}\n`);
+		stderrWrite(
+			`secret-scan-gate: failed to parse hook input JSON (failing open): ${err.message}\n`,
+		);
 		stdoutWrite(JSON.stringify(ALLOW_PRE_TOOL_USE));
 		return 0;
 	}
@@ -158,12 +177,17 @@ export function runGate({ fsMod = fs, stdoutWrite = (s) => process.stdout.write(
 		stdoutWrite(JSON.stringify(result));
 		return 0;
 	} catch (err) {
-		stderrWrite(`secret-scan-gate: gate error (failing open): ${err.message}\n`);
+		stderrWrite(
+			`secret-scan-gate: gate error (failing open): ${err.message}\n`,
+		);
 		stdoutWrite(JSON.stringify(ALLOW_PRE_TOOL_USE));
 		return 0;
 	}
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+	process.argv[1] &&
+	fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
 	process.exitCode = runGate();
 }

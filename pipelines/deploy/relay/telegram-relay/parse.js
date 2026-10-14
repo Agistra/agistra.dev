@@ -4,9 +4,18 @@ import { stripRouterAddress } from '../core/names.js';
 
 const WORKFLOW_PATTERNS = [
 	['ci_failed', /\b(ci failed|test failed|build failed)\b/i],
-	['qa_requested', /\b(ready for qa|needs qa|acceptance test|retest|qa requested)\b/i],
-	['review_requested', /\b(ready for review|pr open|please review|review requested)\b/i],
-	['decision_required', /\b(needs approval|\bscope\b|\bprice\b|\btimeline\b|client promise)\b/i],
+	[
+		'qa_requested',
+		/\b(ready for qa|needs qa|acceptance test|retest|qa requested)\b/i,
+	],
+	[
+		'review_requested',
+		/\b(ready for review|pr open|please review|review requested)\b/i,
+	],
+	[
+		'decision_required',
+		/\b(needs approval|\bscope\b|\bprice\b|\btimeline\b|client promise)\b/i,
+	],
 	['blocked', /\b(blocked|waiting on|cannot proceed)\b/i],
 	['info_only', /\b(fyi\b|status update\b|^status:)/i],
 ];
@@ -14,7 +23,8 @@ const WORKFLOW_PATTERNS = [
 const ISSUE_RE = /(?:^|\s)#(\d+)\b|\bissue\s+#?(\d+)\b/i;
 const PR_URL_RE = /https?:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/(\d+)/i;
 const PR_HASH_RE = /\bPR\s*#(\d+)\b/i;
-const BRANCH_RE = /\b(?:branch[:\s]+|on\s+)([\w./-]+)\b|\b((?:feat|fix|chore|refactor)\/[\w-]+)\b/i;
+const BRANCH_RE =
+	/\b(?:branch[:\s]+|on\s+)([\w./-]+)\b|\b((?:feat|fix|chore|refactor)\/[\w-]+)\b/i;
 
 /**
  * Classify workflow state from message text (internal-relay vocabulary).
@@ -44,20 +54,19 @@ export function parseTelegramUpdate(update, routerDisplayName) {
 	const msg = update?.message ?? update?.edited_message;
 	if (!msg) return null;
 
-	let raw_text = typeof msg.text === 'string'
-		? msg.text
-		: typeof msg.caption === 'string'
-			? msg.caption
-			: '';
+	let raw_text =
+		typeof msg.text === 'string'
+			? msg.text
+			: typeof msg.caption === 'string'
+				? msg.caption
+				: '';
 
 	if (routerDisplayName) {
 		raw_text = stripRouterAddress(raw_text, routerDisplayName);
 	}
 
 	const issueMatch = raw_text.match(ISSUE_RE);
-	const issue = issueMatch
-		? Number(issueMatch[1] ?? issueMatch[2])
-		: undefined;
+	const issue = issueMatch ? Number(issueMatch[1] ?? issueMatch[2]) : undefined;
 
 	let pr;
 	const prUrl = raw_text.match(PR_URL_RE);
@@ -72,7 +81,11 @@ export function parseTelegramUpdate(update, routerDisplayName) {
 	const branch = branchMatch ? (branchMatch[1] ?? branchMatch[2]) : undefined;
 
 	let workflow_state = classifyWorkflowState(raw_text);
-	const requested_action = deriveRequestedAction(raw_text, { issue, pr, branch });
+	const requested_action = deriveRequestedAction(raw_text, {
+		issue,
+		pr,
+		branch,
+	});
 
 	return {
 		issue,

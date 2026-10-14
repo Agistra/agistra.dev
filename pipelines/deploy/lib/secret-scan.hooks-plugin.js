@@ -44,7 +44,9 @@ import { upsertOwnedHook, hookHaystack } from './claude-hooks.js';
  * does not guarantee a hook's working directory is the project root.
  */
 export const SECRET_SCAN_PRE_TOOL_USE_COMMAND = 'node';
-export const SECRET_SCAN_PRE_TOOL_USE_ARGS = ['${CLAUDE_PROJECT_DIR}/pipelines/deploy/lib/secret-scan-gate.js'];
+export const SECRET_SCAN_PRE_TOOL_USE_ARGS = [
+	'${CLAUDE_PROJECT_DIR}/pipelines/deploy/lib/secret-scan-gate.js',
+];
 
 /** PreToolUse matcher: gates both Edit and Write calls. */
 export const SECRET_SCAN_PRE_TOOL_USE_MATCHER = 'Edit|Write';
@@ -64,10 +66,16 @@ export function mergeSecretScanPreToolUseHook(settings = {}) {
 	return upsertOwnedHook(
 		settings,
 		'PreToolUse',
-		h => hookHaystack(h).some(s => s.includes('secret-scan-gate.js')),
+		(h) => hookHaystack(h).some((s) => s.includes('secret-scan-gate.js')),
 		{
 			matcher: SECRET_SCAN_PRE_TOOL_USE_MATCHER,
-			hooks: [{ type: 'command', command: SECRET_SCAN_PRE_TOOL_USE_COMMAND, args: SECRET_SCAN_PRE_TOOL_USE_ARGS }],
+			hooks: [
+				{
+					type: 'command',
+					command: SECRET_SCAN_PRE_TOOL_USE_COMMAND,
+					args: SECRET_SCAN_PRE_TOOL_USE_ARGS,
+				},
+			],
 		},
 	);
 }

@@ -24,9 +24,11 @@ const DISPATCH_LOCK = 'dispatch.lock';
  * @returns {boolean}
  */
 export function shouldDispatchClaude(config) {
-	return config.primaryRuntime === 'claude-code'
-		&& config.autoDispatch === true
-		&& config.remoteTeamEnabled === true;
+	return (
+		config.primaryRuntime === 'claude-code' &&
+		config.autoDispatch === true &&
+		config.remoteTeamEnabled === true
+	);
 }
 
 // ── Prompt builder ────────────────────────────────────────────────────────────
@@ -110,7 +112,15 @@ export function acquireDispatchLock({ hubRoot, fsMod = fs }) {
  * @param {() => Date} [options.nowFn]            Injectable clock for logger (testing).
  * @returns {boolean} true when a spawn was started, false when skipped.
  */
-export async function dispatchRouter({ job, config, hubRoot, profilesRoot, spawnFn = nodeSpawn, fsMod = fs, nowFn }) {
+export async function dispatchRouter({
+	job,
+	config,
+	hubRoot,
+	profilesRoot,
+	spawnFn = nodeSpawn,
+	fsMod = fs,
+	nowFn,
+}) {
 	const loggerOpts = nowFn ? { fsMod, nowFn } : { fsMod };
 	const logger = createDaemonLogger(hubRoot, loggerOpts);
 
@@ -135,11 +145,15 @@ export async function dispatchRouter({ job, config, hubRoot, profilesRoot, spawn
 
 	let child;
 	try {
-		child = spawnClaude(['-p', prompt, '--model', model], {
-			cwd: hubRoot,
-			detached: true,
-			stdio: 'ignore',
-		}, spawnFn);
+		child = spawnClaude(
+			['-p', prompt, '--model', model],
+			{
+				cwd: hubRoot,
+				detached: true,
+				stdio: 'ignore',
+			},
+			spawnFn,
+		);
 	} catch (err) {
 		logger.log(`job=${job.id} spawn error: ${err.message}`);
 		lock.release();
@@ -173,7 +187,12 @@ export async function dispatchRouter({ job, config, hubRoot, profilesRoot, spawn
  * @param {typeof fs} [options.fsMod]
  * @returns {number} Number of jobs reset.
  */
-export function resetStaleJobs({ queue, processingTimeoutSec, hubRoot, fsMod = fs }) {
+export function resetStaleJobs({
+	queue,
+	processingTimeoutSec,
+	hubRoot,
+	fsMod = fs,
+}) {
 	const resetCount = queue.resetStaleProcessing(processingTimeoutSec * 1000);
 
 	if (hubRoot) {

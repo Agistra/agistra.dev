@@ -34,11 +34,11 @@ export function upsertOwnedHook(settings, event, isOwned, entry) {
 	let placed = false;
 	for (const existing of next.hooks[event] ?? []) {
 		const hooks = Array.isArray(existing?.hooks) ? existing.hooks : [];
-		if (!hooks.some(h => isOwned(h))) {
+		if (!hooks.some((h) => isOwned(h))) {
 			out.push(existing);
 			continue;
 		}
-		const others = hooks.filter(h => !isOwned(h));
+		const others = hooks.filter((h) => !isOwned(h));
 		if (!placed) {
 			out.push(entry);
 			placed = true;
@@ -60,7 +60,9 @@ export function upsertOwnedHook(settings, event, isOwned, entry) {
  * guarantee a hook's working directory is the project root.
  */
 export const RELAY_SESSION_START_COMMAND = 'node';
-export const RELAY_SESSION_START_ARGS = ['${CLAUDE_PROJECT_DIR}/tools/ensure-relay-daemon.js'];
+export const RELAY_SESSION_START_ARGS = [
+	'${CLAUDE_PROJECT_DIR}/tools/ensure-relay-daemon.js',
+];
 
 /**
  * Ensure hub .claude/settings.json includes SessionStart -> ensure-relay-daemon.
@@ -73,17 +75,25 @@ export function mergeRelaySessionStartHook(settings = {}) {
 	return upsertOwnedHook(
 		settings,
 		'SessionStart',
-		h => hookHaystack(h).some(s => s.includes('ensure-relay-daemon')),
+		(h) => hookHaystack(h).some((s) => s.includes('ensure-relay-daemon')),
 		{
 			matcher: '',
-			hooks: [{ type: 'command', command: RELAY_SESSION_START_COMMAND, args: RELAY_SESSION_START_ARGS }],
+			hooks: [
+				{
+					type: 'command',
+					command: RELAY_SESSION_START_COMMAND,
+					args: RELAY_SESSION_START_ARGS,
+				},
+			],
 		},
 	);
 }
 
 /** Memory-check Stop hook command (exec form, anchored to the project dir). */
 export const MEMORY_CHECK_STOP_COMMAND = 'node';
-export const MEMORY_CHECK_STOP_ARGS = ['${CLAUDE_PROJECT_DIR}/tools/memory-check.js'];
+export const MEMORY_CHECK_STOP_ARGS = [
+	'${CLAUDE_PROJECT_DIR}/tools/memory-check.js',
+];
 
 /**
  * Ensure hub .claude/settings.json includes Stop -> tools/memory-check.js.
@@ -97,10 +107,19 @@ export function mergeMemoryCheckStopHook(settings = {}) {
 	return upsertOwnedHook(
 		settings,
 		'Stop',
-		h => hookHaystack(h).some(s => /tools[\\/]memory-check\.(sh|js)(?![\w-])/.test(s)),
+		(h) =>
+			hookHaystack(h).some((s) =>
+				/tools[\\/]memory-check\.(sh|js)(?![\w-])/.test(s),
+			),
 		{
 			matcher: '',
-			hooks: [{ type: 'command', command: MEMORY_CHECK_STOP_COMMAND, args: MEMORY_CHECK_STOP_ARGS }],
+			hooks: [
+				{
+					type: 'command',
+					command: MEMORY_CHECK_STOP_COMMAND,
+					args: MEMORY_CHECK_STOP_ARGS,
+				},
+			],
 		},
 	);
 }

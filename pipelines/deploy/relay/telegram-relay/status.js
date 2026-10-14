@@ -32,7 +32,7 @@ try {
 	process.exit(1);
 } catch {
 	process.stderr.write(
-		`relay daemon not reachable at ${url} — start with: npm run relay -- --hub ${hubRoot}\n`,
+		`relay daemon not reachable at ${url} — start with: npm.cmd run relay -- --hub ${hubRoot}\n`,
 	);
 	process.exit(1);
 }

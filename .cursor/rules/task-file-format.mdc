@@ -14,7 +14,7 @@ Task files live in `projects/<project>/task_N_<state>_<slug>.md`. Filename struc
 ---
 agent: builder | tester | architect
 mode: engineering | qa | architecture
-model: claude-sonnet-4-6
+model: <model-id>
 status: state:ready-for-qa          # Authoritative lifecycle state
 verifier: Tester | Architect | Automated
 fail-count: 0                       # QA failure count (0, 1, 2)

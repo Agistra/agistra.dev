@@ -6,7 +6,7 @@ Manual E2E verification for Telegram → daemon inbox → Router dispatch.
 
 ## Prerequisites
 
-- Relay daemon running: `npm run relay -- --hub <hub-path>`
+- Relay daemon running: `npm.cmd run relay -- --hub <hub-path>`
 - `workspace.config.json` has valid `telegram` block
 - Optional: `relay.allowedSenders[]` lists Max bot user ID and team-lead Telegram user ID
 - Router session with relay MCP tools (`relay_inbox_peek`, `relay_inbox_ack`, `relay_send`)
@@ -19,7 +19,7 @@ Manual E2E verification for Telegram → daemon inbox → Router dispatch.
 
 ```powershell
 cd D:\dev\setchin-agent-profiles
-npm run relay -- --hub D:/dev/agistra.dev
+npm.cmd run relay -- --hub D:/dev/agistra.dev
 ```
 
 ### 2. Send a structured message in the relay group

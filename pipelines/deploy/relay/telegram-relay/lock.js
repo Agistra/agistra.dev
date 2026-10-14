@@ -49,7 +49,10 @@ export function acquireDaemonLock({
 		release() {
 			try {
 				if (fsMod.existsSync(lockPath)) {
-					const current = parseInt(fsMod.readFileSync(lockPath, 'utf-8').trim(), 10);
+					const current = parseInt(
+						fsMod.readFileSync(lockPath, 'utf-8').trim(),
+						10,
+					);
 					if (current === pid) {
 						fsMod.unlinkSync(lockPath);
 					}

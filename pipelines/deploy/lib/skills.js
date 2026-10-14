@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter } from './tasks.js';
-import { addWrittenFile, addWrittenFiles, copyDirTracked } from './written-files.js';
+import {
+	addWrittenFile,
+	addWrittenFiles,
+	copyDirTracked,
+} from './written-files.js';
 
 function yamlDoubleQuoted(str) {
 	return `"${String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
@@ -35,7 +39,7 @@ export function parseSkillFrontmatter(skillsRoot, skillName) {
 		if (headingMatch) {
 			description = headingMatch[1].trim();
 		} else {
-			const line = body.split(/\r?\n/).find(l => l.trim());
+			const line = body.split(/\r?\n/).find((l) => l.trim());
 			description = line?.trim() ?? skillName;
 		}
 	}
@@ -49,14 +53,18 @@ export function parseSkillFrontmatter(skillsRoot, skillName) {
  *
  * Returns [{ skill, length }]
  */
-export function findOverlongSkillDescriptions(skillsRoot, maxLength = SKILL_DESCRIPTION_MAX_LENGTH) {
+export function findOverlongSkillDescriptions(
+	skillsRoot,
+	maxLength = SKILL_DESCRIPTION_MAX_LENGTH,
+) {
 	if (!fs.existsSync(skillsRoot)) return [];
 	const overlong = [];
 	for (const entry of fs.readdirSync(skillsRoot, { withFileTypes: true })) {
 		if (!entry.isDirectory()) continue;
 		if (!fs.existsSync(path.join(skillsRoot, entry.name, 'SKILL.md'))) continue;
 		const { description } = parseSkillFrontmatter(skillsRoot, entry.name);
-		if (description.length > maxLength) overlong.push({ skill: entry.name, length: description.length });
+		if (description.length > maxLength)
+			overlong.push({ skill: entry.name, length: description.length });
 	}
 	return overlong;
 }
@@ -64,7 +72,11 @@ export function findOverlongSkillDescriptions(skillsRoot, maxLength = SKILL_DESC
 /**
  * Build a platform discovery stub SKILL.md that points at canonical skills/<name>/SKILL.md.
  */
-export function buildSkillStub(skillName, skillsRoot, { canonicalPrefix = 'skills' } = {}) {
+export function buildSkillStub(
+	skillName,
+	skillsRoot,
+	{ canonicalPrefix = 'skills' } = {},
+) {
 	const { name, description } = parseSkillFrontmatter(skillsRoot, skillName);
 	const canonicalPath = `${canonicalPrefix}/${skillName}/SKILL.md`;
 	const assetPrefix = `${canonicalPrefix}/${skillName}/`;
@@ -88,12 +100,17 @@ const STUB_MARKER = 'This stub exists for platform skill discovery only.';
 function removeStaleStubs(outputSkillsRoot, keepNames) {
 	if (!fs.existsSync(outputSkillsRoot)) return;
 	const keep = new Set(keepNames);
-	for (const entry of fs.readdirSync(outputSkillsRoot, { withFileTypes: true })) {
+	for (const entry of fs.readdirSync(outputSkillsRoot, {
+		withFileTypes: true,
+	})) {
 		if (!entry.isDirectory() || keep.has(entry.name)) continue;
 		const skillFile = path.join(outputSkillsRoot, entry.name, 'SKILL.md');
 		if (!fs.existsSync(skillFile)) continue;
 		if (fs.readFileSync(skillFile, 'utf-8').includes(STUB_MARKER)) {
-			fs.rmSync(path.join(outputSkillsRoot, entry.name), { recursive: true, force: true });
+			fs.rmSync(path.join(outputSkillsRoot, entry.name), {
+				recursive: true,
+				force: true,
+			});
 		}
 	}
 }
@@ -105,7 +122,13 @@ function removeStaleStubs(outputSkillsRoot, keepNames) {
  *
  * Returns { copied: string[], missing: string[] }
  */
-export function writeSkillStubs({ skillsRoot, outputSkillsRoot, skillNames, canonicalPrefix = 'skills', pruneStale = false }) {
+export function writeSkillStubs({
+	skillsRoot,
+	outputSkillsRoot,
+	skillNames,
+	canonicalPrefix = 'skills',
+	pruneStale = false,
+}) {
 	const copied = [];
 	const missing = [];
 	const writtenFiles = [];
@@ -143,7 +166,11 @@ export function writeSkillStubs({ skillsRoot, outputSkillsRoot, skillNames, cano
  *   copied  — skill names that were successfully copied
  *   missing — skill names declared in the manifest but not found in skillsRoot
  */
-export function copyDeclaredSkills(skillsRoot, outputSkillsRoot, declaredSkills) {
+export function copyDeclaredSkills(
+	skillsRoot,
+	outputSkillsRoot,
+	declaredSkills,
+) {
 	const copied = [];
 	const missing = [];
 	const writtenFiles = [];

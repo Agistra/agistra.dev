@@ -63,3 +63,7 @@ graphify-out/
 /.cursor/skills/codebase-design/
 /.codex/skills/codebase-design/
 /.github/skills/codebase-design/
+# Visual Studio per-user state
+.vs/
+*.suo
+*.user

@@ -3,7 +3,8 @@
 export const RELAY_TOOLS = [
 	{
 		name: 'relay_send',
-		description: 'Send a validated outbound message via the relay daemon to Telegram.',
+		description:
+			'Send a validated outbound message via the relay daemon to Telegram.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -18,7 +19,8 @@ export const RELAY_TOOLS = [
 	},
 	{
 		name: 'relay_inbox_peek',
-		description: 'Fetch the next parsed inbound relay job from the daemon inbox queue.',
+		description:
+			'Fetch the next parsed inbound relay job from the daemon inbox queue.',
 		inputSchema: { type: 'object', properties: {} },
 	},
 	{

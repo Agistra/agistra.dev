@@ -91,9 +91,10 @@ export function detectPartialTaskCliRules(settings) {
  * @returns {object}
  */
 export function mergeTaskCliPermissions(settings = {}) {
-	const permissions = settings.permissions && typeof settings.permissions === 'object'
-		? settings.permissions
-		: {};
+	const permissions =
+		settings.permissions && typeof settings.permissions === 'object'
+			? settings.permissions
+			: {};
 	const allow = allowList(settings);
 	const missing = TASK_CLI_ALLOW_RULES.filter((rule) => !allow.includes(rule));
 	return {
@@ -107,8 +108,10 @@ export function mergeTaskCliPermissions(settings = {}) {
  * Codex, Copilot) have their own permission systems and are out of scope.
  */
 export function hasClaudeAdapter(hubRoot, fsMod = fs) {
-	return fsMod.existsSync(path.join(hubRoot, '.claude', 'agents'))
-		|| fsMod.existsSync(path.join(hubRoot, '.claude', 'settings.json'));
+	return (
+		fsMod.existsSync(path.join(hubRoot, '.claude', 'agents')) ||
+		fsMod.existsSync(path.join(hubRoot, '.claude', 'settings.json'))
+	);
 }
 
 /**
@@ -117,11 +120,16 @@ export function hasClaudeAdapter(hubRoot, fsMod = fs) {
  * @returns {'enabled'|'missing'|'declined'|'not-applicable'}
  */
 export function readTaskPermissionState({ hubRoot, fsMod = fs }) {
-	if (!hasClaudeAdapter(hubRoot, fsMod)) return TASK_PERMISSION_STATES.NOT_APPLICABLE;
-	const settings = readJson(path.join(hubRoot, '.claude', 'settings.json'), fsMod);
+	if (!hasClaudeAdapter(hubRoot, fsMod))
+		return TASK_PERMISSION_STATES.NOT_APPLICABLE;
+	const settings = readJson(
+		path.join(hubRoot, '.claude', 'settings.json'),
+		fsMod,
+	);
 	if (hasAllTaskCliRules(settings)) return TASK_PERMISSION_STATES.ENABLED;
 	const config = readJson(path.join(hubRoot, 'workspace.config.json'), fsMod);
-	if (config?.[TASK_PERMISSION_CONFIG_KEY]?.declined === true) return TASK_PERMISSION_STATES.DECLINED;
+	if (config?.[TASK_PERMISSION_CONFIG_KEY]?.declined === true)
+		return TASK_PERMISSION_STATES.DECLINED;
 	return TASK_PERMISSION_STATES.MISSING;
 }
 
@@ -135,14 +143,25 @@ const UNUSABLE_CONSEQUENCE = 'No task CLI allow rules were added.';
  */
 export function applyTaskCliPermissions({ hubRoot, fsMod = fs }) {
 	const settingsPath = path.join(hubRoot, '.claude', 'settings.json');
-	const read = readSettingsForMerge(settingsPath, { fsMod, expect: SETTINGS_SHAPE.permissions });
+	const read = readSettingsForMerge(settingsPath, {
+		fsMod,
+		expect: SETTINGS_SHAPE.permissions,
+	});
 	if (read.status === 'unusable') {
-		throw new UnusableSettingsError(settingsPath, read.reason, UNUSABLE_CONSEQUENCE);
+		throw new UnusableSettingsError(
+			settingsPath,
+			read.reason,
+			UNUSABLE_CONSEQUENCE,
+		);
 	}
 	fsMod.mkdirSync(path.dirname(settingsPath), { recursive: true });
 	fsMod.writeFileSync(
 		settingsPath,
-		stringifySettings(mergeTaskCliPermissions(read.settings ?? {}), read.indent, '\t'),
+		stringifySettings(
+			mergeTaskCliPermissions(read.settings ?? {}),
+			read.indent,
+			'\t',
+		),
 		'utf-8',
 	);
 	return settingsPath;
@@ -156,7 +175,11 @@ function writeDeclineRecord({ hubRoot, fsMod, declined }) {
 	} else {
 		delete config[TASK_PERMISSION_CONFIG_KEY];
 	}
-	fsMod.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(
+		configPath,
+		JSON.stringify(config, null, 2) + '\n',
+		'utf-8',
+	);
 }
 
 /**
@@ -181,44 +204,60 @@ export async function offerTaskCliPermissions({
 	log = (s) => process.stdout.write(s),
 }) {
 	const state = readTaskPermissionState({ hubRoot, fsMod });
-	if (state === TASK_PERMISSION_STATES.NOT_APPLICABLE) return { outcome: 'not-applicable' };
+	if (state === TASK_PERMISSION_STATES.NOT_APPLICABLE)
+		return { outcome: 'not-applicable' };
 	if (state === TASK_PERMISSION_STATES.ENABLED) {
 		log('  task permission: enabled\n');
 		return { outcome: 'already-enabled' };
 	}
 	if (state === TASK_PERMISSION_STATES.DECLINED && !reAsk) {
-		log('  task permission: declined by choice (re-ask with: npm run setup -- --ask-permissions)\n');
+		log(
+			'  task permission: declined by choice (re-ask with: npm.cmd run setup -- --ask-permissions)\n',
+		);
 		return { outcome: 'previously-declined' };
 	}
 	// A settings file we cannot merge into safely is never rewritten, and asking a
 	// question we cannot honour would only mislead.
 	const settingsPath = path.join(hubRoot, '.claude', 'settings.json');
-	const read = readSettingsForMerge(settingsPath, { fsMod, expect: SETTINGS_SHAPE.permissions });
+	const read = readSettingsForMerge(settingsPath, {
+		fsMod,
+		expect: SETTINGS_SHAPE.permissions,
+	});
 	if (read.status === 'unusable') {
-		log(`  WARNING: ${unusableSettingsMessage(settingsPath, read.reason, UNUSABLE_CONSEQUENCE)}\n`);
+		log(
+			`  WARNING: ${unusableSettingsMessage(settingsPath, read.reason, UNUSABLE_CONSEQUENCE)}\n`,
+		);
 		return { outcome: 'unusable-settings', reason: read.reason };
 	}
 	if (!isInteractive()) {
-		log('  task permission: not configured (non-interactive run, nothing changed)\n');
+		log(
+			'  task permission: not configured (non-interactive run, nothing changed)\n',
+		);
 		return { outcome: 'non-interactive' };
 	}
 
 	log(
 		'  Agents run the task CLI (npm run task -- <subcommand>) for every ticket step.\n' +
-		'  Without allow rules, Claude Code prompts on each call and auto mode may block\n' +
-		'  writes such as transitions. This adds one allow rule per task subcommand to\n' +
-		'  .claude/settings.json (read, list, transition, update-field, waves,\n' +
-		'  append-section, qa-report, post-merge-check, dispatch-context, create).\n' +
-		'  Nothing broader than "npm run task --" is allowed; no gh rules are added.\n',
+			'  Without allow rules, Claude Code prompts on each call and auto mode may block\n' +
+			'  writes such as transitions. This adds one allow rule per task subcommand to\n' +
+			'  .claude/settings.json (read, list, transition, update-field, waves,\n' +
+			'  append-section, qa-report, post-merge-check, dispatch-context, create).\n' +
+			'  Nothing broader than "npm run task --" is allowed; no gh rules are added.\n',
 	);
-	const yes = await askYN('Allow the task CLI commands in .claude/settings.json?', true);
+	const yes = await askYN(
+		'Allow the task CLI commands in .claude/settings.json?',
+		true,
+	);
 	if (yes) {
 		applyTaskCliPermissions({ hubRoot, fsMod });
-		if (state === TASK_PERMISSION_STATES.DECLINED) writeDeclineRecord({ hubRoot, fsMod, declined: false });
+		if (state === TASK_PERMISSION_STATES.DECLINED)
+			writeDeclineRecord({ hubRoot, fsMod, declined: false });
 		log(`  Task CLI allow rules added → ${settingsPath}\n`);
 		return { outcome: 'enabled' };
 	}
 	writeDeclineRecord({ hubRoot, fsMod, declined: true });
-	log('  Declined — recorded in workspace.config.json; setup will not ask again.\n');
+	log(
+		'  Declined — recorded in workspace.config.json; setup will not ask again.\n',
+	);
 	return { outcome: 'declined' };
 }

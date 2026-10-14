@@ -44,9 +44,15 @@ is_read_only_segment() {
       for a in "${w[@]}"; do
         case "$(printf '%s' "$a" | tr 'A-Z' 'a-z')" in --output*) return 1 ;; esac
       done
-      case "$(printf '%s' "${w[1]:-}" | tr 'A-Z' 'a-z')" in
+      # "git -C <path> <verb>": one bare path token, then the verb.
+      local gi=1
+      if [ "${w[1]:-}" = "-C" ]; then
+        case "${w[2]:-}" in ''|-*) return 1 ;; esac
+        gi=3
+      fi
+      case "$(printf '%s' "${w[$gi]:-}" | tr 'A-Z' 'a-z')" in
         status|log|diff|show|rev-parse|merge-base) return 0 ;;
-        branch) [ "${w[2]:-}" = "--list" ] && return 0 ;;
+        branch) [ "${w[$((gi + 1))]:-}" = "--list" ] && return 0 ;;
       esac
       return 1
       ;;
@@ -91,6 +97,13 @@ is_read_only_segment() {
 is_read_only_command() {
   local cmd="$1" rest seg lower
   [ -n "${cmd//[[:space:]]/}" ] || return 1
+  # A single leading "cd <path> &&": the path is one bare or quoted token with
+  # no metacharacters; the rest is classified on its own.
+  local cd_re='^[[:space:]]*cd[[:space:]]+("[^"&;|<>`$()]+"|'"'"'[^'"'"'&;|<>`$()]+'"'"'|[^][:space:]"'"'"'&;|<>`$()]+)[[:space:]]*&&[[:space:]]*(.*)$'
+  if [[ "$cmd" =~ $cd_re ]]; then
+    cmd="${BASH_REMATCH[2]}"
+    [ -n "${cmd//[[:space:]]/}" ] || return 1
+  fi
   case "$cmd" in
     *'>'*|*';'*|*'&'*|*'<'*|*'`'*|*'$('*|*$'\n'*|*$'\r'*) return 1 ;;
   esac
@@ -98,6 +111,12 @@ is_read_only_command() {
   if printf '%s' "$lower" | grep -qE '(^|[^a-z0-9_-])(tee|out-file|set-content|add-content)($|[^a-z0-9_-])'; then
     return 1
   fi
+  # Exact known read-only hub commands (scripts, so not matchable by verb).
+  local norm
+  norm="$(printf '%s' "$cmd" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+  case "$norm" in
+    'node pipelines/deploy/lib/version-check.js'|'npm run version:check') return 0 ;;
+  esac
   rest="$cmd"
   while :; do
     seg="${rest%%|*}"

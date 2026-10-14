@@ -59,7 +59,8 @@ export function checkHubRootDepsCurrent({ hubRoot, fsMod = fs }) {
 	}
 	const declared = Object.keys(pkg.dependencies ?? {}).sort();
 	const missing = declared.filter(
-		(dep) => !fsMod.existsSync(path.join(hubRoot, 'node_modules', ...dep.split('/'))),
+		(dep) =>
+			!fsMod.existsSync(path.join(hubRoot, 'node_modules', ...dep.split('/'))),
 	);
 	return { declared, missing, current: missing.length === 0 };
 }
@@ -79,7 +80,11 @@ export function checkHubRootDepsCurrent({ hubRoot, fsMod = fs }) {
  *   spawning a real npm process.
  * @returns {{ ran: true, command: 'ci'|'install' } | { ran: false, command: 'ci'|'install', error: string }}
  */
-export function installHubRootDeps({ hubRoot, fsMod = fs, execFn = execFileSync }) {
+export function installHubRootDeps({
+	hubRoot,
+	fsMod = fs,
+	execFn = execFileSync,
+}) {
 	const useCi = fsMod.existsSync(path.join(hubRoot, 'package-lock.json'));
 	const command = useCi ? 'ci' : 'install';
 	try {
@@ -87,7 +92,11 @@ export function installHubRootDeps({ hubRoot, fsMod = fs, execFn = execFileSync 
 		// setup-time `npm ci` install helpers already established: npm resolves
 		// to npm.cmd on Windows, and execFileSync without a shell cannot
 		// resolve/execute a .cmd shim directly.
-		execFn('npm', [command], { cwd: hubRoot, stdio: 'inherit', shell: process.platform === 'win32' });
+		execFn('npm', [command], {
+			cwd: hubRoot,
+			stdio: 'inherit',
+			shell: process.platform === 'win32',
+		});
 		return { ran: true, command };
 	} catch (err) {
 		return { ran: false, command, error: err.message };
@@ -126,22 +135,31 @@ export function ensureHubRootDepsInstalled({
 	log = (s) => process.stdout.write(s),
 	installFn = installHubRootDeps,
 }) {
-	const { declared, missing, current } = checkHubRootDepsCurrent({ hubRoot, fsMod });
+	const { declared, missing, current } = checkHubRootDepsCurrent({
+		hubRoot,
+		fsMod,
+	});
 	if (declared.length === 0) {
 		// No package.json, or no dependencies declared — nothing to install.
 		return { skipped: true, declared };
 	}
 	if (current) {
-		log(`  Hub-root dependencies already installed (${declared.length} present in node_modules/).\n`);
+		log(
+			`  Hub-root dependencies already installed (${declared.length} present in node_modules/).\n`,
+		);
 		return { skipped: true, declared };
 	}
-	log(`  Installing hub-root dependencies (missing: ${missing.join(', ')})...\n`);
+	log(
+		`  Installing hub-root dependencies (missing: ${missing.join(', ')})...\n`,
+	);
 	const result = installFn({ hubRoot, fsMod, execFn });
 	if (result.ran) {
 		log(`  Hub-root dependencies installed via npm ${result.command}.\n`);
 	} else {
 		log(`  WARNING: hub-root dependency install failed: ${result.error}\n`);
-		log('  Re-run npm run setup to retry, or run npm install manually at the hub root.\n');
+		log(
+			'  Re-run npm run setup to retry, or run npm install manually at the hub root.\n',
+		);
 	}
 	return { skipped: false, ...result };
 }

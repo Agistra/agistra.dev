@@ -12,13 +12,20 @@ import { createHttpServer } from './http.js';
 import { InboundQueue } from '../core/queue.js';
 import { createDaemonLogger } from '../core/logger.js';
 import { postInboundComment, shouldNotifyGithub } from '../adapters/github.js';
-import { shouldDispatchClaude, dispatchRouter, resetStaleJobs } from '../adapters/claude-code.js';
+import {
+	shouldDispatchClaude,
+	dispatchRouter,
+	resetStaleJobs,
+} from '../adapters/claude-code.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const argv = process.argv.slice(2);
 const hubRoot = resolveHubRoot(argv);
-const profilesRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const profilesRoot = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	'../../..',
+);
 
 let config;
 try {
@@ -40,8 +47,6 @@ const logger = createDaemonLogger(hubRoot);
 
 const queue = new InboundQueue({ hubRoot });
 
-let pollerRef = { polling: false };
-
 const poller = startPoller({
 	botToken: config.botToken,
 	relayGroupId: config.relayGroupId,
@@ -54,12 +59,12 @@ const poller = startPoller({
 		const truncated = (job.raw_text ?? '').slice(0, 80);
 		logger.log(`enqueued job=${job.id} text="${truncated}"`);
 		if (shouldNotifyGithub(config)) {
-			postInboundComment({ job, config }).catch(err => {
+			postInboundComment({ job, config }).catch((err) => {
 				process.stderr.write(`relay github notify error: ${err.message}\n`);
 			});
 		}
 		if (shouldDispatchClaude(config)) {
-			dispatchRouter({ job, config, hubRoot, profilesRoot }).catch(err => {
+			dispatchRouter({ job, config, hubRoot, profilesRoot }).catch((err) => {
 				process.stderr.write(`relay claude dispatch error: ${err.message}\n`);
 			});
 		}
@@ -69,12 +74,15 @@ const poller = startPoller({
 		process.stderr.write(`relay poll error: ${err.message}\n`);
 	},
 });
-pollerRef = poller;
 
 if (shouldDispatchClaude(config)) {
 	const recoveryMs = config.recoveryPollSec * 1000;
 	setInterval(() => {
-		resetStaleJobs({ queue, processingTimeoutSec: config.processingTimeoutSec, hubRoot });
+		resetStaleJobs({
+			queue,
+			processingTimeoutSec: config.processingTimeoutSec,
+			hubRoot,
+		});
 		queue.pruneOldDone(config.inboxRetentionDays * 86400 * 1000);
 		logger.pruneOldLogs(config.logRetentionDays * 86400 * 1000);
 	}, recoveryMs).unref();

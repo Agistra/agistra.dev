@@ -104,5 +104,5 @@ Only include Tester if the team lead explicitly requests re-validation of a remo
 
 1. The team lead asks Builder for Tester re-validation.
 2. Builder creates a fresh Developer → QA handoff using `ticket-lifecycle-mode`.
-3. Tester runs full QA in a direct session (not as subagent — browser tests need the shared tab).
+3. Tester runs full QA as Architect classifies it: a subagent in Full QA mode for non-browser tickets, a direct Tester session for browser-driven QA.
 4. Tester's verdict updates the ticket state. Router is not involved in this route since it is an internal team escalation.

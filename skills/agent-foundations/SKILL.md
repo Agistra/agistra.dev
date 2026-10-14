@@ -135,15 +135,15 @@ Turns that do NOT require a write: routine confirmations ("yes", "looks good", "
 
 ### The 7-Point Self-Check Report
 
-Every agent, on first invocation while the trigger condition holds, produces this report before any other work:
+Every agent, on first invocation while the trigger condition holds, runs `npm run self-check -- <agent>` (also `node tools/self-check.js <agent> [--json]`; cwd = the pinned hub root) and pastes its output before any other work. The command computes all seven points in one deterministic pass — no agent hand-assembles any of this from `doctor.js`, `tools/skills-audit.js`, a memory read, and `workspace.config.json`:
 
-1. **Identity** — name, role, profile file path (and version/hash if available)
-2. **Skills catalogue** — run `node tools/skills-audit.js <own profile path>` (cwd = the pinned hub root; pass the same profile path already resolved via the Working Directory Verification probe) and report its JSON output directly — counts (`total`/`guaranteed`/`optional`) plus any `missingGuaranteed`/`missingOptional` entries. Do not hand-count or hand-classify the Skills table by reading it yourself; the script parses and classifies it deterministically so this point is never subject to a manual miscount or misclassification (apply the Optional Skill Presence Check above when interpreting a non-empty `missingOptional`). All four adapters (Claude Code, Cursor, Codex, GitHub Copilot) render the same Skills-table row shape and are supported by this script without any adapter-specific parsing.
-3. **Protocols acknowledged** — name VBR, WAL, RBR, and the ticket lifecycle states this agent operates under. Naming them is not enough — state in one line what each one requires of this agent specifically.
-4. **Memory state at boot** — the agent's own memory record, read via the active storage plugin using `read-memory(agent)` (concrete paths are defined in the active plugin file — see the Storage Plugin Contract below), is missing, stub-scaffolded (just headings, no content), or carries real content. **Setup-ordering caveat (vault-tier hubs only):** on a vault-tier hub (`hubType` ∈ `dev:sub`/`ops`), if this agent's own memory is stub-scaffolded *and* the vault as a whole has zero or near-zero total notes, do not report "stub-scaffolded" as an unqualified, permanent fact. Bootstrap Self-Check can fire before `npm run setup` (migration, qmd, Obsidian provisioning) has ever run on a fresh vault-tier hub, and a stub finding recorded at that moment goes stale the instant setup completes — nothing else re-validates or corrects it later. State the finding with the ordering risk named, e.g.: "memory stub-scaffolded; if `npm run setup` has not yet run on this hub, this finding will go stale the moment it does — re-run Bootstrap Self-Check manually to confirm after setup completes." This is a soft signal, not an assertion that setup definitely hasn't run — a vault-tier hub can also be legitimately, intentionally empty by customer choice, and this caveat must not be over-fired as if that possibility were ruled out. On free-tier repo-files hubs, or whenever the vault genuinely has content, report the finding exactly as before with no caveat.
-5. **Workspace signals checked** — `workspace.config.json` present, whether `workspace.config.json` has a `doctor.lastRanAt` field (written by `doctor.js` each time it runs), `projects/` directory scaffolded. The doctor check is passive: check whether the `doctor.lastRanAt` field exists in `workspace.config.json`; do not invoke `npm run doctor` yourself as part of this check — a live run and a field-presence check are different signals, and reporting one as the other produces a false "doctor passes" claim that contradicts agents who only checked the field. When `workspace.config.json` has `hubType: "dev:sub"` (the same scope the "Knowledge Retrieval" section below already uses — this bullet does not widen that scope), also confirm the hub's storage plugin file exists under `skills/agent-foundations/storage/*.md` and report which plugin is active. Hubs outside that scope (`dev`, `dev:graph`, `ops`) skip this bullet entirely — it is not evaluated there.
-6. **Gaps found** — any expected skill, memory key, or config field that is missing or empty
-7. **Readiness verdict** — `ready`, `ready-with-warnings`, or `blocked`, with a one-line reason. When the point-4 setup-ordering caveat above applies (vault-tier hub, this agent's own memory stub-scaffolded, vault near-zero notes), the one-line reason must name the ordering possibility explicitly instead of reading as a generic, unexplained warning — e.g. "ready-with-warnings: memory stub-scaffolded, but `npm run setup` may not have run yet on this vault-tier hub." Do not state or imply that setup definitely hasn't run; the verdict names the possibility, not a certainty.
+1. **Identity** — name, role, profile file path, content hash
+2. **Skills catalogue** — the `tools/skills-audit.js` output, embedded
+3. **Protocols acknowledged** — VBR, WAL, RBR, and the ticket lifecycle states this agent operates under
+4. **Memory state at boot** — `missing` / `stub-scaffolded` / `has-content`, with the vault-tier setup-ordering caveat (stub-scaffolded memory plus a near-zero vault note count) emitted when it applies
+5. **Workspace signals checked** — `workspace.config.json` presence, `doctor.lastRanAt` presence, tasks-root scaffolding, and (dev:sub hubs only) the active storage plugin
+6. **Gaps found** — any of the above that is missing
+7. **Readiness verdict** — `ready`, `ready-with-warnings`, or `blocked`, with a one-line reason naming the point-4 setup-ordering caveat when it applies; exit code 0 for `ready`/`ready-with-warnings`, 1 for `blocked`.
 
 ### Architect-Only Fan-Out
 
@@ -280,16 +280,14 @@ All four adapters face the same cwd risk. The probe path differs per adapter (se
 
 ## Memory Path Resolution
 
-**The law:** On vault-backed tiers, the agent memory path is not a fixed repo-relative location — the agent's live memory lives inside the vault, not at the repo root. An agent that writes to a literal repo-relative path without checking the active storage plugin creates a stray file outside the vault, bypassing the knowledge index and the write-path guard. **The same failure shape applies equally to the Task and Document stores** — a task note or a document written at a free-tier-shaped repo-relative path instead of the plugin-resolved vault path is the identical mistake on a different store. Despite this section's name, the protocol below (especially step 4, the MCP-down fallback) is the canonical mechanism for all three Storage Plugin Contract stores — Memory, Task, and Document — not memory alone; Memory is used as the worked example because it is exercised on every Session Start, but the same steps apply verbatim to `create-task`/`transition-state`/`append-task-section` (Task store) and `create-document`/`read-document` (Document store).
+**The law:** On vault-backed tiers, the agent memory path is not a fixed repo-relative location — the agent's live memory lives inside the vault, not at the repo root. An agent that writes to a literal repo-relative path without checking the active storage plugin creates a stray file outside the vault, bypassing the knowledge index and the write-path guard. **The same failure shape applies equally to the Task and Document stores** — a task note or a document written at a free-tier-shaped repo-relative path instead of the plugin-resolved vault path is the identical mistake on a different store. Despite this section's name, the protocol below (especially step 2, the MCP-down fallback) is the canonical mechanism for all three Storage Plugin Contract stores — Memory, Task, and Document — not memory alone; Memory is used as the worked example because it is exercised on every Session Start, but the same steps apply verbatim to `create-task`/`transition-state`/`append-task-section` (Task store) and `create-document`/`read-document` (Document store).
 
 **When this applies:** Immediately after the Working Directory Verification pin is established, before the first read or write of the agent's memory file (every session) — and equally, before the first Task-store or Document-store operation in any session that performs one.
 
 ### Protocol
 
-1. **Check for an active storage plugin file** at `skills/agent-foundations/storage/*.md`. The deployed hub ships exactly one plugin file at this path; its presence is the signal that storage may redirect the path — for any of the three stores, not memory alone. This is the same presence-gated check already used by the Optional Skill Presence Check and Bootstrap Self-Check sections above.
-2. **If a plugin file is present,** read it and locate the operation definitions for whichever store is in play: `read-memory(agent)`/`write-memory-entry(agent, tier, content)` for Memory; `create-task(...)`/`read-task(...)`/`transition-state(...)`/`append-task-section(...)` for Task; `create-document(...)`/`read-document(...)` for Document. Those definitions govern the real path for that store — they may redirect the default repo-relative path to a different location (for example, the `obsidian` plugin used on vault-backed tiers routes every store's reads and writes through the vault's own storage backend). Use the plugin-defined path for all operations on that store for the rest of the session.
-3. **If no plugin file is present,** the default repo-relative path is correct as-is, for every store. This is the free-tier default — no change from standard behaviour.
-4. **If a plugin file is present but its required write tool is unavailable at runtime** (e.g. the `obsidian` plugin's `obsidian-mcp-server` is down or unconfigured) — this is a distinct case from "no plugin file present" and resolves the same way regardless of which store is in play. The fallback target is still the plugin-resolved **vault** path for that store, accessed via a direct file read/edit against that same vault path — never the free-tier default repo-relative path. A plugin file existing at all is what determines the target path; the write tool being temporarily down does not change that target for Memory, Task, or Document — it only changes the mechanism used to reach it.
+1. **Obtain the path from the resolver command**, not by hand: `node tools/resolve-path.js <store> <arg>` (store: `memory <agent>` | `task <project>` | `document <collection>` | `learnings <store>`), run from the pinned hub root. It detects the active plugin from `skills/agent-foundations/storage/*.md` presence (the same presence-gated check already used by the Optional Skill Presence Check and Bootstrap Self-Check sections above) and returns `{ store, plugin, path }` on stdout. No plugin file present → the free-tier default repo-relative path, for every store. A plugin file present → the vault-mapped path from that plugin's folder table (for example, the `obsidian` plugin used on vault-backed tiers routes every store's reads and writes through the vault's own storage backend). Use the returned path for every operation on that store for the rest of the session.
+2. **If a plugin file is present but its required write tool is unavailable at runtime** (e.g. the `obsidian` plugin's `obsidian-mcp-server` is down or unconfigured) — this is a distinct case from "no plugin file present" and resolves the same way regardless of which store is in play. The fallback target is still the plugin-resolved **vault** path for that store (the resolver command above still returns it), accessed via a direct file read/edit against that same vault path — never the free-tier default repo-relative path. A plugin file existing at all is what determines the target path; the write tool being temporarily down does not change that target for Memory, Task, or Document — it only changes the mechanism used to reach it.
 
    The literal free-tier default path applies only when no plugin file exists at all; it is never a fallback for an unavailable write tool, for any store.
 
@@ -392,7 +390,7 @@ Used by: WAL (HOT writes), Session Start (read, plus the daily sweep), dreaming,
 | `archive-memory(agent, date)` | Write the archived snapshot (dreaming end-of-cycle). |
 | `compact-memory(agent, newContent)` | Rewrite the live memory file with compacted content. |
 
-**MCP-down fallback:** see Memory Path Resolution above (step 4).
+**MCP-down fallback:** see Memory Path Resolution above (step 2).
 
 #### Task store
 
@@ -408,7 +406,7 @@ Used by: ticket-lifecycle-mode, task-automation-flow, drift tooling.
 | `append-task-section(id, section, content)` | Append content to a named section (e.g. `## Log`, `## QA Report`). |
 
 **MCP-down fallback:** if the active plugin's write tool is unavailable, see Memory Path
-Resolution above — that protocol's step 4 is the canonical fallback mechanism for this store too,
+Resolution above — that protocol's step 2 is the canonical fallback mechanism for this store too,
 not memory alone.
 
 #### Document store
@@ -421,7 +419,7 @@ Used by: documentation-and-adrs, planner/architecture outputs.
 | `read-document(collection, name)` | Read a document by collection and name. |
 
 **MCP-down fallback:** if the active plugin's write tool is unavailable, see Memory Path
-Resolution above — that protocol's step 4 is the canonical fallback mechanism for this store too,
+Resolution above — that protocol's step 2 is the canonical fallback mechanism for this store too,
 not memory alone.
 
 #### Learnings store
@@ -435,7 +433,7 @@ Used by: WAL (learnings routing — `self-improving-agent`'s five trigger types)
 | `list-pending-learnings(store)` | Read a store's entries with `**Status**: pending` — used by `self-improving-agent`'s Periodic Review and by `dreaming`'s promotion-sweep step in place of a raw file read. |
 
 **MCP-down fallback:** if the active plugin's write tool is unavailable, apply the same
-MCP-down fallback mechanism Memory Path Resolution's step 4 describes, extended to this store —
+MCP-down fallback mechanism Memory Path Resolution's step 2 describes, extended to this store —
 the free-tier-shaped `.learnings/*.md` path is never a substitute for the plugin-resolved vault
 location just because the write tool is temporarily down.
 

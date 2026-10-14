@@ -262,7 +262,7 @@ macOS/Linux (Mac/Linux support is deferred to a future release).
   skips registration entirely — setup still completes normally either way.
 - **Turning it off again:**
   ```powershell
-  npm run setup -- --disable-nightly-dreaming
+  npm.cmd run setup -- --disable-nightly-dreaming
   ```
   Removes the registered Scheduled Task (if any) without running the rest of the interactive
   wizard, and updates `workspace.config.json` so a future `npm run setup` re-run won't
@@ -293,7 +293,7 @@ Task files are markdown with YAML front matter. The front matter tells Claude wh
 ---
 agent: builder
 mode: engineering
-model: claude-sonnet-4-6
+model: <model-id>
 status: state:ready-for-implementation
 verifier: Tester
 finding-id: tst-low-coverage

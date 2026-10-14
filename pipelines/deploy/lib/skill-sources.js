@@ -44,8 +44,12 @@ function sha256(buf) {
  */
 async function listFilesRecursive({ repo, subPath, ref, fetchFn }) {
 	const url = `https://api.github.com/repos/${repo}/contents/${subPath}?ref=${encodeURIComponent(ref)}`;
-	const headers = { 'User-Agent': 'setchin-agent-profiles-install-skill', Accept: 'application/vnd.github+json' };
-	if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+	const headers = {
+		'User-Agent': 'setchin-agent-profiles-install-skill',
+		Accept: 'application/vnd.github+json',
+	};
+	if (process.env.GITHUB_TOKEN)
+		headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
 
 	const res = await fetchFn(url, { headers });
 	if (!res.ok) {
@@ -59,7 +63,12 @@ async function listFilesRecursive({ repo, subPath, ref, fetchFn }) {
 		if (entry.type === 'file') {
 			files.push({ path: entry.path, download_url: entry.download_url });
 		} else if (entry.type === 'dir') {
-			const nested = await listFilesRecursive({ repo, subPath: entry.path, ref, fetchFn });
+			const nested = await listFilesRecursive({
+				repo,
+				subPath: entry.path,
+				ref,
+				fetchFn,
+			});
 			files.push(...nested);
 		}
 	}
@@ -85,14 +94,24 @@ async function listFilesRecursive({ repo, subPath, ref, fetchFn }) {
  *   in the source repo. When omitted, content is written as-is.
  * @returns {Promise<{ name: string, status: 'added'|'updated'|'unchanged'|'error', filesWritten: string[], error?: string }>}
  */
-export async function installSkillFromCatalog({ entry, destRoot, fetchFn = fetch, fileTransform }) {
+export async function installSkillFromCatalog({
+	entry,
+	destRoot,
+	fetchFn = fetch,
+	fileTransform,
+}) {
 	const { name, repo, path: subPath, ref = 'main' } = entry;
 	const destSkillDir = path.join(destRoot, name);
 
 	try {
 		const files = await listFilesRecursive({ repo, subPath, ref, fetchFn });
 		if (files.length === 0) {
-			return { name, status: 'error', filesWritten: [], error: `no files found at ${repo}:${subPath}@${ref}` };
+			return {
+				name,
+				status: 'error',
+				filesWritten: [],
+				error: `no files found at ${repo}:${subPath}@${ref}`,
+			};
 		}
 
 		const existedBefore = fs.existsSync(destSkillDir);
@@ -100,14 +119,19 @@ export async function installSkillFromCatalog({ entry, destRoot, fetchFn = fetch
 		const filesWritten = [];
 
 		for (const file of files) {
-			const relPath = path.relative(subPath, file.path).split('/').join(path.sep);
+			const relPath = path
+				.relative(subPath, file.path)
+				.split('/')
+				.join(path.sep);
 			const destPath = path.join(destSkillDir, relPath);
 
 			const fileRes = await fetchFn(file.download_url, {
 				headers: { 'User-Agent': 'setchin-agent-profiles-install-skill' },
 			});
 			if (!fileRes.ok) {
-				throw new Error(`failed to download ${file.path}: HTTP ${fileRes.status}`);
+				throw new Error(
+					`failed to download ${file.path}: HTTP ${fileRes.status}`,
+				);
 			}
 			let newContent = Buffer.from(await fileRes.arrayBuffer());
 
@@ -118,11 +142,15 @@ export async function installSkillFromCatalog({ entry, destRoot, fetchFn = fetch
 			// without keeping a local modified copy in the source repo.
 			if (fileTransform) {
 				const filename = path.basename(file.path);
-				newContent = Buffer.from(fileTransform(filename, newContent.toString('utf-8')), 'utf-8');
+				newContent = Buffer.from(
+					fileTransform(filename, newContent.toString('utf-8')),
+					'utf-8',
+				);
 			}
 
 			const existed = fs.existsSync(destPath);
-			const changed = !existed || sha256(fs.readFileSync(destPath)) !== sha256(newContent);
+			const changed =
+				!existed || sha256(fs.readFileSync(destPath)) !== sha256(newContent);
 
 			if (changed) {
 				fs.mkdirSync(path.dirname(destPath), { recursive: true });
@@ -132,7 +160,11 @@ export async function installSkillFromCatalog({ entry, destRoot, fetchFn = fetch
 			filesWritten.push(relPath);
 		}
 
-		const status = !existedBefore ? 'added' : anyChanged ? 'updated' : 'unchanged';
+		const status = !existedBefore
+			? 'added'
+			: anyChanged
+				? 'updated'
+				: 'unchanged';
 		return { name, status, filesWritten };
 	} catch (err) {
 		return { name, status: 'error', filesWritten: [], error: err.message };

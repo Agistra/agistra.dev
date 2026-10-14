@@ -37,7 +37,9 @@ function defaultProbeClaude(cmd, args, opts) {
 	});
 	if (result.error) throw result.error;
 	if (result.status !== 0) {
-		throw new Error(`claude --version exited with code ${result.status ?? 'unknown'}`);
+		throw new Error(
+			`claude --version exited with code ${result.status ?? 'unknown'}`,
+		);
 	}
 }
 

@@ -62,7 +62,8 @@ export async function sendTextMessage({
 
 	const result = await response.json();
 	if (!result.ok) {
-		const desc = result.description || response.statusText || 'sendMessage failed';
+		const desc =
+			result.description || response.statusText || 'sendMessage failed';
 		throw new Error(desc);
 	}
 	return result;

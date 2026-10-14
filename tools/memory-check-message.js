@@ -17,7 +17,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveHubRoot, resolveMemoryRootSegment } from './memory-check-core.js';
+import {
+	resolveHubRoot,
+	resolveMemoryRootSegment,
+} from './memory-check-core.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = path.join(__dirname, 'memory-check-message.txt');
@@ -30,7 +33,10 @@ const TEMPLATE_PATH = path.join(__dirname, 'memory-check-message.txt');
  * @returns {string}
  */
 export function neutralizeFirstLine(line) {
-	return line.replace(/files were changed this session but (.*) was not updated\./, 'no update to $1 was found this session.');
+	return line.replace(
+		/files were changed this session but (.*) was not updated\./,
+		'no update to $1 was found this session.',
+	);
 }
 
 /**
@@ -45,12 +51,16 @@ export async function renderReminderLines(hubRootOverride) {
 		.replace(/\r/g, '')
 		.trimEnd()
 		.split('\n')
-		.map(line => line.replaceAll('{{MEMORY_ROOT}}', memoryRoot));
+		.map((line) => line.replaceAll('{{MEMORY_ROOT}}', memoryRoot));
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const lines = await renderReminderLines();
-	if (process.argv.includes('--neutral')) lines[0] = neutralizeFirstLine(lines[0]);
+	if (process.argv.includes('--neutral'))
+		lines[0] = neutralizeFirstLine(lines[0]);
 	process.stdout.write(`${lines.join('\n')}\n`);
 }

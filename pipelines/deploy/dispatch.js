@@ -23,7 +23,16 @@ import {
  *   projectRoot   string   absolute path to the sibling project repo (used with launch)
  *   task          string   number or slug fragment to target a specific task in any state
  */
-export function dispatch({ projectsRoot, skillsRoot, project, advance, list, launch = false, projectRoot = null, task = null }) {
+export function dispatch({
+	projectsRoot,
+	skillsRoot,
+	project,
+	advance,
+	list,
+	launch = false,
+	projectRoot = null,
+	task = null,
+}) {
 	// --list: show the full queue across all projects
 	if (list) {
 		const all = listAllTasks(projectsRoot);
@@ -65,13 +74,17 @@ export function dispatch({ projectsRoot, skillsRoot, project, advance, list, lau
 
 		const next = findCurrentTask(projectDirFromTaskPath(taskPath));
 		if (!next) {
-			process.stderr.write('[dispatch] All tasks complete for this project.\n\n');
+			process.stderr.write(
+				'[dispatch] All tasks complete for this project.\n\n',
+			);
 			return;
 		}
 
 		process.stderr.write(`[dispatch] Next: ${path.basename(next)}\n\n`);
 		if (launch && !projectRoot) {
-			process.stderr.write('[dispatch] --launch requires a project name. Use: dispatch --project <name> --launch\n');
+			process.stderr.write(
+				'[dispatch] --launch requires a project name. Use: dispatch --project <name> --launch\n',
+			);
 			process.exit(1);
 		}
 		if (launch) {
@@ -84,7 +97,9 @@ export function dispatch({ projectsRoot, skillsRoot, project, advance, list, lau
 
 	// Default: print prompt or launch Claude
 	if (launch && !projectRoot) {
-		process.stderr.write('[dispatch] --launch requires a project name. Use: dispatch --project <name> --launch\n');
+		process.stderr.write(
+			'[dispatch] --launch requires a project name. Use: dispatch --project <name> --launch\n',
+		);
 		process.exit(1);
 	}
 	if (launch) {
@@ -102,7 +117,9 @@ function resolveTask(projectsRoot, project, task) {
 		if (task) {
 			const found = findTaskByQuery(projectDir, task);
 			if (!found) {
-				process.stderr.write(`No task matching "${task}" in project: ${project}\n`);
+				process.stderr.write(
+					`No task matching "${task}" in project: ${project}\n`,
+				);
 			}
 			return found;
 		}
@@ -115,7 +132,7 @@ function resolveTask(projectsRoot, project, task) {
 
 	// Auto-pick: lowest todo task across all projects (only auto-dispatchable state)
 	const all = listAllTasks(projectsRoot);
-	const first = all.find(p => p.todos.length > 0);
+	const first = all.find((p) => p.todos.length > 0);
 	if (!first) {
 		process.stderr.write('No pending tasks found across any project.\n');
 		return null;
@@ -129,11 +146,13 @@ function printPrompt(taskPath, skillsRoot) {
 	// Routing summary → stderr so it doesn't pollute the copyable prompt on stdout
 	process.stderr.write(
 		`[dispatch] agent=${result.meta.agent ?? '?'}  ` +
-		`mode=${result.meta.mode ?? '?'}  ` +
-		`model=${result.model}\n` +
-		`[dispatch] skills=[${result.injectedSkills.join(', ')}]` +
-		(result.missingSkills.length > 0 ? `  unknown=[${result.missingSkills.join(', ')}]` : '') +
-		`\n\n`
+			`mode=${result.meta.mode ?? '?'}  ` +
+			`model=${result.model}\n` +
+			`[dispatch] skills=[${result.injectedSkills.join(', ')}]` +
+			(result.missingSkills.length > 0
+				? `  unknown=[${result.missingSkills.join(', ')}]`
+				: '') +
+			`\n\n`,
 	);
 
 	// Full prompt → stdout (copy-paste into Claude Code, or pipe anywhere)
@@ -145,12 +164,14 @@ function launchClaude(taskPath, skillsRoot, projectRoot) {
 
 	process.stderr.write(
 		`[dispatch] agent=${result.meta.agent ?? '?'}  ` +
-		`mode=${result.meta.mode ?? '?'}  ` +
-		`model=${result.model}\n` +
-		`[dispatch] skills=[${result.injectedSkills.join(', ')}]` +
-		(result.missingSkills.length > 0 ? `  unknown=[${result.missingSkills.join(', ')}]` : '') +
-		`\n` +
-		`[dispatch] launching claude in: ${projectRoot}\n\n`
+			`mode=${result.meta.mode ?? '?'}  ` +
+			`model=${result.model}\n` +
+			`[dispatch] skills=[${result.injectedSkills.join(', ')}]` +
+			(result.missingSkills.length > 0
+				? `  unknown=[${result.missingSkills.join(', ')}]`
+				: '') +
+			`\n` +
+			`[dispatch] launching claude in: ${projectRoot}\n\n`,
 	);
 
 	// Start Claude non-interactively in the sibling project directory.

@@ -93,7 +93,9 @@ export function resolveHubRoot() {
 	if (process.env.CLAUDE_PROJECT_DIR) {
 		return process.env.CLAUDE_PROJECT_DIR;
 	}
-	return path.basename(__dirname) === 'tools' ? path.dirname(__dirname) : __dirname;
+	return path.basename(__dirname) === 'tools'
+		? path.dirname(__dirname)
+		: __dirname;
 }
 
 /**
@@ -109,10 +111,17 @@ export function resolveHubRoot() {
  */
 export async function resolveMemoryRootSegment(hubRoot) {
 	try {
-		const modPath = path.resolve(hubRoot, 'pipelines/deploy/lib/memory-root.js');
-		const { resolveMemoryRootForHub } = await import(pathToFileURL(modPath).href);
+		const modPath = path.resolve(
+			hubRoot,
+			'pipelines/deploy/lib/memory-root.js',
+		);
+		const { resolveMemoryRootForHub } = await import(
+			pathToFileURL(modPath).href
+		);
 		const absRoot = resolveMemoryRootForHub(hubRoot);
-		return path.relative(hubRoot, absRoot).split(path.sep).join('/') || 'memory';
+		return (
+			path.relative(hubRoot, absRoot).split(path.sep).join('/') || 'memory'
+		);
 	} catch {
 		return 'memory';
 	}
@@ -171,7 +180,9 @@ export function hasSessionWork(hubRootOverride) {
 	const workMs = mtimeOf(path.join(hubRoot, WORK_MARKER_RELATIVE_PATH));
 	if (workMs === null) return false;
 	const sessionMs = mtimeOf(path.join(hubRoot, SESSION_MARKER_RELATIVE_PATH));
-	return sessionMs === null ? workMs >= Date.now() - FOUR_HOURS_MS : workMs > sessionMs;
+	return sessionMs === null
+		? workMs >= Date.now() - FOUR_HOURS_MS
+		: workMs > sessionMs;
 }
 
 /**
@@ -181,10 +192,16 @@ export function hasSessionWork(hubRootOverride) {
  */
 export function markReminded(hubRootOverride) {
 	try {
-		const stamp = path.join(hubRootOverride ?? resolveHubRoot(), REMINDED_STAMP_RELATIVE_PATH);
+		const stamp = path.join(
+			hubRootOverride ?? resolveHubRoot(),
+			REMINDED_STAMP_RELATIVE_PATH,
+		);
 		fs.mkdirSync(path.dirname(stamp), { recursive: true });
-		fs.writeFileSync(stamp, `${new Date().toISOString()}
-`);
+		fs.writeFileSync(
+			stamp,
+			`${new Date().toISOString()}
+`,
+		);
 	} catch {
 		// A failed stamp only risks a second reminder.
 	}
@@ -206,12 +223,16 @@ export async function checkMemoryStatus(hubRootOverride) {
 	if (workMs !== null) {
 		// Work marker present: it only counts when it postdates the session start.
 		if (!hasSessionWork(hubRoot)) return 'clean';
-		if (hasMarkdownNewerThan(memoryDir, workMs - MEMORY_WRITE_TOLERANCE_MS, false)) return 'clean';
+		if (
+			hasMarkdownNewerThan(memoryDir, workMs - MEMORY_WRITE_TOLERANCE_MS, false)
+		)
+			return 'clean';
 		baselineMs = workMs;
 	} else {
 		// No work marker: marker-only fallback (240-minute window without a session marker).
 		baselineMs = sessionMs ?? Date.now() - FOUR_HOURS_MS;
-		if (hasMarkdownNewerThan(memoryDir, baselineMs, sessionMs !== null)) return 'clean';
+		if (hasMarkdownNewerThan(memoryDir, baselineMs, sessionMs !== null))
+			return 'clean';
 	}
 
 	// Already reminded for this work (stamp not older than the baseline).
@@ -219,9 +240,12 @@ export async function checkMemoryStatus(hubRootOverride) {
 	return 'dirty';
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
-	checkMemoryStatus().then(status => {
+	checkMemoryStatus().then((status) => {
 		if (status === 'dirty' && process.argv.includes('--stamp')) markReminded();
 		process.stdout.write(`${status}\n`);
 		process.exit(0);

@@ -58,10 +58,14 @@ export function bumpVersion(current, bumpType) {
 	if (!parsed) return null;
 	const [major, minor, patch] = parsed.split('.').map(Number);
 	switch (bumpType) {
-		case 'major': return `${major + 1}.0.0`;
-		case 'minor': return `${major}.${minor + 1}.0`;
-		case 'patch': return `${major}.${minor}.${patch + 1}`;
-		default: return null;
+		case 'major':
+			return `${major + 1}.0.0`;
+		case 'minor':
+			return `${major}.${minor + 1}.0`;
+		case 'patch':
+			return `${major}.${minor}.${patch + 1}`;
+		default:
+			return null;
 	}
 }
 
@@ -80,7 +84,11 @@ export function bumpVersion(current, bumpType) {
  */
 export function rewriteVersionFile(originalContent, newVersion) {
 	const usesCRLF = originalContent.includes('\r\n');
-	const trailingNewline = originalContent.endsWith('\n') ? (usesCRLF ? '\r\n' : '\n') : '';
+	const trailingNewline = originalContent.endsWith('\n')
+		? usesCRLF
+			? '\r\n'
+			: '\n'
+		: '';
 	const firstLine = originalContent.split(/\r?\n/)[0];
 	const commentMatch = firstLine.match(/\s*(#.*)$/);
 	const comment = commentMatch ? ` ${commentMatch[1]}` : '';

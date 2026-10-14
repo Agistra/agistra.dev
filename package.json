@@ -17,6 +17,7 @@
     "memory": "node pipelines/deploy/lib/memory-cli.js",
     "task": "node pipelines/deploy/lib/task-cli.js",
     "check:tickets": "node pipelines/deploy/lib/ticket-drift.js",
+    "self-check": "node tools/self-check.js",
     "memory-index": "node pipelines/deploy/lib/memory-index.js",
     "memory-index:build": "node pipelines/deploy/lib/memory-index.js build"
   },

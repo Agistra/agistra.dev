@@ -10,7 +10,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const ROUTER_MANIFEST_REL = path.join('agents', 'profiles', 'router-workspace', 'agent.manifest.json');
+const ROUTER_MANIFEST_REL = path.join(
+	'agents',
+	'profiles',
+	'router-workspace',
+	'agent.manifest.json',
+);
 
 /**
  * Read the Router model from the router-workspace manifest.
@@ -40,7 +45,7 @@ export function resolveRouterModel(profilesRoot, fsMod = fs, hubRoot) {
 		}
 		throw new Error(
 			`Router manifest not found: ${manifestPath}\n` +
-			'Run from the setchin-agent-profiles repo root.',
+				'Run from the setchin-agent-profiles repo root.',
 		);
 	}
 
@@ -55,7 +60,7 @@ export function resolveRouterModel(profilesRoot, fsMod = fs, hubRoot) {
 	if (!model) {
 		throw new Error(
 			`claude.model missing in router manifest: ${manifestPath}\n` +
-			'Add "claude": { "model": "claude-haiku-..." } to the manifest.',
+				'Add "claude": { "model": "claude-haiku-..." } to the manifest.',
 		);
 	}
 
@@ -132,8 +137,18 @@ export function resolveDispatchModelText(adapter, tier) {
  * @returns {string}
  */
 export function substituteDispatchModelTokens(content, adapter) {
-	if (typeof content !== 'string' || content.indexOf('{{DISPATCH_MODEL_') === -1) return content;
+	if (
+		typeof content !== 'string' ||
+		content.indexOf('{{DISPATCH_MODEL_') === -1
+	)
+		return content;
 	return content
-		.replace(/\{\{DISPATCH_MODEL_FAST\}\}/g, resolveDispatchModelText(adapter, 'fast'))
-		.replace(/\{\{DISPATCH_MODEL_CAPABLE\}\}/g, resolveDispatchModelText(adapter, 'capable'));
+		.replace(
+			/\{\{DISPATCH_MODEL_FAST\}\}/g,
+			resolveDispatchModelText(adapter, 'fast'),
+		)
+		.replace(
+			/\{\{DISPATCH_MODEL_CAPABLE\}\}/g,
+			resolveDispatchModelText(adapter, 'capable'),
+		);
 }

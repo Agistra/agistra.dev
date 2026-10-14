@@ -28,15 +28,29 @@ export function isAllowedSender(senderId, allowedSenders) {
  * @param {string} options.rawText
  * @param {typeof fs} [options.fsMod]
  */
-export function escalateUnknownSender({ hubRoot, senderId, rawText, fsMod = fs }) {
-	const memPath = path.join(resolveMemoryRootForHub(hubRoot, { fsMod }), 'router.md');
+export function escalateUnknownSender({
+	hubRoot,
+	senderId,
+	rawText,
+	fsMod = fs,
+}) {
+	const memPath = path.join(
+		resolveMemoryRootForHub(hubRoot, { fsMod }),
+		'router.md',
+	);
 	const stamp = new Date().toISOString().slice(0, 10);
-	const snippet = (rawText || '(empty message)').replace(/\s+/g, ' ').slice(0, 160);
+	const snippet = (rawText || '(empty message)')
+		.replace(/\s+/g, ' ')
+		.slice(0, 160);
 	const line = `- **${stamp} (relay):** Unknown sender \`${senderId ?? 'unknown'}\` — ${snippet}\n`;
 
 	if (!fsMod.existsSync(memPath)) {
 		fsMod.mkdirSync(path.dirname(memPath), { recursive: true });
-		fsMod.writeFileSync(memPath, `# router memory\n\n## HOT\n\n${line}\n## WARM\n\n## COLD\n\n`, 'utf-8');
+		fsMod.writeFileSync(
+			memPath,
+			`# router memory\n\n## HOT\n\n${line}\n## WARM\n\n## COLD\n\n`,
+			'utf-8',
+		);
 		return;
 	}
 
@@ -49,7 +63,10 @@ export function escalateUnknownSender({ hubRoot, senderId, rawText, fsMod = fs }
 		const afterHot = hotIdx + hotHeader.length;
 		const warmIdx = content.indexOf('## WARM', afterHot);
 		const insertAt = warmIdx === -1 ? content.length : warmIdx;
-		content = content.slice(0, insertAt).trimEnd() + `\n${line}\n` + content.slice(insertAt);
+		content =
+			content.slice(0, insertAt).trimEnd() +
+			`\n${line}\n` +
+			content.slice(insertAt);
 	}
 	fsMod.writeFileSync(memPath, content, 'utf-8');
 }

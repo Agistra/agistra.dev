@@ -16,8 +16,15 @@
  * feature disabled) the marker-only fallback applies with neutral wording.
  * Always exits 0 so a failure here never blocks the session.
  */
-import { checkMemoryStatus, hasSessionWork, markReminded } from './memory-check-core.js';
-import { renderReminderLines, neutralizeFirstLine } from './memory-check-message.js';
+import {
+	checkMemoryStatus,
+	hasSessionWork,
+	markReminded,
+} from './memory-check-core.js';
+import {
+	renderReminderLines,
+	neutralizeFirstLine,
+} from './memory-check-message.js';
 import { readStdin } from './memory-check-evidence.js';
 
 try {
@@ -28,13 +35,19 @@ try {
 	} catch {
 		// Missing or invalid stdin: proceed without the loop flag.
 	}
-	if (payload.stop_hook_active === true || payload.stopHookActive === true) process.exit(0);
+	if (payload.stop_hook_active === true || payload.stopHookActive === true)
+		process.exit(0);
 
 	if ((await checkMemoryStatus()) === 'dirty') {
 		const [first, ...rest] = await renderReminderLines();
-		const lines = [hasSessionWork() ? first : neutralizeFirstLine(first), ...rest];
+		const lines = [
+			hasSessionWork() ? first : neutralizeFirstLine(first),
+			...rest,
+		];
 		markReminded();
-		process.stdout.write(`${JSON.stringify({ decision: 'block', reason: lines.join('\n') })}\n`);
+		process.stdout.write(
+			`${JSON.stringify({ decision: 'block', reason: lines.join('\n') })}\n`,
+		);
 	}
 } catch {
 	// Swallow: see header.

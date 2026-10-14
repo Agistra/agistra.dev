@@ -14,7 +14,11 @@ import os from 'node:os';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-export const CLAUDE_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
+export const CLAUDE_SETTINGS_PATH = path.join(
+	os.homedir(),
+	'.claude',
+	'settings.json',
+);
 
 // ── Pure helpers (exported for testing) ───────────────────────────────────────
 
@@ -113,7 +117,11 @@ function checkShape(settings, shape) {
 	if (!shape) return null;
 	for (const p of shape.object ?? []) {
 		const v = valueAt(settings, p);
-		if (v !== undefined && v !== null && (typeof v !== 'object' || Array.isArray(v))) {
+		if (
+			v !== undefined &&
+			v !== null &&
+			(typeof v !== 'object' || Array.isArray(v))
+		) {
 			return `"${p}" is not an object`;
 		}
 	}
@@ -156,8 +164,18 @@ export function detectIndent(raw) {
  * @returns {{status: 'absent'|'ok'|'unusable', existed: boolean, settings: object|null,
  *   raw: string|null, indent: string|null, reason: string|null}}
  */
-export function readSettingsForMerge(filePath, { fsMod = fs, expect = null } = {}) {
-	const result = { status: 'absent', existed: false, settings: null, raw: null, indent: null, reason: null };
+export function readSettingsForMerge(
+	filePath,
+	{ fsMod = fs, expect = null } = {},
+) {
+	const result = {
+		status: 'absent',
+		existed: false,
+		settings: null,
+		raw: null,
+		indent: null,
+		reason: null,
+	};
 	if (!fsMod.existsSync(filePath)) return result;
 	result.existed = true;
 
@@ -165,7 +183,11 @@ export function readSettingsForMerge(filePath, { fsMod = fs, expect = null } = {
 	try {
 		raw = fsMod.readFileSync(filePath, 'utf-8');
 	} catch (err) {
-		return { ...result, status: 'unusable', reason: `it could not be read (${err.code ?? err.message})` };
+		return {
+			...result,
+			status: 'unusable',
+			reason: `it could not be read (${err.code ?? err.message})`,
+		};
 	}
 	result.raw = raw;
 	result.indent = detectIndent(raw);
@@ -179,10 +201,18 @@ export function readSettingsForMerge(filePath, { fsMod = fs, expect = null } = {
 	try {
 		parsed = JSON.parse(text);
 	} catch (err) {
-		return { ...result, status: 'unusable', reason: `it is not valid JSON (${err.message})` };
+		return {
+			...result,
+			status: 'unusable',
+			reason: `it is not valid JSON (${err.message})`,
+		};
 	}
 	if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-		return { ...result, status: 'unusable', reason: 'its top-level value is not a JSON object' };
+		return {
+			...result,
+			status: 'unusable',
+			reason: 'its top-level value is not a JSON object',
+		};
 	}
 	const shapeProblem = checkShape(parsed, expect);
 	if (shapeProblem) {
@@ -224,7 +254,14 @@ export function mergeRelayMcpEntry(existing, entry) {
  * @returns {object}
  */
 export function buildRelayMcpEntry(workspaceRoot) {
-	const serverPath = path.join(workspaceRoot, 'pipelines', 'deploy', 'relay', 'mcp', 'server.js');
+	const serverPath = path.join(
+		workspaceRoot,
+		'pipelines',
+		'deploy',
+		'relay',
+		'mcp',
+		'server.js',
+	);
 	return {
 		command: process.execPath,
 		args: [serverPath, '--hub', path.resolve(workspaceRoot)],
@@ -242,7 +279,11 @@ export function buildRelayMcpEntry(workspaceRoot) {
 export function writeJsonSafe(filePath, data, fsMod = fs, indent = null) {
 	const dir = path.dirname(filePath);
 	fsMod.mkdirSync(dir, { recursive: true });
-	fsMod.writeFileSync(filePath, JSON.stringify(data, null, indent ?? 2) + '\n', 'utf-8');
+	fsMod.writeFileSync(
+		filePath,
+		JSON.stringify(data, null, indent ?? 2) + '\n',
+		'utf-8',
+	);
 }
 
 // ── Main wiring functions ──────────────────────────────────────────────────────
@@ -277,11 +318,18 @@ export function wireRelayMcp({
 	if (targets.includes('claude-code')) {
 		// ~/.claude/settings.json holds the user's own settings; never rewrite a
 		// file that does not parse.
-		const read = readSettingsForMerge(CLAUDE_SETTINGS_PATH, { fsMod, expect: SETTINGS_SHAPE.mcpServers });
+		const read = readSettingsForMerge(CLAUDE_SETTINGS_PATH, {
+			fsMod,
+			expect: SETTINGS_SHAPE.mcpServers,
+		});
 		if (read.status === 'unusable') {
 			skipped.push({
 				file: CLAUDE_SETTINGS_PATH,
-				message: unusableSettingsMessage(CLAUDE_SETTINGS_PATH, read.reason, 'The relay MCP server was not added there.'),
+				message: unusableSettingsMessage(
+					CLAUDE_SETTINGS_PATH,
+					read.reason,
+					'The relay MCP server was not added there.',
+				),
 			});
 		} else {
 			const existing = read.settings ?? {};

@@ -51,9 +51,15 @@ function memorySkeleton(agentId) {
  * `resolveMemoryRootForHub()` (vault-backed tiers get `vault/Memory`,
  * everything else keeps the pre-existing `memory` default).
  */
-export function ensureMemoryFile(agentId, { repoRoot = process.cwd(), fsMod = fs } = {}) {
+export function ensureMemoryFile(
+	agentId,
+	{ repoRoot = process.cwd(), fsMod = fs } = {},
+) {
 	if (!agentId) {
-		return { ok: false, error: 'agent id is required. Usage: memory ensure <agent>' };
+		return {
+			ok: false,
+			error: 'agent id is required. Usage: memory ensure <agent>',
+		};
 	}
 
 	const memoryDir = resolveMemoryRootForHub(repoRoot, { fsMod });
@@ -101,8 +107,10 @@ export function runCli(argv, { repoRoot = process.cwd(), fsMod = fs } = {}) {
 	}
 }
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	let output;

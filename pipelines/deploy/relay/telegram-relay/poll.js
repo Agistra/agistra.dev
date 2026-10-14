@@ -33,10 +33,12 @@ export function processTelegramUpdate({
 	if (String(msg.chat.id) !== String(relayGroupId)) return 'ignored';
 
 	const messageText = msg.text ?? msg.caption ?? '';
-	if (!isAddressedToRouter(messageText, msg, {
-		routerDisplayName,
-		routerTelegramHandle,
-	})) {
+	if (
+		!isAddressedToRouter(messageText, msg, {
+			routerDisplayName,
+			routerTelegramHandle,
+		})
+	) {
 		return 'not_addressed';
 	}
 

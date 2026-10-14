@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const IDENTITY_FIELD_RE = /^-?\s*\*\*([^*:]+)\**\*\*[:\s]+(.*)/m;
-
 /**
  * Parse a field value from an IDENTITY.md file.
  * Handles both `- **Label:** value` and `- **Label** value` (no colon) forms.
@@ -15,7 +13,10 @@ export function parseIdentityField(content, label) {
 		}
 		// Handle `- **Label** value` (no colon, label ends at **)
 		const noColonMatch = line.match(/^-?\s*\*\*([^*]+?)\*\*\s+(.*)/);
-		if (noColonMatch && noColonMatch[1].trim().toLowerCase() === label.toLowerCase()) {
+		if (
+			noColonMatch &&
+			noColonMatch[1].trim().toLowerCase() === label.toLowerCase()
+		) {
 			return noColonMatch[2].trim();
 		}
 	}
@@ -66,7 +67,10 @@ function repoRootFromProfilesRoot(profilesRoot) {
  * @returns {object}
  */
 export function readProfilesConfig(profilesRoot) {
-	const filePath = path.join(repoRootFromProfilesRoot(profilesRoot), 'profiles.config.json');
+	const filePath = path.join(
+		repoRootFromProfilesRoot(profilesRoot),
+		'profiles.config.json',
+	);
 	try {
 		return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 	} catch {
@@ -109,7 +113,7 @@ export function readVSCodeToolList(profileDir) {
 	try {
 		const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 		if (!Array.isArray(parsed)) return [];
-		return parsed.map(v => String(v).trim()).filter(Boolean);
+		return parsed.map((v) => String(v).trim()).filter(Boolean);
 	} catch {
 		return [];
 	}
@@ -166,7 +170,12 @@ export function readVSCodeToolList(profileDir) {
  */
 export function normalizeSkillEntry(entry) {
 	if (typeof entry === 'string') {
-		return { name: entry, optional: false, hubType: undefined, requiresGraphify: false };
+		return {
+			name: entry,
+			optional: false,
+			hubType: undefined,
+			requiresGraphify: false,
+		};
 	}
 	if (entry && typeof entry === 'object' && typeof entry.name === 'string') {
 		return {
@@ -176,7 +185,12 @@ export function normalizeSkillEntry(entry) {
 			requiresGraphify: entry.requiresGraphify === true,
 		};
 	}
-	return { name: '', optional: false, hubType: undefined, requiresGraphify: false };
+	return {
+		name: '',
+		optional: false,
+		hubType: undefined,
+		requiresGraphify: false,
+	};
 }
 
 /**
@@ -190,7 +204,7 @@ export function normalizeSkillEntry(entry) {
 function normalizeHubType(value) {
 	if (typeof value === 'string') return [value];
 	if (Array.isArray(value)) {
-		const strings = value.filter(v => typeof v === 'string');
+		const strings = value.filter((v) => typeof v === 'string');
 		return strings.length > 0 ? strings : undefined;
 	}
 	return undefined;
@@ -218,11 +232,19 @@ function normalizeHubType(value) {
  *                                                                 with `--with-graphify`.
  * @returns {boolean}
  */
-export function skillShipsToHubType(skillHubType, hubType = null, options = {}) {
+export function skillShipsToHubType(
+	skillHubType,
+	hubType = null,
+	options = {},
+) {
 	const { requiresGraphify = false, withGraphify = false } = options;
-	const hubTypeMatches = !skillHubType || skillHubType.length === 0 || skillHubType.includes(hubType);
+	const hubTypeMatches =
+		!skillHubType ||
+		skillHubType.length === 0 ||
+		skillHubType.includes(hubType);
 	if (!hubTypeMatches) return false;
-	if (requiresGraphify && hubType !== 'dev:graph' && !withGraphify) return false;
+	if (requiresGraphify && hubType !== 'dev:graph' && !withGraphify)
+		return false;
 	return true;
 }
 
@@ -235,7 +257,7 @@ export function skillShipsToHubType(skillHubType, hubType = null, options = {}) 
  */
 export function normalizeSkillList(skills) {
 	if (!Array.isArray(skills)) return [];
-	return skills.map(normalizeSkillEntry).filter(s => s.name);
+	return skills.map(normalizeSkillEntry).filter((s) => s.name);
 }
 
 /**
@@ -250,10 +272,20 @@ export function normalizeSkillList(skills) {
 export function discoverProfileDirs(profilesRoot, profileIds = null) {
 	if (!fs.existsSync(profilesRoot)) return [];
 	try {
-		return fs.readdirSync(profilesRoot, { withFileTypes: true })
-			.filter(e => e.isDirectory() && e.name.endsWith('-workspace'))
-			.filter(e => !profileIds || profileIds.includes(e.name.replace(/-workspace$/i, '').trim().toLowerCase()))
-			.map(e => path.join(profilesRoot, e.name))
+		return fs
+			.readdirSync(profilesRoot, { withFileTypes: true })
+			.filter((e) => e.isDirectory() && e.name.endsWith('-workspace'))
+			.filter(
+				(e) =>
+					!profileIds ||
+					profileIds.includes(
+						e.name
+							.replace(/-workspace$/i, '')
+							.trim()
+							.toLowerCase(),
+					),
+			)
+			.map((e) => path.join(profilesRoot, e.name))
 			.sort();
 	} catch {
 		return [];
@@ -265,7 +297,11 @@ export function discoverProfileDirs(profilesRoot, profileIds = null) {
  * e.g. /some/path/neo-workspace → neo
  */
 export function profileDirToId(profileDir) {
-	return path.basename(profileDir).replace(/-workspace$/i, '').trim().toLowerCase();
+	return path
+		.basename(profileDir)
+		.replace(/-workspace$/i, '')
+		.trim()
+		.toLowerCase();
 }
 
 /**

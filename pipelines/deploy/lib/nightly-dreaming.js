@@ -128,10 +128,16 @@ export function computeNightlyDreamingTaskName(hubRoot) {
  * (hub path, prompt text). Task names/models are internal constants, not user input,
  * but hubRoot is a real filesystem path that may legitimately contain `&` or similar.
  *
+ * Exported (generic name, no feature-specific literal) so other Scheduled-Task
+ * registration modules built on this same shape (e.g. a logon-task registrar for a
+ * different feature) can reuse it rather than re-implementing XML escaping — see this
+ * file's own header comment on the "copy the shape, don't invent a new mechanism"
+ * precedent this module itself establishes.
+ *
  * @param {string} value
  * @returns {string}
  */
-function escapeXml(value) {
+export function escapeXml(value) {
 	return String(value)
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
@@ -190,7 +196,13 @@ export function buildNightlyDreamingTaskXml({
 	// (rather than a separate wrapper script) so log-capture logic lives in one place,
 	// stays covered by the same DI test pattern as the rest of this file, and never
 	// needs a second entry added to extras.js/package-*.js's lib-file allowlists.
-	const scriptPath = path.win32.join(hubRoot, 'pipelines', 'deploy', 'lib', 'nightly-dreaming.js');
+	const scriptPath = path.win32.join(
+		hubRoot,
+		'pipelines',
+		'deploy',
+		'lib',
+		'nightly-dreaming.js',
+	);
 	const args = `/c node "${scriptPath}" "${prompt}" ${model} ${permissionMode}`;
 	return [
 		'<?xml version="1.0" encoding="UTF-16"?>',
@@ -332,7 +344,9 @@ export function registerNightlyDreamingTask({
 		return { ok: false, error: `could not write task XML: ${err.message}` };
 	}
 	try {
-		execFn('schtasks', ['/create', '/tn', taskName, '/xml', xmlPath, '/f'], { stdio: 'pipe' });
+		execFn('schtasks', ['/create', '/tn', taskName, '/xml', xmlPath, '/f'], {
+			stdio: 'pipe',
+		});
 		return { ok: true, xmlPath };
 	} catch (err) {
 		return { ok: false, error: err.message ?? String(err), xmlPath };
@@ -418,15 +432,29 @@ export async function runNightlyDreamingWithLogging({
 	const runStartedAt = now();
 	const logDir = path.join(hubRoot, 'logs');
 	fsMod.mkdirSync(logDir, { recursive: true });
-	const logPath = path.join(logDir, `nightly-dreaming-${localDateString(now())}.log`);
+	const logPath = path.join(
+		logDir,
+		`nightly-dreaming-${localDateString(now())}.log`,
+	);
 	const append = (text) => fsMod.appendFileSync(logPath, text);
 
 	append(`\n=== nightly-dreaming run started ${now().toISOString()} ===\n`);
-	append(`cwd: ${hubRoot}\nmodel: ${model}\npermission-mode: ${permissionMode}\n\n`);
+	append(
+		`cwd: ${hubRoot}\nmodel: ${model}\npermission-mode: ${permissionMode}\n\n`,
+	);
 
 	const result = execFn(
 		'cmd.exe',
-		['/c', 'claude', '-p', prompt, '--model', model, '--permission-mode', permissionMode],
+		[
+			'/c',
+			'claude',
+			'-p',
+			prompt,
+			'--model',
+			model,
+			'--permission-mode',
+			permissionMode,
+		],
 		{ cwd: hubRoot, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 },
 	);
 	// Append stdout and stderr unconditionally — both are captured on every outcome,
@@ -457,7 +485,10 @@ export async function runNightlyDreamingWithLogging({
 		try {
 			const resolveBuildVaultIndex =
 				buildVaultIndexFn ?? (await import('./vault-index.js')).buildVaultIndex;
-			const stats = await resolveBuildVaultIndex({ vaultRoot: vaultDir, fsMod });
+			const stats = await resolveBuildVaultIndex({
+				vaultRoot: vaultDir,
+				fsMod,
+			});
 			append(
 				`\nvault-index: created ${stats.created}, updated ${stats.updated}, unchanged ${stats.unchanged}` +
 					(stats.errors?.length
@@ -469,7 +500,9 @@ export async function runNightlyDreamingWithLogging({
 			append(`\nvault-index: failed — ${err.message}\n`);
 		}
 	} else {
-		append('\nvault-index: skipped (no vault/ directory found — free-tier hub)\n');
+		append(
+			'\nvault-index: skipped (no vault/ directory found — free-tier hub)\n',
+		);
 	}
 
 	let exitCode = typeof result.status === 'number' ? result.status : 1;
@@ -478,19 +511,33 @@ export async function runNightlyDreamingWithLogging({
 		// Exit 0 only says the `claude` process ended cleanly, not that it consolidated
 		// anything (a conversational reply exits 0 too). Confirm the archive snapshot the
 		// dreaming skill writes before compacting actually landed on disk.
-		const effect = verifyEffectFn({ hubRoot, runStartedAt, runFinishedAt: now(), fsMod });
+		const effect = verifyEffectFn({
+			hubRoot,
+			runStartedAt,
+			runFinishedAt: now(),
+			fsMod,
+		});
 		if (effect.ok) {
 			append(`\neffect-check: ok — ${effect.detail}\n`);
 		} else {
 			noEffect = true;
 			exitCode = NIGHTLY_DREAMING_NO_EFFECT_EXIT_CODE;
-			append(`\nNO-EFFECT: claude exited 0 but consolidation left no evidence — ${effect.detail}\n`);
+			append(
+				`\nNO-EFFECT: claude exited 0 but consolidation left no evidence — ${effect.detail}\n`,
+			);
 		}
 	} else {
 		append('\neffect-check: skipped (claude did not exit 0)\n');
 	}
-	append(`\n=== nightly-dreaming run finished ${now().toISOString()} (exit ${exitCode}) ===\n`);
-	return { ok: exitCode === 0, exitCode, logPath, ...(noEffect ? { noEffect } : {}) };
+	append(
+		`\n=== nightly-dreaming run finished ${now().toISOString()} (exit ${exitCode}) ===\n`,
+	);
+	return {
+		ok: exitCode === 0,
+		exitCode,
+		logPath,
+		...(noEffect ? { noEffect } : {}),
+	};
 }
 
 function resolveMemoryRootSafe(hubRoot, fsMod) {
@@ -527,8 +574,13 @@ export function verifyDreamingEffect({
 	agent = 'architect',
 	fsMod = fs,
 }) {
-	const archiveDir = path.join(resolveMemoryRootSafe(hubRoot, fsMod), 'archive');
-	const dates = [...new Set([localDateString(runStartedAt), localDateString(runFinishedAt)])];
+	const archiveDir = path.join(
+		resolveMemoryRootSafe(hubRoot, fsMod),
+		'archive',
+	);
+	const dates = [
+		...new Set([localDateString(runStartedAt), localDateString(runFinishedAt)]),
+	];
 	const startMs = runStartedAt.getTime();
 	const problems = [];
 	for (const date of dates) {
@@ -544,7 +596,11 @@ export function verifyDreamingEffect({
 			problems.push(`${archivePath} predates this run (not written by it)`);
 			continue;
 		}
-		return { ok: true, detail: `archive snapshot ${archivePath} written this run`, archivePath };
+		return {
+			ok: true,
+			detail: `archive snapshot ${archivePath} written this run`,
+			archivePath,
+		};
 	}
 	return { ok: false, detail: problems.join('; ') };
 }
@@ -564,10 +620,14 @@ export function getNightlyDreamingTaskRuntimeInfo({
 	execFn = execFileSync,
 } = {}) {
 	try {
-		const raw = execFn('schtasks', ['/query', '/tn', taskName, '/fo', 'LIST', '/v'], {
-			stdio: 'pipe',
-			encoding: 'utf-8',
-		}).toString();
+		const raw = execFn(
+			'schtasks',
+			['/query', '/tn', taskName, '/fo', 'LIST', '/v'],
+			{
+				stdio: 'pipe',
+				encoding: 'utf-8',
+			},
+		).toString();
 		const lastRunMatch = /Last Run Time:\s*(.+)/i.exec(raw);
 		const lastResultMatch = /Last Result:\s*(\d+)/i.exec(raw);
 		return {
@@ -594,10 +654,16 @@ export function getNightlyDreamingTaskRuntimeInfo({
  * @param {object} [opts.fsMod]
  * @returns {string|null}
  */
-export function findMostRecentArchiveDate({ hubRoot, agent = 'architect', hubType, fsMod = fs }) {
-	const memoryRoot = hubType === undefined
-		? resolveMemoryRootSafe(hubRoot, fsMod)
-		: resolveMemoryRoot(hubRoot, hubType);
+export function findMostRecentArchiveDate({
+	hubRoot,
+	agent = 'architect',
+	hubType,
+	fsMod = fs,
+}) {
+	const memoryRoot =
+		hubType === undefined
+			? resolveMemoryRootSafe(hubRoot, fsMod)
+			: resolveMemoryRoot(hubRoot, hubType);
 	const archiveDir = path.join(memoryRoot, 'archive');
 	let files;
 	try {
@@ -606,7 +672,11 @@ export function findMostRecentArchiveDate({ hubRoot, agent = 'architect', hubTyp
 		return null;
 	}
 	const pattern = new RegExp(`^${agent}-(\\d{4}-\\d{2}-\\d{2})\\.md$`);
-	const dates = files.map((f) => pattern.exec(f)).filter(Boolean).map((m) => m[1]).sort();
+	const dates = files
+		.map((f) => pattern.exec(f))
+		.filter(Boolean)
+		.map((m) => m[1])
+		.sort();
 	return dates.length ? dates[dates.length - 1] : null;
 }
 
@@ -615,7 +685,10 @@ export function findMostRecentArchiveDate({ hubRoot, agent = 'architect', hubTyp
 //   node <hubRoot>\pipelines\deploy\lib\nightly-dreaming.js "<prompt>" <model> <permissionMode>
 // Also runnable manually for a real, faithful repro of the exact registered command
 // without needing to reconstruct the cmd.exe invocation by hand.
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
 	const [, , promptArg, modelArg, permissionModeArg] = process.argv;
 	const result = await runNightlyDreamingWithLogging({
@@ -624,6 +697,8 @@ if (isMain) {
 		model: modelArg || NIGHTLY_DREAMING_MODEL,
 		permissionMode: permissionModeArg || NIGHTLY_DREAMING_PERMISSION_MODE,
 	});
-	process.stdout.write(`nightly-dreaming: exit ${result.exitCode}, log: ${result.logPath}\n`);
+	process.stdout.write(
+		`nightly-dreaming: exit ${result.exitCode}, log: ${result.logPath}\n`,
+	);
 	process.exit(result.exitCode);
 }

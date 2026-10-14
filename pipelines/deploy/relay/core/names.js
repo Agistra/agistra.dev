@@ -40,7 +40,11 @@ export function getRouterInboundNames(routerDisplayName) {
  * @param {string} [options.routerTelegramHandle] e.g. "@atlas_vs_ai_bot"
  * @returns {boolean}
  */
-export function isAddressedToRouter(text, message, { routerDisplayName, routerTelegramHandle }) {
+export function isAddressedToRouter(
+	text,
+	message,
+	{ routerDisplayName, routerTelegramHandle },
+) {
 	const trimmed = (text ?? '').trim();
 	if (!trimmed) return false;
 
@@ -55,7 +59,10 @@ export function isAddressedToRouter(text, message, { routerDisplayName, routerTe
 	if (message?.entities && handle) {
 		for (const entity of message.entities) {
 			if (entity.type !== 'mention') continue;
-			const mention = trimmed.slice(entity.offset, entity.offset + entity.length);
+			const mention = trimmed.slice(
+				entity.offset,
+				entity.offset + entity.length,
+			);
 			if (normalizeHandle(mention) === handle) return true;
 		}
 	}
@@ -94,7 +101,10 @@ export function formatOutboundToRemote(text, remoteAgentName) {
 	const remoteName = (remoteAgentName ?? '').trim();
 	if (!remoteName) return trimmed;
 
-	const prefixPattern = new RegExp(`^${escapeRegex(remoteName)}\\s*[,:]\\s*`, 'i');
+	const prefixPattern = new RegExp(
+		`^${escapeRegex(remoteName)}\\s*[,:]\\s*`,
+		'i',
+	);
 	if (prefixPattern.test(trimmed)) return trimmed;
 
 	return `${remoteName}, ${trimmed}`;

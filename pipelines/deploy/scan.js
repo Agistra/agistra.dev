@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { scanProject, loadHealth, saveHealth, generateTasks } from './lib/scanner.js';
+import {
+	scanProject,
+	loadHealth,
+	saveHealth,
+	generateTasks,
+} from './lib/scanner.js';
 import { registerProject } from './lib/bootstrap.js';
 
 const SCORE_BAR = (s) => {
@@ -21,18 +26,32 @@ const TREND = (t) => {
  *
  * Returns a Markdown string (caller is responsible for writing it to disk).
  */
-export function renderReadme({ projectName, perspectives, overall, allFindings, tasks, prev }) {
+export function renderReadme({
+	projectName,
+	perspectives,
+	overall,
+	allFindings,
+	tasks,
+	prev,
+}) {
 	const lines = [`# ${projectName} — Project Scan`, ''];
 
 	lines.push('## Perspective Scores', '', '```', '─'.repeat(50));
 	for (const p of perspectives) {
 		const prevScore = prev?.perspectives?.[p.id]?.score ?? null;
 		const trend = prevScore !== null ? p.score - prevScore : null;
-		const flag = p.score === Math.min(...perspectives.map(x => x.score)) ? ' ← lowest' : '';
-		lines.push(`  ${p.id.toUpperCase().padEnd(4)} ${p.name.padEnd(12)} ${SCORE_BAR(p.score)}  ${p.score.toFixed(2)}${TREND(trend)}${flag}`);
+		const flag =
+			p.score === Math.min(...perspectives.map((x) => x.score))
+				? ' ← lowest'
+				: '';
+		lines.push(
+			`  ${p.id.toUpperCase().padEnd(4)} ${p.name.padEnd(12)} ${SCORE_BAR(p.score)}  ${p.score.toFixed(2)}${TREND(trend)}${flag}`,
+		);
 	}
 	lines.push('─'.repeat(50));
-	lines.push(`       ${'Overall'.padEnd(12)} ${SCORE_BAR(overall)}  ${overall.toFixed(2)}`);
+	lines.push(
+		`       ${'Overall'.padEnd(12)} ${SCORE_BAR(overall)}  ${overall.toFixed(2)}`,
+	);
 	lines.push('```', '');
 
 	if (allFindings.length === 0) {
@@ -40,15 +59,27 @@ export function renderReadme({ projectName, perspectives, overall, allFindings, 
 		return lines.join('\n');
 	}
 
-	lines.push('## Issues Found', '', '| Priority | Issue |', '|----------|-------|');
+	lines.push(
+		'## Issues Found',
+		'',
+		'| Priority | Issue |',
+		'|----------|-------|',
+	);
 	for (const f of allFindings) {
 		lines.push(`| ${f.priority.toUpperCase()} | ${f.title} |`);
 	}
 	lines.push('');
 
-	lines.push('## Tasks', '', '| Task | Description |', '|------|-------------|');
+	lines.push(
+		'## Tasks',
+		'',
+		'| Task | Description |',
+		'|------|-------------|',
+	);
 	if (tasks.length === 0) {
-		lines.push('| — | All issues already have task files — nothing new to create. |');
+		lines.push(
+			'| — | All issues already have task files — nothing new to create. |',
+		);
 	} else {
 		for (const { filename, content } of tasks) {
 			const taskId = filename.match(/^(task_\d+)_/)?.[1] ?? filename;
@@ -75,7 +106,13 @@ export function renderReadme({ projectName, perspectives, overall, allFindings, 
  *                          dep-graph.js's own scan is always used.
  *   dryRun        boolean  print what would be written without writing files
  */
-export function scan({ projectRoot, projectName, projectsDir, hubRoot, dryRun = false }) {
+export function scan({
+	projectRoot,
+	projectName,
+	projectsDir,
+	hubRoot,
+	dryRun = false,
+}) {
 	if (!projectRoot || !projectName) {
 		process.stderr.write('[scan] --project <name> is required\n');
 		process.exit(1);
@@ -97,7 +134,10 @@ export function scan({ projectRoot, projectName, projectsDir, hubRoot, dryRun = 
 	const graphJsonPath = hubRoot
 		? path.join(hubRoot, '.graphify', projectName, 'graphify-out', 'graph.json')
 		: undefined;
-	const { perspectives, overall, allFindings } = scanProject({ projectDir: projectRoot, graphJsonPath });
+	const { perspectives, overall, allFindings } = scanProject({
+		projectDir: projectRoot,
+		graphJsonPath,
+	});
 
 	// Register this project in workspace.config.json's projects.<name> map so
 	// later consumers (graph-cli.js's resolveRepoPath(), graph-lens-gate.js,
@@ -118,13 +158,20 @@ export function scan({ projectRoot, projectName, projectsDir, hubRoot, dryRun = 
 		for (const p of perspectives) {
 			const prevScore = prev?.perspectives?.[p.id]?.score ?? null;
 			const trend = prevScore !== null ? p.score - prevScore : null;
-			const flag = p.score === Math.min(...perspectives.map(x => x.score)) ? ' ← lowest' : '';
-			console.log(`  ${p.id.toUpperCase().padEnd(4)} ${p.name.padEnd(12)} ${SCORE_BAR(p.score)}  ${p.score.toFixed(2)}${TREND(trend)}${flag}`);
+			const flag =
+				p.score === Math.min(...perspectives.map((x) => x.score))
+					? ' ← lowest'
+					: '';
+			console.log(
+				`  ${p.id.toUpperCase().padEnd(4)} ${p.name.padEnd(12)} ${SCORE_BAR(p.score)}  ${p.score.toFixed(2)}${TREND(trend)}${flag}`,
+			);
 		}
 		const prevOverall = prev?.overall ?? null;
 		const overallTrend = prevOverall !== null ? overall - prevOverall : null;
 		console.log('─'.repeat(50));
-		console.log(`       ${'Overall'.padEnd(12)} ${SCORE_BAR(overall)}  ${overall.toFixed(2)}${TREND(overallTrend)}`);
+		console.log(
+			`       ${'Overall'.padEnd(12)} ${SCORE_BAR(overall)}  ${overall.toFixed(2)}${TREND(overallTrend)}`,
+		);
 		console.log();
 	}
 
@@ -133,7 +180,14 @@ export function scan({ projectRoot, projectName, projectsDir, hubRoot, dryRun = 
 		if (!dryRun && perspectives.length > 0) {
 			saveHealth(projectsDir, projectName, perspectives, overall);
 			fs.mkdirSync(projectsDir, { recursive: true });
-			const readme = renderReadme({ projectName, perspectives, overall, allFindings, tasks: [], prev });
+			const readme = renderReadme({
+				projectName,
+				perspectives,
+				overall,
+				allFindings,
+				tasks: [],
+				prev,
+			});
 			fs.writeFileSync(path.join(projectsDir, 'README.md'), readme, 'utf-8');
 		}
 		return;
@@ -147,22 +201,36 @@ export function scan({ projectRoot, projectName, projectsDir, hubRoot, dryRun = 
 	const tasks = generateTasks({ allFindings, projectName, projectsDir });
 
 	if (tasks.length === 0) {
-		console.log('\nAll issues already have task files — nothing new to create.');
+		console.log(
+			'\nAll issues already have task files — nothing new to create.',
+		);
 	} else {
-		console.log(`\n${dryRun ? 'Would create' : 'Creating'} ${tasks.length} task(s):\n`);
+		console.log(
+			`\n${dryRun ? 'Would create' : 'Creating'} ${tasks.length} task(s):\n`,
+		);
 		fs.mkdirSync(projectsDir, { recursive: true });
 		for (const { filename, content } of tasks) {
 			console.log(`  → ${filename}`);
-			if (!dryRun) fs.writeFileSync(path.join(projectsDir, filename), content, 'utf-8');
+			if (!dryRun)
+				fs.writeFileSync(path.join(projectsDir, filename), content, 'utf-8');
 		}
 	}
 
 	if (!dryRun) {
 		saveHealth(projectsDir, projectName, perspectives, overall);
-		const readme = renderReadme({ projectName, perspectives, overall, allFindings, tasks, prev });
+		const readme = renderReadme({
+			projectName,
+			perspectives,
+			overall,
+			allFindings,
+			tasks,
+			prev,
+		});
 		fs.writeFileSync(path.join(projectsDir, 'README.md'), readme, 'utf-8');
 		if (tasks.length > 0) {
-			console.log(`\nRun "node pipelines/deploy/index.js dispatch --list" to see the updated queue.`);
+			console.log(
+				`\nRun "node pipelines/deploy/index.js dispatch --list" to see the updated queue.`,
+			);
 		}
 	}
 }

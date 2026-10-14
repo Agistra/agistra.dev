@@ -3,7 +3,13 @@ import path from 'node:path';
 
 function normalizeAuthoredLines(authoredLines) {
 	if (!Array.isArray(authoredLines)) return null;
-	const uniqueLines = [...new Set(authoredLines.filter(line => typeof line === 'string' && line.length > 0))];
+	const uniqueLines = [
+		...new Set(
+			authoredLines.filter(
+				(line) => typeof line === 'string' && line.length > 0,
+			),
+		),
+	];
 	return uniqueLines;
 }
 
@@ -12,9 +18,13 @@ export function deriveAuthoredLines(previousContent, nextContent) {
 		return [];
 	}
 	const previousLines = new Set(previousContent.split('\n'));
-	return [...new Set(nextContent
-		.split('\n')
-		.filter(line => line.length > 0 && !previousLines.has(line)))];
+	return [
+		...new Set(
+			nextContent
+				.split('\n')
+				.filter((line) => line.length > 0 && !previousLines.has(line)),
+		),
+	];
 }
 
 function normalizeBaselineContent(baselineContent) {
@@ -44,7 +54,11 @@ function normalizeWrittenFileEntry(filePath, options = {}) {
 export function addWrittenFile(writtenFiles, filePath, options = {}) {
 	const entry = normalizeWrittenFileEntry(filePath, options);
 	if (!entry) return writtenFiles;
-	writtenFiles.push(Array.isArray(entry.authoredLines) || entry.baselineContent !== null ? entry : entry.path);
+	writtenFiles.push(
+		Array.isArray(entry.authoredLines) || entry.baselineContent !== null
+			? entry
+			: entry.path,
+	);
 	return writtenFiles;
 }
 
@@ -64,7 +78,9 @@ export function uniqueWrittenFiles(filePaths = []) {
 		if (!existing) {
 			mergedByPath.set(entry.path, {
 				path: entry.path,
-				authoredLines: Array.isArray(entry.authoredLines) ? new Set(entry.authoredLines) : null,
+				authoredLines: Array.isArray(entry.authoredLines)
+					? new Set(entry.authoredLines)
+					: null,
 				baselineContent: entry.baselineContent,
 			});
 			continue;
@@ -81,15 +97,16 @@ export function uniqueWrittenFiles(filePaths = []) {
 			existing.baselineContent = entry.baselineContent;
 		}
 	}
-	return [...mergedByPath.values()].map(entry => (
+	return [...mergedByPath.values()].map((entry) =>
 		entry.authoredLines === null && entry.baselineContent === null
 			? entry.path
 			: {
-				path: entry.path,
-				authoredLines: entry.authoredLines === null ? null : [...entry.authoredLines],
-				baselineContent: entry.baselineContent,
-			}
-	));
+					path: entry.path,
+					authoredLines:
+						entry.authoredLines === null ? null : [...entry.authoredLines],
+					baselineContent: entry.baselineContent,
+				},
+	);
 }
 
 export function copyDirTracked(src, dest, { fsMod = fs, exclude = [] } = {}) {
@@ -100,7 +117,10 @@ export function copyDirTracked(src, dest, { fsMod = fs, exclude = [] } = {}) {
 		const srcPath = path.join(src, entry.name);
 		const destPath = path.join(dest, entry.name);
 		if (entry.isDirectory()) {
-			addWrittenFiles(writtenFiles, copyDirTracked(srcPath, destPath, { fsMod }));
+			addWrittenFiles(
+				writtenFiles,
+				copyDirTracked(srcPath, destPath, { fsMod }),
+			);
 		} else {
 			fsMod.copyFileSync(srcPath, destPath);
 			addWrittenFile(writtenFiles, destPath);

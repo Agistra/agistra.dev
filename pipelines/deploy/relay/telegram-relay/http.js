@@ -10,7 +10,12 @@ import { formatOutboundToRemote } from '../core/names.js';
  * @param {typeof fetch} [options.fetchFn]
  * @returns {import('node:http').Server}
  */
-export function createHttpServer({ config, queue, isPolling, fetchFn = fetch }) {
+export function createHttpServer({
+	config,
+	queue,
+	isPolling,
+	fetchFn = fetch,
+}) {
 	const server = http.createServer(async (req, res) => {
 		try {
 			const urlPath = req.url?.split('?')[0] ?? '';
@@ -52,7 +57,10 @@ export function createHttpServer({ config, queue, isPolling, fetchFn = fetch }) 
 			if (req.method === 'POST' && urlPath === '/outbound') {
 				const body = await readJsonBody(req);
 				const payload = validateOutboundPayload(body, config.relayGroupId);
-				const text = formatOutboundToRemote(payload.text, config.remoteAgentName);
+				const text = formatOutboundToRemote(
+					payload.text,
+					config.remoteAgentName,
+				);
 				const result = await sendTextMessage({
 					botToken: config.botToken,
 					chatId: config.relayGroupId,
@@ -82,7 +90,7 @@ function json(res, status, body) {
 function readJsonBody(req) {
 	return new Promise((resolve, reject) => {
 		const chunks = [];
-		req.on('data', chunk => chunks.push(chunk));
+		req.on('data', (chunk) => chunks.push(chunk));
 		req.on('end', () => {
 			try {
 				const raw = Buffer.concat(chunks).toString('utf-8');
