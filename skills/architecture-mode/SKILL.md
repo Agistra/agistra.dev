@@ -27,6 +27,8 @@ Load this skill when any of these are true:
 - the work cannot be implemented safely because architecture or acceptance criteria are unsettled
 - A story or epic ticket needs to be created to structure downstream implementation
 
+When the team lead asks for one-question-at-a-time, use `grill-with-docs` as the interaction format and keep this skill's checklist and ADR rules.
+
 ## Complexity Tier
 
 Before running the intake checklist, assess the tier. The tier determines how much ceremony is warranted.

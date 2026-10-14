@@ -58,7 +58,7 @@ Each lens enforces a specific readiness gate before `state:ready-for-qa`.
 
 ## Subagent Dispatch
 
-- **Tester** — Pre-QA readiness check before handoff (never for actual test execution — that runs in Tester's own session)
+- **Tester** — Pre-QA readiness check before handoff (never for actual test execution; Builder-dispatched Tester is Pre-QA only, full QA is dispatched by Architect or run in a direct Tester session)
 - **Router** — Inter-team notifications when a ticket state change warrants a relay
 
 ---

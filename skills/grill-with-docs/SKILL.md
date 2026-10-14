@@ -1,6 +1,6 @@
 ---
 name: grill-with-docs
-description: "One-question-at-a-time design interrogation. Use when: 'grill me', 'interrogate this', 'one question at a time', 'brainstorm', 'let's brainstorm', 'let's discuss', or design review start. Produces ADRs and glossary as decisions settle. Do not use for settled designs — load architecture-mode instead."
+description: "One-question-at-a-time design interrogation. Use when: 'grill me', 'interrogate this', 'one question at a time', 'brainstorm', 'let's brainstorm', 'let's discuss', 'lets discuss', 'discuss', 'walk me through', or design review start. Produces ADRs and glossary as decisions settle. Use for unsettled designs; for settled designs go straight to architecture-mode. When the design is unsettled and also has high ambiguity, several technical approaches, or security/data risk, load architecture-mode alongside."
 argument-hint: "Design question, plan, topic, or decision under interrogation"
 ---
 
@@ -14,6 +14,12 @@ A relentless, docs-aware interview that sharpens a plan or design one question a
 
 - **Architect:** load before any design interrogation, brainstorm session, scoping session, or ADR work where the design is not yet settled
 - **Publishing Lead (future):** load before any topic approval, editorial review, or release gating decision
+
+## Companion skills
+
+- `architecture-mode`: load at the start when the design is unsettled and also has high ambiguity, several technical approaches, or security/data risk; it shapes the questions (intake checklist, quality attributes).
+- `documentation-and-adrs`: load when writing the ADR entries; it is the format authority.
+- `assumptions-audit`: optional, before closing (see Protocol step 6).
 
 ## Protocol
 
@@ -47,4 +53,4 @@ Close   → ADR per decision + glossary + explicit exclusions
 
 ## Storage-plugin note
 
-**Storage-plugin note (`memory/<agent>.md` reference in the WAL step above):** before writing to `memory/<agent>.md`, check for an active storage plugin file at `agents/skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`), the literal repo-relative path is wrong — write instead via that plugin's `write-memory-entry(agent, 'HOT', content)` operation (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
+**Storage-plugin note (`memory/<agent>.md` reference in the WAL step above):** before writing to `memory/<agent>.md`, check for an active storage plugin file at `skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`), the literal repo-relative path is wrong — write instead via that plugin's `write-memory-entry(agent, 'HOT', content)` operation (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.

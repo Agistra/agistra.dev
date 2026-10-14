@@ -17,10 +17,11 @@
     "memory": "node pipelines/deploy/lib/memory-cli.js",
     "task": "node pipelines/deploy/lib/task-cli.js",
     "check:tickets": "node pipelines/deploy/lib/ticket-drift.js",
+    "self-check": "node tools/self-check.js",
     "memory-index": "node pipelines/deploy/lib/memory-index.js",
     "memory-index:build": "node pipelines/deploy/lib/memory-index.js build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.31.0"
   }
 }

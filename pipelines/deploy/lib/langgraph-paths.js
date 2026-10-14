@@ -19,7 +19,11 @@ import path from 'node:path';
  * Relative path (from outputRoot/hubRoot) of the directory generated prompt
  * artifacts are written to.
  */
-export const LANGGRAPH_GENERATED_DIR = path.join('runtime', 'langgraph', 'generated');
+export const LANGGRAPH_GENERATED_DIR = path.join(
+	'runtime',
+	'langgraph',
+	'generated',
+);
 
 /**
  * Relative path (from outputRoot/hubRoot) of the runtime source directory
@@ -29,7 +33,7 @@ export const LANGGRAPH_RUNTIME_DIR = path.join('runtime', 'langgraph');
 
 /**
  * Derive the generated-artifact filename for a given profile id.
- * e.g. 'cao' -> 'cao_system_prompt.txt'
+ * e.g. 'architect' -> 'architect_system_prompt.txt'
  */
 export function langGraphArtifactFileName(agentId) {
 	return `${agentId}_system_prompt.txt`;

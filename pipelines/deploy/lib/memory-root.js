@@ -49,7 +49,9 @@ export function isVaultBackedHubType(hubType) {
  * @returns {string} OS-native relative path segment
  */
 export function resolveMemoryRootSegment(hubType) {
-	return isVaultBackedHubType(hubType) ? path.join('vault', 'Memory') : 'memory';
+	return isVaultBackedHubType(hubType)
+		? path.join('vault', 'Memory')
+		: 'memory';
 }
 
 /**
@@ -77,7 +79,10 @@ export function resolveMemoryRoot(hubRoot, hubType) {
  * @returns {string} absolute path
  */
 export function resolveMemoryRootForHub(hubRoot, { fsMod = fs } = {}) {
-	const config = readJsonSafe(path.join(hubRoot, 'workspace.config.json'), fsMod);
+	const config = readJsonSafe(
+		path.join(hubRoot, 'workspace.config.json'),
+		fsMod,
+	);
 	return resolveMemoryRoot(hubRoot, config?.hubType);
 }
 
@@ -92,7 +97,9 @@ export function resolveMemoryRootForHub(hubRoot, { fsMod = fs } = {}) {
  * @returns {string} OS-native relative path segment
  */
 export function resolveTasksRootSegment(hubType) {
-	return isVaultBackedHubType(hubType) ? path.join('vault', 'Tasks') : 'projects';
+	return isVaultBackedHubType(hubType)
+		? path.join('vault', 'Tasks')
+		: 'projects';
 }
 
 /**

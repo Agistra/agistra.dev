@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { TASK_STATE_TOKENS } from './tasks.js';
-import { analyzeSys, analyzeTst, analyzeUsr, analyzeAnl, analyzeDbg, analyzeCtx } from './perspectives.js';
+import {
+	analyzeSys,
+	analyzeTst,
+	analyzeUsr,
+	analyzeAnl,
+	analyzeDbg,
+	analyzeCtx,
+} from './perspectives.js';
 
 const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2 };
 
@@ -28,10 +35,13 @@ export function scanProject({ projectDir, graphJsonPath }) {
 
 	if (!fs.existsSync(root)) {
 		const f = {
-			id: 'project-not-found', priority: 'critical',
+			id: 'project-not-found',
+			priority: 'critical',
 			title: 'Project directory not found',
 			description: `Expected project at ${root}. Verify the workspace layout.`,
-			skill: 'scan-sys', agent: 'architect', mode: 'architecture',
+			skill: 'scan-sys',
+			agent: 'architect',
+			mode: 'architecture',
 		};
 		return { perspectives: [], overall: 0, allFindings: [f] };
 	}
@@ -45,8 +55,10 @@ export function scanProject({ projectDir, graphJsonPath }) {
 		analyzeCtx(root),
 	];
 
-	const overall = round(perspectives.reduce((s, p) => s + p.score, 0) / perspectives.length);
-	const allFindings = perspectives.flatMap(p => p.findings);
+	const overall = round(
+		perspectives.reduce((s, p) => s + p.score, 0) / perspectives.length,
+	);
+	const allFindings = perspectives.flatMap((p) => p.findings);
 
 	return { perspectives, overall, allFindings };
 }
@@ -58,8 +70,11 @@ export function scanProject({ projectDir, graphJsonPath }) {
 export function loadHealth(projectsDir) {
 	const hp = path.join(projectsDir, 'health.json');
 	if (!fs.existsSync(hp)) return null;
-	try { return JSON.parse(fs.readFileSync(hp, 'utf-8')); }
-	catch { return null; }
+	try {
+		return JSON.parse(fs.readFileSync(hp, 'utf-8'));
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -86,9 +101,19 @@ export function saveHealth(projectsDir, projectName, perspectives, overall) {
 		...(prev ? [{ scannedAt: prev.scannedAt, overall: prev.overall }] : []),
 	];
 
-	const health = { project: projectName, scannedAt: now, perspectives: scores, overall, history };
+	const health = {
+		project: projectName,
+		scannedAt: now,
+		perspectives: scores,
+		overall,
+		history,
+	};
 	fs.mkdirSync(projectsDir, { recursive: true });
-	fs.writeFileSync(path.join(projectsDir, 'health.json'), JSON.stringify(health, null, 2), 'utf-8');
+	fs.writeFileSync(
+		path.join(projectsDir, 'health.json'),
+		JSON.stringify(health, null, 2),
+		'utf-8',
+	);
 	return health;
 }
 
@@ -102,12 +127,19 @@ export function saveHealth(projectsDir, projectName, perspectives, overall) {
 export function generateTasks({ allFindings, projectName, projectsDir }) {
 	const existingFiles = collectExistingTaskFiles(projectsDir);
 
-	const existingIds = new Set(existingFiles.map(({ dir, filename }) => readFindingId(dir, filename)).filter(Boolean));
-	const newFindings = allFindings.filter(f => !existingIds.has(f.id));
+	const existingIds = new Set(
+		existingFiles
+			.map(({ dir, filename }) => readFindingId(dir, filename))
+			.filter(Boolean),
+	);
+	const newFindings = allFindings.filter((f) => !existingIds.has(f.id));
 
 	if (newFindings.length === 0) return [];
 
-	newFindings.sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3));
+	newFindings.sort(
+		(a, b) =>
+			(PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3),
+	);
 
 	const maxNum = existingFiles.reduce((max, { filename }) => {
 		const m = filename.match(/^task_(\d+)_/);
@@ -122,7 +154,9 @@ export function generateTasks({ allFindings, projectName, projectsDir }) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function round(n) { return Math.round(n * 100) / 100; }
+function round(n) {
+	return Math.round(n * 100) / 100;
+}
 
 function collectExistingTaskFiles(projectsDir) {
 	// Match all task states from the ticket-lifecycle-mode canonical vocabulary
@@ -144,7 +178,8 @@ function collectExistingTaskFiles(projectsDir) {
 }
 
 function makeSlug(title) {
-	return title.toLowerCase()
+	return title
+		.toLowerCase()
 		.replace(/[^a-z0-9\s]/g, '')
 		.trim()
 		.split(/\s+/)
@@ -157,7 +192,9 @@ function readFindingId(dir, filename) {
 		const content = fs.readFileSync(path.join(dir, filename), 'utf-8');
 		const m = content.match(/^finding-id:\s+(.+)$/m);
 		return m ? m[1].trim() : null;
-	} catch { return null; }
+	} catch {
+		return null;
+	}
 }
 
 function buildTaskContent(finding, projectName) {

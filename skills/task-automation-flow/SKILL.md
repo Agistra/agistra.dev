@@ -25,7 +25,7 @@ Every ticket has acceptance criteria. Architect specifies the verifier when crea
 
 | Verifier    | When Architect assigns it                           | Flow after Builder completes                                                                                                                                                                                                                                |
 | ----------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Tester`    | Full functional verification needed                 | Builder marks ticket `state:ready-for-qa` and notifies Architect. Architect dispatches Tester as a direct session — handing main context to Tester when operating in main, or notifying the team lead to start a dedicated Tester session when not in main. |
+| `Tester`    | Full functional verification needed                 | Builder marks ticket `state:ready-for-qa` and notifies Architect. Architect classifies the QA. Non-browser: Architect dispatches Tester as a subagent in Full QA mode. Browser-driven: direct Tester session — handing main context to Tester when operating in main, or notifying the team lead to start a dedicated Tester session when not in main. |
 | `Architect` | Design or structural review sufficient              | Builder notifies Architect who reviews — smaller loop                                                                                                                                                                                                       |
 | `Automated` | Build + lint + tests are the full acceptance signal | Builder self-certifies; Architect spot-checks before notifying team lead                                                                                                                                                                                    |
 
@@ -36,10 +36,10 @@ The verifier is recorded in the task file (and mirrored to the tracker record at
 When Architect creates a local task file destined for Builder dispatch, check whether the target repo/project has a tracker configured. If so, create the matching tracker record in the same action as creating the local task file — before dispatch, not as a follow-up.
 
 **"Tracker configured" (plugin-based check):**
-1. Resolve the active tracker plugin per the Plugin Resolution Order in `ticket-lifecycle-mode` (check `workspace.config.json` for an explicit `tracker.plugin` declaration; fall back to auto-detection by running detect-configured for each plugin present in `agents/skills/ticket-lifecycle-mode/trackers/`).
+1. Resolve the active tracker plugin per the Plugin Resolution Order in `ticket-lifecycle-mode` (check `workspace.config.json` for an explicit `tracker.plugin` declaration; fall back to auto-detection by running detect-configured for each plugin present in `skills/ticket-lifecycle-mode/trackers/`).
 2. Run the resolved plugin's detect-configured procedure. If it returns true, a tracker is configured.
 
-The concrete detection steps (e.g. checking for a `github.com` remote and `gh auth status`) are defined by each plugin file, not by this skill — see `agents/skills/ticket-lifecycle-mode/trackers/<plugin-name>.md`.
+The concrete detection steps (e.g. checking for a `github.com` remote and `gh auth status`) are defined by each plugin file, not by this skill — see `skills/ticket-lifecycle-mode/trackers/<plugin-name>.md`.
 
 When a tracker is configured, run the plugin's create-record procedure to open a matching record in the tracker. Record the returned reference in the task file frontmatter using the field name the plugin specifies, before dispatching Builder.
 
@@ -147,14 +147,14 @@ Team Lead: "do work" / "dispatch builder"
       └─> Builder: implements ticket
           └─> ticket: state:ready-for-qa
               └─> Builder notifies Architect
-                  └─> Architect dispatches Tester (direct session)
+                  └─> Architect dispatches Tester (Full QA subagent if non-browser; direct session if browser-driven)
                       └─> Tester: all ACs pass → state:qa-passed
                           └─> Tester notifies Architect
                               └─> Architect notifies Team Lead
                                   └─> Team Lead: merges + closes ticket
 ```
 
-After Tester exits (pass or fail), main context returns to Architect. Builder does not spawn Tester — Architect dispatches Tester as a direct session — handing main context to Tester when operating in main, or notifying the team lead to start a dedicated Tester session when not in main.
+After Tester exits (pass or fail), main context returns to Architect. Builder does not spawn Tester — Architect classifies the QA. Non-browser: Architect dispatches Tester as a subagent in Full QA mode. Browser-driven: direct Tester session — handing main context to Tester when operating in main, or notifying the team lead to start a dedicated Tester session when not in main.
 
 ### verifier: Architect
 
@@ -318,7 +318,7 @@ This flow operates within `ticket-lifecycle-mode`.
 | Tester passes all ACs                                          | `state:qa-passed`                                                      |
 | Team Lead merges + closes                                      | Team Lead merges and closes — out-of-band action, not a managed label. |
 
-Note: For `verifier: Architect`, the intermediate state is `state:ready-for-review` (not `state:ready-for-qa`). On pass, Architect transitions directly from `state:ready-for-review` to `state:qa-passed` — no separate QA phase is required. See the Transition Permissions table in `ticket-lifecycle-mode`.
+Note: For `verifier: Architect`, the intermediate state is `state:ready-for-review` (not `state:ready-for-qa`). On pass, Architect transitions directly from `state:ready-for-review` to `state:qa-passed` — no separate QA phase is required. Before that transition, Architect loads `code-review-and-quality` and applies it: no `qa-passed` until all Critical issues are resolved AND tests pass AND build passes. The `qa-passed` transition must carry a review record — findings with severity and confidence labels (or "no findings") plus the approval-gate line on Critical/tests/build status — appended to the task file's `## QA Report` section via `append-task-section` (or the tracker comment when a tracker is configured). See the Transition Permissions table in `ticket-lifecycle-mode`.
 
 ### Post-Merge Hygiene
 

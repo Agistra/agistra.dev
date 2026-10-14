@@ -14,7 +14,7 @@ Task files live in `projects/<project>/task_N_<state>_<slug>.md`. Filename struc
 ---
 agent: builder | tester | architect
 mode: engineering | qa | architecture
-model: claude-sonnet-4-6
+model: <model-id>
 status: state:ready-for-qa          # Authoritative lifecycle state
 verifier: Tester | Architect | Automated
 fail-count: 0                       # QA failure count (0, 1, 2)
@@ -72,7 +72,7 @@ task_N_qa-passed_<slug>.md             ← state:qa-passed
 task_N_done_<slug>.md                  ← closed (terminal, moves to projects/<project>/done/)
 ```
 
-All state transitions are managed by `cli/lib/tasks.js` (`changeTaskStatus` function). The CLI updates filename and frontmatter atomically.
+All state transitions are managed by `npm run task -- transition <id> <state>` (`pipelines/deploy/lib/task-cli.js`, which calls `changeTaskStatus` in `pipelines/deploy/lib/tasks.js`). The CLI updates filename and frontmatter atomically.
 
 ### Mirror obligation
 

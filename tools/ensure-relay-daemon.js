@@ -54,7 +54,14 @@ export function shouldEnsureRelay({ hubRoot, fsMod = fs }) {
  * @returns {string|null}
  */
 export function resolveDaemonScript(hubRoot, fsMod = fs) {
-	const script = path.join(hubRoot, 'pipelines', 'deploy', 'relay', 'telegram-relay', 'daemon.js');
+	const script = path.join(
+		hubRoot,
+		'pipelines',
+		'deploy',
+		'relay',
+		'telegram-relay',
+		'daemon.js',
+	);
 	return fsMod.existsSync(script) ? script : null;
 }
 
@@ -70,7 +77,7 @@ function readDaemonPort(hubRoot, fsMod = fs) {
 }
 
 function sleep(ms) {
-	return new Promise(resolve => setTimeout(resolve, ms));
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -87,49 +94,59 @@ export async function ensureRelayDaemon({
 	fsMod = fs,
 	spawnFn = spawn,
 	fetchFn = globalThis.fetch,
-	log = msg => process.stderr.write(`${msg}\n`),
+	log = (msg) => process.stderr.write(`${msg}\n`),
 }) {
 	if (!shouldEnsureRelay({ hubRoot, fsMod })) {
 		return { action: 'skip', reason: 'relay not enabled' };
 	}
 
 	const port = readDaemonPort(hubRoot, fsMod);
-	if (await probeRelayHealth(port, fetchFn) === 'ok') {
+	if ((await probeRelayHealth(port, fetchFn)) === 'ok') {
 		return { action: 'already_running', port };
 	}
 
 	const daemonScript = resolveDaemonScript(hubRoot, fsMod);
 	if (!daemonScript) {
-		log('relay autostart: skipped — pipelines/deploy/relay not found (redeploy hub)');
+		log(
+			'relay autostart: skipped — pipelines/deploy/relay not found (redeploy hub)',
+		);
 		return { action: 'skip', reason: 'daemon script missing' };
 	}
 
-	const child = spawnFn(process.execPath, [daemonScript, '--hub', path.resolve(hubRoot)], {
-		cwd: hubRoot,
-		detached: true,
-		stdio: 'ignore',
-		windowsHide: true,
-	});
+	const child = spawnFn(
+		process.execPath,
+		[daemonScript, '--hub', path.resolve(hubRoot)],
+		{
+			cwd: hubRoot,
+			detached: true,
+			stdio: 'ignore',
+			windowsHide: true,
+		},
+	);
 	child.unref();
 
 	for (let attempt = 0; attempt < 10; attempt++) {
 		await sleep(200);
-		if (await probeRelayHealth(port, fetchFn) === 'ok') {
+		if ((await probeRelayHealth(port, fetchFn)) === 'ok') {
 			log(`relay autostart: daemon listening on http://127.0.0.1:${port}`);
 			return { action: 'started', port, pid: child.pid };
 		}
 	}
 
-	log(`relay autostart: spawned pid ${child.pid} but /health not ready yet — check manually`);
+	log(
+		`relay autostart: spawned pid ${child.pid} but /health not ready yet — check manually`,
+	);
 	return { action: 'spawned', port, pid: child.pid };
 }
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	ensureRelayDaemon({ hubRoot: process.cwd() })
-		.catch(err => {
+		.catch((err) => {
 			process.stderr.write(`relay autostart error: ${err.message}\n`);
 		})
 		.finally(() => process.exit(0));

@@ -80,7 +80,7 @@ process's own cwd.
 **`transition` is atomic and ordered:**
 
 1. update `status:` frontmatter
-2. check for an active storage plugin file at `agents/skills/agent-foundations/storage/*.md`
+2. check for an active storage plugin file at `skills/agent-foundations/storage/*.md`
    — the same presence-gated check `agent-foundations`'s own Memory Path Resolution
    protocol uses for Memory/Task/Document store operations. If a plugin is present and its
    Task store section's `transition-state` operation documents a rename-free transition
@@ -342,7 +342,7 @@ When a workflow update arrives, `Relay` should:
 ## Tracker Plugin Contract
 
 The tracker concept is implemented via a small set of plugin files, each at
-`agents/skills/ticket-lifecycle-mode/trackers/<plugin-name>.md`. This mirrors the
+`skills/ticket-lifecycle-mode/trackers/<plugin-name>.md`. This mirrors the
 spirit of the `*.doctor-plugin.js` / `*.hooks-plugin.js` convention used in
 `pipelines/deploy/lib/` — the core module (here, this SKILL.md) stays generic and
 never names any specific tracker host or CLI tool; implementation details live in
@@ -368,7 +368,7 @@ Each plugin also specifies:
 1. Check `workspace.config.json` for a `tracker.plugin` field (e.g. `"plugin": "github"`). If
    present, load only that plugin — no auto-detection.
 2. If absent, run detect-configured for each plugin file present in
-   `agents/skills/ticket-lifecycle-mode/trackers/` and use the first one that returns true.
+   `skills/ticket-lifecycle-mode/trackers/` and use the first one that returns true.
 3. If no plugin returns true, treat the project as having no tracker configured.
 
 Explicit declaration via `workspace.config.json` is recommended when a project uses

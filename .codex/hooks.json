@@ -1,0 +1,38 @@
+{
+	"hooks": {
+		"SessionStart": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node tools/memory-session-start.js",
+						"timeout": 30
+					}
+				]
+			}
+		],
+		"PostToolUse": [
+			{
+				"matcher": "Bash|apply_patch|Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node tools/memory-work-marker.js",
+						"timeout": 30
+					}
+				]
+			}
+		],
+		"Stop": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node tools/memory-check-codex.js",
+						"timeout": 30
+					}
+				]
+			}
+		]
+	}
+}

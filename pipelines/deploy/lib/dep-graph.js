@@ -30,7 +30,8 @@ export const MAX_FAN_OUT = 10;
 // paren) and `import.meta` (no whitespace before the dot) — both fail the
 // required `\s+` after the keyword, so they fall through to the dedicated
 // patterns below instead of double-matching here.
-const IMPORT_FROM_RE = /\b(?:import|export)\s+(?:[^'";]*?\bfrom\s+)?['"]([^'"]+)['"]/g;
+const IMPORT_FROM_RE =
+	/\b(?:import|export)\s+(?:[^'";]*?\bfrom\s+)?['"]([^'"]+)['"]/g;
 const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 const REQUIRE_RE = /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
@@ -57,8 +58,8 @@ function resolveRelative(spec, fromFile, root) {
 	const basePath = path.resolve(path.dirname(fromFile), spec);
 	const candidates = [
 		basePath,
-		...RESOLVE_EXTS.map(ext => basePath + ext),
-		...RESOLVE_EXTS.map(ext => path.join(basePath, `index${ext}`)),
+		...RESOLVE_EXTS.map((ext) => basePath + ext),
+		...RESOLVE_EXTS.map((ext) => path.join(basePath, `index${ext}`)),
 	];
 
 	for (const candidate of candidates) {
@@ -85,7 +86,7 @@ export function buildImportGraph(root) {
 	const graph = new Map();
 	const files = [];
 
-	walkDir(root, f => {
+	walkDir(root, (f) => {
 		if (!IMPORT_EXTS.has(path.extname(f))) return;
 		const rel = toPosix(path.relative(root, f));
 		files.push({ rel, full: f });
@@ -117,8 +118,10 @@ export function buildImportGraph(root) {
  * of modules from a different starting node are deduplicated.
  */
 export function detectCycles(graph) {
-	const WHITE = 0, GRAY = 1, BLACK = 2;
-	const color = new Map([...graph.keys()].map(k => [k, WHITE]));
+	const WHITE = 0,
+		GRAY = 1,
+		BLACK = 2;
+	const color = new Map([...graph.keys()].map((k) => [k, WHITE]));
 	const stack = [];
 	const cycles = [];
 	const seen = new Set();
@@ -217,11 +220,16 @@ export function buildGraphFromGraphifyJson(graphJsonPath) {
 	} catch {
 		return null;
 	}
-	if (!parsed || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) return null;
+	if (!parsed || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges))
+		return null;
 
 	const fileById = new Map();
 	for (const node of parsed.nodes) {
-		if (node && typeof node.id === 'string' && typeof node.source_file === 'string') {
+		if (
+			node &&
+			typeof node.id === 'string' &&
+			typeof node.source_file === 'string'
+		) {
 			fileById.set(node.id, toPosix(node.source_file));
 		}
 	}

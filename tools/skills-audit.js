@@ -35,7 +35,8 @@ const OPTIONAL_MARKER = '(optional — install via';
 // a real Skills-table row from the table header/separator rows and from
 // unrelated tables elsewhere in the same profile (e.g. dispatch-target or
 // model-selection tables) — none of those emit that literal path shape.
-const ROW_RE = /^\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*`skills\/([^`]+?)\/SKILL\.md`\s*\|\s*$/;
+const ROW_RE =
+	/^\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*`skills\/([^`]+?)\/SKILL\.md`\s*\|\s*$/;
 
 /**
  * Returns the lines of the profile that fall under any `## Skills`
@@ -54,7 +55,7 @@ export function extractSkillsSection(text) {
 	for (let i = 0; i < lines.length; i++) {
 		if (lines[i].trim() !== '## Skills') continue;
 		const rest = lines.slice(i + 1);
-		const endIdx = rest.findIndex(line => /^##\s/.test(line));
+		const endIdx = rest.findIndex((line) => /^##\s/.test(line));
 		collected.push(...(endIdx === -1 ? rest : rest.slice(0, endIdx)));
 	}
 	return collected;
@@ -86,7 +87,10 @@ export function parseSkillsTable(text) {
  * @param {typeof fs} [options.fsMod]
  * @returns {{ agent: string, profilePath: string, counts: { total: number, guaranteed: number, optional: number }, missingGuaranteed: string[], missingOptional: string[] }}
  */
-export function auditProfile(profilePath, { cwd = process.cwd(), fsMod = fs } = {}) {
+export function auditProfile(
+	profilePath,
+	{ cwd = process.cwd(), fsMod = fs } = {},
+) {
 	const text = fsMod.readFileSync(profilePath, 'utf-8');
 	const rows = parseSkillsTable(text);
 
@@ -119,7 +123,9 @@ export function auditProfile(profilePath, { cwd = process.cwd(), fsMod = fs } = 
 function main() {
 	const profilePath = process.argv[2];
 	if (!profilePath) {
-		process.stderr.write('Usage: node tools/skills-audit.js <path-to-own-profile-file>\n');
+		process.stderr.write(
+			'Usage: node tools/skills-audit.js <path-to-own-profile-file>\n',
+		);
 		process.exit(1);
 		return;
 	}
@@ -128,7 +134,9 @@ function main() {
 	try {
 		result = auditProfile(profilePath);
 	} catch (err) {
-		process.stderr.write(`skills-audit: failed to read/parse ${profilePath}: ${err.message}\n`);
+		process.stderr.write(
+			`skills-audit: failed to read/parse ${profilePath}: ${err.message}\n`,
+		);
 		process.exit(1);
 		return;
 	}
@@ -137,8 +145,10 @@ function main() {
 	process.exit(result.missingGuaranteed.length > 0 ? 1 : 0);
 }
 
-const isMain = process.argv[1] &&
-	path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain =
+	process.argv[1] &&
+	path.resolve(process.argv[1]) ===
+		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
 	main();

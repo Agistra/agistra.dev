@@ -1,6 +1,26 @@
 {
 	"version": 1,
 	"hooks": {
+		"sessionStart": [
+			{
+				"command": "bash tools/memory-session-start.sh"
+			}
+		],
+		"postToolUse": [
+			{
+				"command": "bash tools/memory-work-marker.sh"
+			}
+		],
+		"afterFileEdit": [
+			{
+				"command": "bash tools/memory-work-marker.sh"
+			}
+		],
+		"afterShellExecution": [
+			{
+				"command": "bash tools/memory-work-marker.sh"
+			}
+		],
 		"stop": [
 			{
 				"command": "bash tools/memory-check-cursor.sh"

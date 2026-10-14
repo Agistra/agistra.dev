@@ -22,7 +22,8 @@ import { parseVersion, compareVersions } from './version.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REMOTE_URL = 'https://raw.githubusercontent.com/vsetchinfc/agistra.dev/main/VERSION';
+const REMOTE_URL =
+	'https://raw.githubusercontent.com/Agistra/agistra.dev/main/VERSION';
 
 function readLocalVersion(hubRoot) {
 	const versionPath = path.join(hubRoot, 'VERSION');
@@ -38,11 +39,16 @@ function fetchRemoteVersion(url) {
 	return new Promise((resolve) => {
 		const req = https.get(url, { timeout: 5000 }, (res) => {
 			let data = '';
-			res.on('data', chunk => { data += chunk; });
+			res.on('data', (chunk) => {
+				data += chunk;
+			});
 			res.on('end', () => resolve(parseVersion(data)));
 		});
 		req.on('error', () => resolve(null));
-		req.on('timeout', () => { req.destroy(); resolve(null); });
+		req.on('timeout', () => {
+			req.destroy();
+			resolve(null);
+		});
 	});
 }
 
@@ -53,7 +59,9 @@ function fetchRemoteVersion(url) {
  *
  * Returns the same `{ status, local, remote }` shape this script prints.
  */
-export async function computeVersionCheck(hubRoot = path.resolve(__dirname, '..', '..', '..')) {
+export async function computeVersionCheck(
+	hubRoot = path.resolve(__dirname, '..', '..', '..'),
+) {
 	const local = readLocalVersion(hubRoot);
 	if (!local) {
 		return { status: 'no-local-version', local: null, remote: null };
@@ -87,7 +95,10 @@ export async function computeVersionCheck(hubRoot = path.resolve(__dirname, '..'
 async function main() {
 	const args = process.argv.slice(2);
 	const hubIdx = args.indexOf('--hub');
-	const hubRoot = hubIdx !== -1 ? path.resolve(args[hubIdx + 1]) : path.resolve(__dirname, '..', '..', '..');
+	const hubRoot =
+		hubIdx !== -1
+			? path.resolve(args[hubIdx + 1])
+			: path.resolve(__dirname, '..', '..', '..');
 
 	const result = await computeVersionCheck(hubRoot);
 	console.log(JSON.stringify(result));
@@ -95,6 +106,9 @@ async function main() {
 }
 
 // Only run as a CLI when invoked directly, not when imported (e.g. by session-cli.js).
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+	process.argv[1] &&
+	fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
 	main();
 }

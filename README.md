@@ -1,7 +1,7 @@
 # Agistra Dev
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.2.3-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/dynamic/regex.svg?url=https%3A%2F%2Fraw.githubusercontent.com%2FAgistra%2Fagistra.dev%2Fmain%2FVERSION&search=%5E(%5Cd%2B%5C.%5Cd%2B%5C.%5Cd%2B)&replace=%241&label=Version&color=blue)](VERSION)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933.svg)](package.json)
 
 [![Claude Code](https://img.shields.io/badge/Claude_Code-supported-blue.svg)](.claude/agents)
@@ -13,7 +13,7 @@
 
 Run [scan](#project-health-scanner) on any existing project to analyse it and generate the first batch of tasks automatically. No manual setup required.
 
-**[Get started →](#quick-start)** · [GitHub](https://github.com/vsetchinfc/agistra.dev) · Open source
+**[Get started →](#quick-start)** · [GitHub](https://github.com/Agistra/agistra.dev) · Open source
 
 ---
 
@@ -110,7 +110,7 @@ To keep token spend down on any provider, see [Token Use Best Practices](docs/TO
 ### 1. Clone or fork the hub
 
 ```powershell
-git clone https://github.com/vsetchinfc/agistra.dev.git my-hub
+git clone https://github.com/Agistra/agistra.dev.git my-hub
 cd my-hub
 ```
 
@@ -262,7 +262,7 @@ macOS/Linux (Mac/Linux support is deferred to a future release).
   skips registration entirely — setup still completes normally either way.
 - **Turning it off again:**
   ```powershell
-  npm run setup -- --disable-nightly-dreaming
+  npm.cmd run setup -- --disable-nightly-dreaming
   ```
   Removes the registered Scheduled Task (if any) without running the rest of the interactive
   wizard, and updates `workspace.config.json` so a future `npm run setup` re-run won't
@@ -293,7 +293,7 @@ Task files are markdown with YAML front matter. The front matter tells Claude wh
 ---
 agent: builder
 mode: engineering
-model: claude-sonnet-4-6
+model: <model-id>
 status: state:ready-for-implementation
 verifier: Tester
 finding-id: tst-low-coverage
@@ -418,7 +418,7 @@ A full superset of `agistra.dev:sub`'s Obsidian + qmd storage stack, plus a Lang
 
 Agistra is open source and free to use.
 
-**[github.com/vsetchinfc/agistra.dev](https://github.com/vsetchinfc/agistra.dev)**
+**[github.com/Agistra/agistra.dev](https://github.com/Agistra/agistra.dev)**
 
 Clone it, deploy it to your own hub, and run your team from there. The source of truth for agent profiles, skills, and the CLI lives in the profiles repo — deploy generates your hub from it.
 

@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter } from './tasks.js';
-import { addWrittenFile, addWrittenFiles, copyDirTracked } from './written-files.js';
+import {
+	addWrittenFile,
+	addWrittenFiles,
+	copyDirTracked,
+} from './written-files.js';
 
 function yamlDoubleQuoted(str) {
 	return `"${String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
@@ -10,6 +14,9 @@ function yamlDoubleQuoted(str) {
 function stripYamlQuotes(value) {
 	return value.replace(/^["']|["']$/g, '');
 }
+
+/** Claude Code's skill description limit. Descriptions are never truncated; longer ones fail validation. */
+export const SKILL_DESCRIPTION_MAX_LENGTH = 1024;
 
 /**
  * Extract name and description from a source skill's SKILL.md frontmatter.
@@ -32,22 +39,44 @@ export function parseSkillFrontmatter(skillsRoot, skillName) {
 		if (headingMatch) {
 			description = headingMatch[1].trim();
 		} else {
-			const line = body.split(/\r?\n/).find(l => l.trim());
+			const line = body.split(/\r?\n/).find((l) => l.trim());
 			description = line?.trim() ?? skillName;
 		}
-	}
-
-	if (description.length > 500) {
-		description = description.slice(0, 500);
 	}
 
 	return { name, description };
 }
 
 /**
+ * List skills under skillsRoot (one level deep, directories holding a SKILL.md)
+ * whose description exceeds SKILL_DESCRIPTION_MAX_LENGTH.
+ *
+ * Returns [{ skill, length }]
+ */
+export function findOverlongSkillDescriptions(
+	skillsRoot,
+	maxLength = SKILL_DESCRIPTION_MAX_LENGTH,
+) {
+	if (!fs.existsSync(skillsRoot)) return [];
+	const overlong = [];
+	for (const entry of fs.readdirSync(skillsRoot, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		if (!fs.existsSync(path.join(skillsRoot, entry.name, 'SKILL.md'))) continue;
+		const { description } = parseSkillFrontmatter(skillsRoot, entry.name);
+		if (description.length > maxLength)
+			overlong.push({ skill: entry.name, length: description.length });
+	}
+	return overlong;
+}
+
+/**
  * Build a platform discovery stub SKILL.md that points at canonical skills/<name>/SKILL.md.
  */
-export function buildSkillStub(skillName, skillsRoot, { canonicalPrefix = 'skills' } = {}) {
+export function buildSkillStub(
+	skillName,
+	skillsRoot,
+	{ canonicalPrefix = 'skills' } = {},
+) {
 	const { name, description } = parseSkillFrontmatter(skillsRoot, skillName);
 	const canonicalPath = `${canonicalPrefix}/${skillName}/SKILL.md`;
 	const assetPrefix = `${canonicalPrefix}/${skillName}/`;
@@ -61,17 +90,51 @@ Read and follow \`${canonicalPath}\` (canonical). Resolve scripts and assets rel
 `;
 }
 
+const STUB_MARKER = 'This stub exists for platform skill discovery only.';
+
+/**
+ * Remove stub directories under outputSkillsRoot that are not in keepNames.
+ * Only directories whose SKILL.md carries the stub marker are touched, so a
+ * hand-authored skill in an adapter dir is never removed.
+ */
+function removeStaleStubs(outputSkillsRoot, keepNames) {
+	if (!fs.existsSync(outputSkillsRoot)) return;
+	const keep = new Set(keepNames);
+	for (const entry of fs.readdirSync(outputSkillsRoot, {
+		withFileTypes: true,
+	})) {
+		if (!entry.isDirectory() || keep.has(entry.name)) continue;
+		const skillFile = path.join(outputSkillsRoot, entry.name, 'SKILL.md');
+		if (!fs.existsSync(skillFile)) continue;
+		if (fs.readFileSync(skillFile, 'utf-8').includes(STUB_MARKER)) {
+			fs.rmSync(path.join(outputSkillsRoot, entry.name), {
+				recursive: true,
+				force: true,
+			});
+		}
+	}
+}
+
 /**
  * Write stub SKILL.md files for the given skill names under outputSkillsRoot.
+ * With pruneStale, stubs from an earlier deploy that are not in skillNames are removed;
+ * leave it off when several callers (one per profile) share one output dir.
  *
  * Returns { copied: string[], missing: string[] }
  */
-export function writeSkillStubs({ skillsRoot, outputSkillsRoot, skillNames, canonicalPrefix = 'skills' }) {
+export function writeSkillStubs({
+	skillsRoot,
+	outputSkillsRoot,
+	skillNames,
+	canonicalPrefix = 'skills',
+	pruneStale = false,
+}) {
 	const copied = [];
 	const missing = [];
 	const writtenFiles = [];
 
 	fs.mkdirSync(outputSkillsRoot, { recursive: true });
+	if (pruneStale) removeStaleStubs(outputSkillsRoot, skillNames);
 
 	for (const skillName of skillNames) {
 		const src = path.join(skillsRoot, skillName);
@@ -103,7 +166,11 @@ export function writeSkillStubs({ skillsRoot, outputSkillsRoot, skillNames, cano
  *   copied  — skill names that were successfully copied
  *   missing — skill names declared in the manifest but not found in skillsRoot
  */
-export function copyDeclaredSkills(skillsRoot, outputSkillsRoot, declaredSkills) {
+export function copyDeclaredSkills(
+	skillsRoot,
+	outputSkillsRoot,
+	declaredSkills,
+) {
 	const copied = [];
 	const missing = [];
 	const writtenFiles = [];

@@ -26,6 +26,10 @@ Read your agent identity and follow the per-agent delta below after running the 
 - Never clear the full user, session, or repo memory stores wholesale.
 - When compacting the live file, keep only current HOT items, explicit carry-forward items, and durable WARM/COLD knowledge. Move fully resolved day-specific detail into the archive snapshot.
 
+## Tiered Memory Lifecycle
+
+Where the active storage plugin defines `sweep-memory()`, moving entries between tiers is a script, not this skill's job. Good night order: Architect runs `sweep-memory(force)`, then dreaming, then `sweep-memory(force)` again; dispatched agents never sweep. The decay rules (step 3 and the Compaction Decision Table age rows) and compaction (steps 4 and 8) then do not apply, and the skill keeps only judgement: promoting durable items into COLD via `write-memory-entry(agent, 'COLD', content)`, the contradiction review (step 5), and the one-line summary for the archive snapshot. Where the plugin defines no sweep, every rule in this skill applies as written.
+
 ## Compaction Decision Table
 
 An entry or item is eligible for retirement to archive (and not carried forward to the live file) when it meets one of these criteria:
@@ -134,21 +138,16 @@ The "Compacted" section must always report:
 - Cross-project architectural patterns → auto-memory (user-level memory files) when the pattern recurs across 2+ projects
 - Dreaming-managed transient captures → compacted in their original memory file after checkpoint (only when explicitly marked)
 
-**Compaction enforcement (Architect):**
+**Compaction enforcement (Architect):** the shared rules above, unchanged: the Compaction Decision Table, decay, archive snapshot counts, and the own-memory-only contradiction review.
 
-- LAST_EVENT: Cap at 10 most recent entries. Retire entries older than 7 days with no open ticket/PR/blocker reference. Summarise entries exceeding 500 chars to one-liner + archive full detail.
-- HOT decay: Items not referenced in 48h move to WARM.
-- Cross-agent tracking: After reviewing Architect's HOT entries, check whether any HOT entry references a ticket, topic, or capability also tracked as open or handed-off in another agent's memory (using the status contributions collected in the status-report phase). Surface any matches under a 'Cross-agent tracking' note in the EOD report. This check is informational — a visibility signal, not a blocker.
-- WARM decay: Items not referenced in 7d move to COLD.
-- Archive snapshot must report before/after line counts and compaction delta.
-- Contradiction review: scoped to this agent's own memory only (never another agent's file); findings recorded in `## Flagged Contradictions` in the archive snapshot — best-effort, human-review only, never auto-resolved.
+**Cross-agent tracking (Architect):** after reviewing Architect's HOT entries, check whether any HOT entry references a ticket, topic, or capability also tracked as open or handed-off in another agent's memory (using the status contributions collected in the status-report phase). Surface any matches under a 'Cross-agent tracking' note in the EOD report. Informational only: a visibility signal, not a blocker.
 
 **Dispatch behaviour:**
 
 - If Architect receives the trigger directly:
-  1. **Status report phase** — invoke Builder, Tester, and Router as subagents simultaneously with the status-contribution prompt: `"EOD status check. Read your memory file (resolve your real memory file per the Memory Path Resolution protocol in skills/agent-foundations/SKILL.md — check for an active storage plugin at skills/agent-foundations/storage/*.md; do not assume the free-tier memory/<agent>.md path) and return your status contribution: active tickets, dispatched-but-unreturned work, and any blockers. Bullets only."` Also invoke CAO with the same status-contribution prompt under the same terms *when and only when* CAO's own profile file exists in the hub — probe the adapter-matching path (e.g. `.claude/agents/cao.md` for Claude Code), the same presence-gating pattern the Bootstrap Self-Check section of `agent-foundations` already uses for this identical problem. If the file is absent, skip CAO silently; that is the expected state on hubs that don't ship CAO, not a gap to report. Collect all responses (three, or four when CAO is present).
+  1. **Status report phase** — invoke Builder, Tester, and Router as subagents simultaneously with the status-contribution prompt: `"EOD status check. Read your memory file (resolve your real memory file per the Memory Path Resolution protocol in skills/agent-foundations/SKILL.md — check for an active storage plugin at skills/agent-foundations/storage/*.md; do not assume the free-tier memory/<agent>.md path) and return your status contribution: active tickets, dispatched-but-unreturned work, and any blockers. Bullets only."` Collect all responses.
   2. **Compile and deliver EOD report** — using the status contributions plus Architect's own HOT section, compile a single project-grouped report (per the multi-project output format in `agent-foundations`: group by project, mention the relevant agent owner inside each section). Deliver to the team lead before any consolidation output.
-  3. **Consolidation phase** — run shared steps (including decay rules + LAST_EVENT retirement), then invoke Builder, Tester, and Router as subagents simultaneously with the dreaming consolidation prompt: `"End of day consolidation. Run the dreaming skill for [role] workspace. Resolve your real memory file per the Memory Path Resolution protocol in skills/agent-foundations/SKILL.md — check for an active storage plugin at skills/agent-foundations/storage/*.md; do not assume the free-tier memory/<agent>.md path."` Also invoke CAO with the same consolidation prompt, presence-gated on the same terms as the status report phase above — skip silently if CAO's profile file is absent. Wait for all invoked agents to acknowledge (three, or four when CAO is present).
+  3. **Consolidation phase** — run shared steps (including decay rules + LAST_EVENT retirement), then invoke Builder, Tester, and Router as subagents simultaneously with the dreaming consolidation prompt: `"End of day consolidation. Run the dreaming skill for [role] workspace. Resolve your real memory file per the Memory Path Resolution protocol in skills/agent-foundations/SKILL.md — check for an active storage plugin at skills/agent-foundations/storage/*.md; do not assume the free-tier memory/<agent>.md path."` Wait for all invoked agents to acknowledge.
   4. Confirm to the team lead: `"Good night. All agents consolidated."`
 
 - If the trigger arrives via subagent dispatch: run shared steps (including decay rules + LAST_EVENT retirement) only, then acknowledge: `"Architect consolidated. Good night."`
@@ -166,13 +165,7 @@ The "Compacted" section must always report:
 - Cross-project coding patterns → auto-memory (user-level memory files) when the pattern recurs across 2+ projects
 - Dreaming-managed transient captures → compacted in their original memory file after checkpoint (only when explicitly marked)
 
-**Compaction enforcement (Builder):**
-
-- LAST_EVENT: Cap at 10 most recent entries. Retire entries older than 7 days with no open ticket/PR/blocker reference. Summarise entries exceeding 500 chars to one-liner + archive full detail.
-- HOT decay: Items not referenced in 48h move to WARM.
-- WARM decay: Items not referenced in 7d move to COLD.
-- Archive snapshot must report before/after line counts and compaction delta.
-- Contradiction review: scoped to this agent's own memory only (never another agent's file); findings recorded in `## Flagged Contradictions` in the archive snapshot — best-effort, human-review only, never auto-resolved.
+**Compaction enforcement (Builder):** the shared rules above, unchanged: the Compaction Decision Table, decay, archive snapshot counts, and the own-memory-only contradiction review.
 
 **Dispatch behaviour:**
 
@@ -195,13 +188,7 @@ The "Compacted" section must always report:
 
 (Tester does not promote to user memory — QA intelligence is project-scoped.)
 
-**Compaction enforcement (Tester):**
-
-- LAST_EVENT: Cap at 10 most recent entries. Retire entries older than 7 days with no open ticket/PR/blocker reference. Summarise entries exceeding 500 chars to one-liner + archive full detail.
-- HOT decay: Items not referenced in 48h move to WARM.
-- WARM decay: Items not referenced in 7d move to COLD.
-- Archive snapshot must report before/after line counts and compaction delta.
-- Contradiction review: scoped to this agent's own memory only (never another agent's file); findings recorded in `## Flagged Contradictions` in the archive snapshot — best-effort, human-review only, never auto-resolved.
+**Compaction enforcement (Tester):** the shared rules above, unchanged: the Compaction Decision Table, decay, archive snapshot counts, and the own-memory-only contradiction review.
 
 **Dispatch behaviour:**
 
@@ -224,47 +211,12 @@ The "Compacted" section must always report:
 
 (Router does not promote to user memory.)
 
-**Compaction enforcement (Router):**
-
-- LAST_EVENT: Cap at 10 most recent entries. Retire entries older than 7 days with no open ticket/PR/blocker reference. Summarise entries exceeding 500 chars to one-liner + archive full detail.
-- HOT decay: Items not referenced in 48h move to WARM.
-- WARM decay: Items not referenced in 7d move to COLD.
-- Archive snapshot must report before/after line counts and compaction delta.
-- Contradiction review: scoped to this agent's own memory only (never another agent's file); findings recorded in `## Flagged Contradictions` in the archive snapshot — best-effort, human-review only, never auto-resolved.
+**Compaction enforcement (Router):** the shared rules above, unchanged: the Compaction Decision Table, decay, archive snapshot counts, and the own-memory-only contradiction review.
 
 **Dispatch behaviour:**
 
 - Router runs end-of-day consolidation when dispatched by Architect as a subagent. Router does NOT cascade the trigger.
 - If dispatched with the **status-contribution prompt**: read the HOT section from the agent's memory record via the active storage plugin using `read-memory('router')`. Return bullets only — any unresolved routing classifications, pending escalations, or relay activity since last session. Do not run consolidation steps; Architect will dispatch again for that separately.
 - If dispatched with the **consolidation prompt**: run shared steps (including decay rules + LAST_EVENT retirement). Acknowledge: `"Router consolidated. Good night."`
-
-### CAO
-
-**Live file:** accessed via the active storage plugin using `read-memory('cao')` — see the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`.
-**Archive file:** written via the active storage plugin using `archive-memory('cao', date)` (the same plugin-resolution rule applies).
-
-**Promotion focus:** stable offer structures, pricing patterns, resolved lead-triage decisions, client relationship notes, unresolved next-day items (open leads, pending call prep, awaited founder approvals), transient notes safe to collapse. CAO does not manage other agents' memory and does not run status-report or consolidation dispatches of its own — it only promotes within its own HOT/WARM/COLD tiers, per its `SOUL.md` memory schema (HOT: current active leads, in-progress offers, upcoming calls; WARM: recently closed deals, completed campaigns, resolved lead triage decisions; COLD: stable offer structures, pricing patterns, client relationship notes).
-
-**Promotion targets:**
-
-- Recently closed deals, completed campaigns, and resolved lead-triage decisions → agent memory WARM/COLD tiers via `write-memory-entry('cao', tier, content)` every run
-- Stable offer structures, pricing patterns, and client relationship notes → agent memory COLD tier via `write-memory-entry('cao', 'COLD', content)` every run
-- Dreaming-managed transient captures → compacted in their original memory file after checkpoint (only when explicitly marked)
-
-(CAO does not promote to user memory beyond its own role — commercial/strategic intelligence stays scoped to the CAO agent's memory store, mirroring Tester's and Router's "does not promote to user memory" convention above.)
-
-**Compaction enforcement (CAO):**
-
-- LAST_EVENT: Cap at 10 most recent entries. Retire entries older than 7 days with no open ticket/PR/blocker reference. Summarise entries exceeding 500 chars to one-liner + archive full detail.
-- HOT decay: Items not referenced in 48h move to WARM.
-- WARM decay: Items not referenced in 7d move to COLD.
-- Archive snapshot must report before/after line counts and compaction delta.
-- Contradiction review: scoped to this agent's own memory only (never another agent's file); findings recorded in `## Flagged Contradictions` in the archive snapshot — best-effort, human-review only, never auto-resolved.
-
-**Dispatch behaviour:**
-
-- CAO runs end-of-day consolidation when dispatched by Architect as a subagent, presence-gated as described in Architect's "Dispatch behaviour" above — CAO is only dispatched when its own profile file exists in the hub. CAO does NOT cascade the trigger and does not dispatch Builder, Tester, or Router itself (CAO never dispatches them directly, per its own `ROUTING.md`).
-- If dispatched with the **status-contribution prompt**: read the HOT section from the agent's memory record via the active storage plugin using `read-memory('cao')`. Return bullets only — active leads, in-progress offers, upcoming calls, any blockers or pending founder approvals. Do not run consolidation steps; Architect will dispatch again for that separately.
-- If dispatched with the **consolidation prompt**: run shared steps (including decay rules + LAST_EVENT retirement). Acknowledge: `"CAO consolidated. Good night."`
 
 This is internal-only. Do not post to GitHub issues, PRs, or any external channel.

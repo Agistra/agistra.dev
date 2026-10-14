@@ -37,10 +37,19 @@
 export const SECRET_PATTERNS = [
 	{ category: 'AWS Access Key ID', regex: /AKIA[0-9A-Z]{16}/g },
 	{ category: 'GitHub Token', regex: /\b(?:ghp|gho|ghs)_[A-Za-z0-9]{36}\b/g },
-	{ category: 'GitHub Fine-Grained Personal Access Token', regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
+	{
+		category: 'GitHub Fine-Grained Personal Access Token',
+		regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+	},
 	{ category: 'Slack Token', regex: /\bxox[baprs]-[A-Za-z0-9-]+/g },
-	{ category: 'PEM Private Key', regex: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/g },
-	{ category: 'Anthropic API Key', regex: /\bsk-ant-api\d{2}-[A-Za-z0-9_-]{20,}\b/g },
+	{
+		category: 'PEM Private Key',
+		regex: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/g,
+	},
+	{
+		category: 'Anthropic API Key',
+		regex: /\bsk-ant-api\d{2}-[A-Za-z0-9_-]{20,}\b/g,
+	},
 ];
 
 /**

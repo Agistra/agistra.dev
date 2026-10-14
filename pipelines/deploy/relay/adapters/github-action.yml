@@ -1,0 +1,58 @@
+# Posts outbound relay messages when an issue is labeled relay:notify.
+# Copy to .github/workflows/relay-notify.yml in your hub repo (optional).
+#
+# Prefer relay MCP (relay_send) for Copilot agent sessions once wired — see
+# docs/relay-github-runbook.md § "Copilot MCP vs GitHub Action".
+# Keep this workflow for label/CI automation without an open agent session.
+#
+# Requires a self-hosted runner or network path to the relay daemon on localhost.
+# Set repository variable RELAY_DAEMON_URL (default http://127.0.0.1:17391).
+
+name: Relay outbound notify
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  relay-outbound:
+    if: github.event.label.name == 'relay:notify'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract relay text from issue body
+        id: payload
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import os
+          body = os.environ.get("ISSUE_BODY", "")
+          marker = "## relay:outbound"
+          idx = body.find(marker)
+          text = body[idx + len(marker):].strip() if idx >= 0 else ""
+          if not text:
+              raise SystemExit("issue body missing ## relay:outbound section")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("text<<EOF\n")
+              f.write(text)
+              f.write("\nEOF\n")
+          PY
+
+      - name: POST to relay daemon
+        env:
+          RELAY_DAEMON_URL: ${{ vars.RELAY_DAEMON_URL || 'http://127.0.0.1:17391' }}
+          RELAY_TEXT: ${{ steps.payload.outputs.text }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          url = os.environ["RELAY_DAEMON_URL"].rstrip("/") + "/outbound"
+          payload = json.dumps({"text": os.environ["RELAY_TEXT"]}).encode("utf-8")
+          req = urllib.request.Request(
+              url,
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              print(resp.read().decode("utf-8"))
+          PY

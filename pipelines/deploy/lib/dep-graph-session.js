@@ -58,7 +58,9 @@ export function createDepGraphSession({ fsMod = fs } = {}) {
 
 	function requireScan(toolName) {
 		if (!current) {
-			throw new Error(`${toolName}() requires a prior scan() call in this session`);
+			throw new Error(
+				`${toolName}() requires a prior scan() call in this session`,
+			);
 		}
 	}
 
@@ -80,7 +82,11 @@ export function createDepGraphSession({ fsMod = fs } = {}) {
 			savedAt: new Date().toISOString(),
 			result: current.result,
 		};
-		fsMod.writeFileSync(dest, JSON.stringify(payload, null, '\t') + '\n', 'utf-8');
+		fsMod.writeFileSync(
+			dest,
+			JSON.stringify(payload, null, '\t') + '\n',
+			'utf-8',
+		);
 		return { path: current.path, baselineFile: dest, savedAt: payload.savedAt };
 	}
 
@@ -99,7 +105,12 @@ export function createDepGraphSession({ fsMod = fs } = {}) {
 		const saved = readBaseline(current.path);
 
 		if (!saved) {
-			return { path: current.path, baselineFound: false, newCycles: [], resolvedCycles: [] };
+			return {
+				path: current.path,
+				baselineFound: false,
+				newCycles: [],
+				resolvedCycles: [],
+			};
 		}
 
 		const baselineCycles = cycleFingerprints(saved.result.cycles);
@@ -109,8 +120,12 @@ export function createDepGraphSession({ fsMod = fs } = {}) {
 			path: current.path,
 			baselineFound: true,
 			baselineSavedAt: saved.savedAt,
-			newCycles: rescanned.cycles.filter(c => !baselineCycles.has(cycleFingerprint(c))),
-			resolvedCycles: saved.result.cycles.filter(c => !currentCycles.has(cycleFingerprint(c))),
+			newCycles: rescanned.cycles.filter(
+				(c) => !baselineCycles.has(cycleFingerprint(c)),
+			),
+			resolvedCycles: saved.result.cycles.filter(
+				(c) => !currentCycles.has(cycleFingerprint(c)),
+			),
 		};
 	}
 
@@ -132,7 +147,9 @@ export function createDepGraphSession({ fsMod = fs } = {}) {
 
 		const rescanned = rescan();
 		const baselineCycles = cycleFingerprints(saved.result.cycles);
-		const newCycles = rescanned.cycles.filter(c => !baselineCycles.has(cycleFingerprint(c)));
+		const newCycles = rescanned.cycles.filter(
+			(c) => !baselineCycles.has(cycleFingerprint(c)),
+		);
 		const pass = newCycles.length === 0;
 
 		return {

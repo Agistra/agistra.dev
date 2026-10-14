@@ -22,14 +22,14 @@ function taskNum(filename) {
 
 function listMdFiles(dir) {
 	if (!fs.existsSync(dir)) return [];
-	return fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+	return fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
 }
 
 /** Project root for a task file (handles tasks already under projects/<name>/done/ or /dropped/). */
 export function projectDirFromTaskPath(taskPath) {
 	const dir = path.dirname(taskPath);
 	const base = path.basename(dir);
-	return (base === 'done' || base === 'dropped') ? path.dirname(dir) : dir;
+	return base === 'done' || base === 'dropped' ? path.dirname(dir) : dir;
 }
 
 export function doneTasksDir(projectDir) {
@@ -102,8 +102,9 @@ function stripLegacyStateLine(body) {
  */
 export function findCurrentTask(projectDir) {
 	if (!fs.existsSync(projectDir)) return null;
-	const files = fs.readdirSync(projectDir)
-		.filter(f => f.match(/^task_\d+_todo_/))
+	const files = fs
+		.readdirSync(projectDir)
+		.filter((f) => f.match(/^task_\d+_todo_/))
 		.sort((a, b) => taskNum(a) - taskNum(b));
 	return files.length > 0 ? path.join(projectDir, files[0]) : null;
 }
@@ -125,31 +126,48 @@ export function findCurrentTask(projectDir) {
  */
 export function listAllTasks(projectsRoot) {
 	if (!fs.existsSync(projectsRoot)) return [];
-	return fs.readdirSync(projectsRoot, { withFileTypes: true })
-		.filter(e => e.isDirectory())
+	return fs
+		.readdirSync(projectsRoot, { withFileTypes: true })
+		.filter((e) => e.isDirectory())
 		.sort((a, b) => a.name.localeCompare(b.name))
-		.map(e => {
+		.map((e) => {
 			const projectDir = path.join(projectsRoot, e.name);
 			const doneDir = doneTasksDir(projectDir);
-			const rootFiles = listMdFiles(projectDir).filter(f => f.match(/^task_\d+_.+$/));
-			const doneFiles = listMdFiles(doneDir).filter(f => f.match(/^task_\d+_.+$/));
+			const rootFiles = listMdFiles(projectDir).filter((f) =>
+				f.match(/^task_\d+_.+$/),
+			);
+			const doneFiles = listMdFiles(doneDir).filter((f) =>
+				f.match(/^task_\d+_.+$/),
+			);
 
 			const todos = [];
 			const dones = [];
 			const inFlight = [];
+			const unrecognized = [];
 
 			const classify = (file, dir) => {
 				let token = hasStateTokenInfix(file) ? filenameInfix(file) : null;
 				if (!token) {
 					// Vault-shaped (no valid infix): derive the bucket token from the
 					// `status:` frontmatter field instead. An unrecognized/malformed
-					// status leaves the file uncategorized (consistent with the
-					// existing repo-files behavior of ignoring non-matching filenames).
+					// status is tracked in `unrecognized` rather than silently dropped,
+					// so callers can report it (consistent with the existing repo-files
+					// behavior of ignoring non-matching filenames, but observable).
 					try {
 						const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
 						const { meta } = parseFrontmatter(raw);
 						token = stateToToken(meta.status);
 					} catch {
+						// stateToToken threw Unknown lifecycle state; track this file
+						// so the caller can report it instead of silently dropping it.
+						try {
+							const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
+							const { meta } = parseFrontmatter(raw);
+							unrecognized.push({ file, status: meta.status });
+						} catch {
+							// File unreadable or unparseable; still track it as unrecognized.
+							unrecognized.push({ file, status: undefined });
+						}
 						return;
 					}
 				}
@@ -168,6 +186,7 @@ export function listAllTasks(projectsRoot) {
 			todos.sort((a, b) => taskNum(a) - taskNum(b));
 			dones.sort((a, b) => taskNum(a) - taskNum(b));
 			inFlight.sort((a, b) => taskNum(a.file) - taskNum(b.file));
+			unrecognized.sort((a, b) => taskNum(a.file) - taskNum(b.file));
 
 			return {
 				project: e.name,
@@ -175,6 +194,7 @@ export function listAllTasks(projectsRoot) {
 				todos,
 				inFlight,
 				dones,
+				unrecognized,
 			};
 		});
 }
@@ -184,24 +204,25 @@ export function listAllTasks(projectsRoot) {
  * Matches both repo-files-shaped filenames (any state-token infix -- todo,
  * in-progress, ready-for-review, ready-for-qa, changes-requested, qa-passed,
  * done) and vault-shaped filenames with no infix at all
- * (`task_<id>_<slug>.md`). e.g. query "6" matches
- * "task_6_in-progress_feature.md" as well as a vault-shaped
- * "task_6_feature.md".
+ * (`task_<id>_<slug>.md`). e.g. query matching the task id matches
+ * "task_<id>_in-progress_feature.md" as well as a vault-shaped
+ * "task_<id>_feature.md".
  * Returns the absolute file path, or null if not found.
  */
 export function findTaskByQuery(projectDir, query) {
 	if (!fs.existsSync(projectDir)) return null;
-	const files = fs.readdirSync(projectDir)
-		.filter(f => f.match(/^task_\d+_.+\.md$/));
+	const files = fs
+		.readdirSync(projectDir)
+		.filter((f) => f.match(/^task_\d+_.+\.md$/));
 
 	const num = parseInt(query, 10);
 	if (!Number.isNaN(num)) {
-		const byNum = files.find(f => taskNum(f) === num);
+		const byNum = files.find((f) => taskNum(f) === num);
 		if (byNum) return path.join(projectDir, byNum);
 	}
 
 	const needle = String(query).toLowerCase();
-	const bySlug = files.find(f => f.toLowerCase().includes(needle));
+	const bySlug = files.find((f) => f.toLowerCase().includes(needle));
 	return bySlug ? path.join(projectDir, bySlug) : null;
 }
 
@@ -238,16 +259,20 @@ export function loadSkillContent(skillsRoot, skillName) {
 export function stateToToken(state) {
 	const map = {
 		'state:ready-for-implementation': 'todo',
+		'state:todo': 'todo',
+		todo: 'todo',
 		'state:in-progress': 'in-progress',
 		'state:ready-for-review': 'ready-for-review',
 		'state:ready-for-qa': 'ready-for-qa',
 		'state:changes-requested': 'changes-requested',
 		'state:qa-passed': 'qa-passed',
-		'closed': 'done',
-		'dropped': 'dropped',
+		closed: 'done',
+		dropped: 'dropped',
 	};
 	if (!map[state]) {
-		throw new Error(`Unknown lifecycle state: ${state}. Valid states: ${Object.keys(map).join(', ')}`);
+		throw new Error(
+			`Unknown lifecycle state: ${state}. Valid states: ${Object.keys(map).join(', ')}`,
+		);
 	}
 	return map[state];
 }
@@ -255,8 +280,8 @@ export function stateToToken(state) {
 // ── Per-file shape detection (repo-files vs. vault) ─────────────────────────
 //
 // A task file either carries a state-token filename infix (repo-files shape,
-// e.g. `task_137_todo_slug.md`) or it doesn't (vault shape, e.g.
-// `task_521_slug.md` -- see storage/obsidian.md's rename-free `transition-state`
+// e.g. `task_<id>_todo_slug.md`) or it doesn't (vault shape, e.g.
+// `task_<id>_slug.md` -- see storage/obsidian.md's rename-free `transition-state`
 // convention). This is decided per file, not via a global tier flag or a
 // plugin-file presence check, so behavior stays correct even if a projects
 // root ever mixed both shapes. `ticket-drift.js` proved this exact detection
@@ -266,8 +291,8 @@ export function stateToToken(state) {
 
 /**
  * Extract the filename state infix (e.g. "todo", "qa-passed", "done") from
- * a task filename like "task_137_todo_slug.md". Returns null when the
- * filename carries no infix at all (vault-shaped, e.g. "task_521_slug.md")
+ * a task filename like "task_<id>_todo_slug.md". Returns null when the
+ * filename carries no infix at all (vault-shaped, e.g. "task_<id>_slug.md")
  * or otherwise doesn't match the pattern.
  */
 export function filenameInfix(filename) {
@@ -289,7 +314,7 @@ export function filenameInfix(filename) {
  */
 export function statusToInfix(status) {
 	const map = {
-		'closed': 'done',
+		closed: 'done',
 		'state:qa-passed': 'qa-passed',
 		'state:ready-for-qa': 'ready-for-qa',
 		'state:changes-requested': 'changes-requested',
@@ -297,7 +322,7 @@ export function statusToInfix(status) {
 		'state:in-progress': 'in-progress',
 		'state:ready-for-implementation': 'ready-for-implementation',
 		'state:todo': 'todo',
-		'todo': 'todo',
+		todo: 'todo',
 	};
 	return map[status] ?? null;
 }
@@ -352,7 +377,7 @@ function removeWikilinkFromHubNote(hubNotePath, taskFilenameNoExt) {
 	const raw = fs.readFileSync(hubNotePath, 'utf-8');
 	const linkLine = `- [[${taskFilenameNoExt}]]`;
 	const lines = raw.split(/\r?\n/);
-	const filtered = lines.filter(line => line.trim() !== linkLine);
+	const filtered = lines.filter((line) => line.trim() !== linkLine);
 	if (filtered.length === lines.length) return; // idempotent no-op: nothing to remove
 
 	fs.writeFileSync(hubNotePath, filtered.join('\n'), 'utf-8');
@@ -365,19 +390,27 @@ function removeWikilinkFromHubNote(hubNotePath, taskFilenameNoExt) {
  * exist yet for this project/subfolder. Idempotent: a link already present
  * is not duplicated.
  */
-function appendWikilinkToSubfolderHubNote(projectDir, subfolder, taskFilenameNoExt) {
+function appendWikilinkToSubfolderHubNote(
+	projectDir,
+	subfolder,
+	taskFilenameNoExt,
+) {
 	const project = path.basename(projectDir);
 	const hubNotePath = subfolderHubNotePath(projectDir, subfolder);
 	const linkLine = `- [[${taskFilenameNoExt}]]`;
 
 	if (!fs.existsSync(hubNotePath)) {
 		fs.mkdirSync(path.dirname(hubNotePath), { recursive: true });
-		fs.writeFileSync(hubNotePath, `# ${project} — ${subfolder}\n\n## Notes\n\n${linkLine}\n`, 'utf-8');
+		fs.writeFileSync(
+			hubNotePath,
+			`# ${project} — ${subfolder}\n\n## Notes\n\n${linkLine}\n`,
+			'utf-8',
+		);
 		return;
 	}
 
 	const raw = fs.readFileSync(hubNotePath, 'utf-8');
-	if (raw.split(/\r?\n/).some(line => line.trim() === linkLine)) return; // idempotent no-op
+	if (raw.split(/\r?\n/).some((line) => line.trim() === linkLine)) return; // idempotent no-op
 
 	const trimmed = raw.replace(/\s+$/, '');
 	fs.writeFileSync(hubNotePath, `${trimmed}\n${linkLine}\n`, 'utf-8');
@@ -403,15 +436,15 @@ export function serializeFrontmatter(meta) {
 
 /**
  * Change a task's lifecycle state, updating both frontmatter and filename atomically.
- * 
+ *
  * @param {string} taskPath - Current task file path
  * @param {string} [targetState] - New lifecycle state (e.g., 'state:in-progress'). Defaults to 'closed' for backward compatibility.
  * @param {object} [frontmatterUpdates] - Additional frontmatter fields to update (e.g., { 'fail-count': 1 })
  * @returns {string} New task file path
- * 
+ *
  * Legacy behavior (backward compatible):
  * - changeTaskStatus(path) → moves _todo_ to done/_done_
- * 
+ *
  * New behavior:
  * - changeTaskStatus(path, 'state:in-progress') → renames to _in-progress_ and updates frontmatter status
  * - changeTaskStatus(path, 'state:ready-for-qa', { 'fail-count': 1 }) → updates both status and fail-count
@@ -424,7 +457,11 @@ export function serializeFrontmatter(meta) {
  * shaped files (infix present) are unaffected: rename + status write exactly
  * as before.
  */
-export function changeTaskStatus(taskPath, targetState = 'closed', frontmatterUpdates = {}) {
+export function changeTaskStatus(
+	taskPath,
+	targetState = 'closed',
+	frontmatterUpdates = {},
+) {
 	// Validate targetState before touching anything -- on both the vault-shaped
 	// and repo-files-shaped paths. An unknown state must throw here, before any
 	// frontmatter mutation or disk write, so a typo'd state name fails loud
@@ -456,7 +493,10 @@ export function changeTaskStatus(taskPath, targetState = 'closed', frontmatterUp
 			// Terminal state: directory-only move into done/ or dropped/, plus
 			// hub-note membership bookkeeping. Filename stays byte-identical --
 			// only the containing folder changes.
-			const targetDir = token === 'done' ? doneTasksDir(projectDir) : droppedTasksDir(projectDir);
+			const targetDir =
+				token === 'done'
+					? doneTasksDir(projectDir)
+					: droppedTasksDir(projectDir);
 			fs.mkdirSync(targetDir, { recursive: true });
 			const newPath = path.join(targetDir, basename);
 
@@ -467,8 +507,15 @@ export function changeTaskStatus(taskPath, targetState = 'closed', frontmatterUp
 
 			const taskFilenameNoExt = basename.replace(/\.md$/, '');
 			const subfolder = path.basename(targetDir);
-			removeWikilinkFromHubNote(projectHubNotePath(projectDir), taskFilenameNoExt);
-			appendWikilinkToSubfolderHubNote(projectDir, subfolder, taskFilenameNoExt);
+			removeWikilinkFromHubNote(
+				projectHubNotePath(projectDir),
+				taskFilenameNoExt,
+			);
+			appendWikilinkToSubfolderHubNote(
+				projectDir,
+				subfolder,
+				taskFilenameNoExt,
+			);
 
 			return newPath;
 		}
@@ -484,14 +531,18 @@ export function changeTaskStatus(taskPath, targetState = 'closed', frontmatterUp
 	// `hasStateTokenInfix` doesn't recognize.
 	if (token === 'dropped') {
 		throw new Error(
-			`Transition to 'dropped' is not supported for repo-files-shaped tasks (no filename-infix convention exists for 'dropped'): ${basename}`
+			`Transition to 'dropped' is not supported for repo-files-shaped tasks (no filename-infix convention exists for 'dropped'): ${basename}`,
 		);
 	}
 
 	// Determine new filename token
-	const match = basename.match(/^(task_\d+)_(todo|in-progress|ready-for-review|ready-for-qa|changes-requested|qa-passed|done)_(.+)$/);
+	const match = basename.match(
+		/^(task_\d+)_(todo|in-progress|ready-for-review|ready-for-qa|changes-requested|qa-passed|done)_(.+)$/,
+	);
 	if (!match) {
-		throw new Error(`Task filename does not match expected pattern: ${basename}`);
+		throw new Error(
+			`Task filename does not match expected pattern: ${basename}`,
+		);
 	}
 	const [, prefix, , slug] = match;
 	const newBasename = `${prefix}_${token}_${slug}`;
@@ -534,7 +585,9 @@ export function updateTaskFields(taskPath, fields) {
 	// on a legacy file). Updating an unrelated field (e.g. `fail-count`) on
 	// a legacy file must NOT strip `**State:**` — doing so would delete the
 	// file's only source of truth for state instead of de-duplicating it.
-	const introducesStatus = hadFrontmatter === false && Object.prototype.hasOwnProperty.call(fields, 'status');
+	const introducesStatus =
+		hadFrontmatter === false &&
+		Object.prototype.hasOwnProperty.call(fields, 'status');
 	const newBody = introducesStatus ? stripLegacyStateLine(body) : body;
 
 	for (const [key, value] of Object.entries(fields)) {
@@ -565,20 +618,26 @@ export function appendTaskSection(taskPath, section, content) {
 	const { meta, body } = parseFrontmatter(raw);
 
 	const heading = `## ${section}`;
-	const headingRegex = new RegExp(`^${heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm');
+	const headingRegex = new RegExp(
+		`^${heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`,
+		'm',
+	);
 
 	let newBody;
 	if (headingRegex.test(body)) {
 		// Section exists — append content under it, before the next `## ` heading (or EOF).
 		const lines = body.split('\n');
-		const headingIdx = lines.findIndex(line => headingRegex.test(line));
-		let nextHeadingIdx = lines.findIndex((line, i) => i > headingIdx && /^##\s/.test(line));
+		const headingIdx = lines.findIndex((line) => headingRegex.test(line));
+		let nextHeadingIdx = lines.findIndex(
+			(line, i) => i > headingIdx && /^##\s/.test(line),
+		);
 		if (nextHeadingIdx === -1) nextHeadingIdx = lines.length;
 
 		const before = lines.slice(0, nextHeadingIdx);
 		const after = lines.slice(nextHeadingIdx);
 		// Trim trailing blank lines from `before` so we control spacing precisely.
-		while (before.length && before[before.length - 1].trim() === '') before.pop();
+		while (before.length && before[before.length - 1].trim() === '')
+			before.pop();
 
 		newBody = [...before, '', content.trim(), '', ...after].join('\n');
 	} else {
@@ -610,7 +669,7 @@ function extractTaskId(value) {
  * RegExp.
  */
 function globToRegex(glob) {
-	const segments = glob.split('/').map(seg => {
+	const segments = glob.split('/').map((seg) => {
 		if (seg === '**') return '.*';
 		const escaped = seg.replace(/[.+^${}()|[\]\\]/g, '\\$&');
 		return escaped.replace(/\*/g, '[^/]*');
@@ -623,10 +682,13 @@ function globToRegex(glob) {
  * with a literal placeholder, preserving literal segments and extensions.
  */
 function globSample(glob) {
-	return glob.split('/').map(seg => {
-		if (seg === '**') return 'x';
-		return seg.replace(/\*/g, 'x');
-	}).join('/');
+	return glob
+		.split('/')
+		.map((seg) => {
+			if (seg === '**') return 'x';
+			return seg.replace(/\*/g, 'x');
+		})
+		.join('/');
 }
 
 /**
@@ -672,13 +734,13 @@ export function computeWaves(project, { projectsRoot = 'projects' } = {}) {
 	if (!project) return { ok: false, error: 'project is required' };
 
 	const all = listAllTasks(projectsRoot);
-	const entry = all.find(e => e.project === project);
+	const entry = all.find((e) => e.project === project);
 	if (!entry) return { ok: false, error: `project not found: ${project}` };
 
 	const fileEntries = [
-		...entry.todos.map(file => ({ file, state: 'todo' })),
+		...entry.todos.map((file) => ({ file, state: 'todo' })),
 		...entry.inFlight,
-		...entry.dones.map(file => ({ file, state: 'done' })),
+		...entry.dones.map((file) => ({ file, state: 'done' })),
 	];
 
 	/** @type {Map<string, {id: string, file: string, state: string, dependsOn: string[], touches: string[]}>} */
@@ -689,7 +751,9 @@ export function computeWaves(project, { projectsRoot = 'projects' } = {}) {
 		if (!id) continue;
 
 		const rootPath = path.join(entry.projectDir, file);
-		const filePath = fs.existsSync(rootPath) ? rootPath : path.join(doneTasksDir(entry.projectDir), file);
+		const filePath = fs.existsSync(rootPath)
+			? rootPath
+			: path.join(doneTasksDir(entry.projectDir), file);
 		if (!fs.existsSync(filePath)) continue;
 
 		const raw = fs.readFileSync(filePath, 'utf-8');
@@ -703,7 +767,9 @@ export function computeWaves(project, { projectsRoot = 'projects' } = {}) {
 	}
 
 	// Cycle detection over the full depends_on graph (WHITE/GRAY/BLACK DFS).
-	const WHITE = 0, GRAY = 1, BLACK = 2;
+	const WHITE = 0,
+		GRAY = 1,
+		BLACK = 2;
 	const color = new Map();
 	for (const id of nodes.keys()) color.set(id, WHITE);
 
@@ -733,13 +799,16 @@ export function computeWaves(project, { projectsRoot = 'projects' } = {}) {
 		if (color.get(id) !== WHITE) continue;
 		const cycle = dfs(id, []);
 		if (cycle) {
-			return { ok: false, error: `dependency cycle detected: ${cycle.map(c => `task_${c}`).join(' -> ')}` };
+			return {
+				ok: false,
+				error: `dependency cycle detected: ${cycle.map((c) => `task_${c}`).join(' -> ')}`,
+			};
 		}
 	}
 
 	// Candidates: dispatchable (todo) tasks only.
 	const candidates = [...nodes.values()]
-		.filter(n => n.state === 'todo')
+		.filter((n) => n.state === 'todo')
 		.sort((a, b) => Number(a.id) - Number(b.id));
 
 	if (candidates.length === 0) {
@@ -760,7 +829,9 @@ export function computeWaves(project, { projectsRoot = 'projects' } = {}) {
 	for (const candidate of candidates) {
 		let placed = false;
 		for (const wave of waves) {
-			const hasConflict = wave.some(memberId => conflicts(candidate, nodes.get(memberId)));
+			const hasConflict = wave.some((memberId) =>
+				conflicts(candidate, nodes.get(memberId)),
+			);
 			if (!hasConflict) {
 				wave.push(candidate.id);
 				placed = true;
@@ -801,9 +872,10 @@ export function buildDispatchPrompt(taskPath, skillsRoot) {
 	const githubLine = meta.github ? `\n**GitHub:** \`${meta.github}\`` : '';
 	const taskName = path.basename(taskPath);
 	const skillsSummary = skills.length > 0 ? skills.join(', ') : 'none';
-	const missingSummary = missingSkills.length > 0
-		? ` | **Unknown skills:** ${missingSkills.join(', ')}`
-		: '';
+	const missingSummary =
+		missingSkills.length > 0
+			? ` | **Unknown skills:** ${missingSkills.join(', ')}`
+			: '';
 
 	const header =
 		`<!-- DISPATCH -->\n` +

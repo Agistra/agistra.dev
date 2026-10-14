@@ -79,15 +79,21 @@ export function collectAllDeclaredSkills(profileDirs) {
  * Returns an array of { skillName, status, driftFiles } objects.
  */
 export function validateSkillsDir(declaredSkills, skillsRoot, skillsOut) {
-	return declaredSkills.map(skillName => {
+	return declaredSkills.map((skillName) => {
 		const srcDir = path.join(skillsRoot, skillName);
 		const destDir = path.join(skillsOut, skillName);
 
-		if (!fs.existsSync(srcDir)) return { skillName, status: 'src-missing', driftFiles: [] };
-		if (!fs.existsSync(destDir)) return { skillName, status: 'missing', driftFiles: [] };
+		if (!fs.existsSync(srcDir))
+			return { skillName, status: 'src-missing', driftFiles: [] };
+		if (!fs.existsSync(destDir))
+			return { skillName, status: 'missing', driftFiles: [] };
 
 		const driftFiles = diffDirs(srcDir, destDir);
-		return { skillName, status: driftFiles.length === 0 ? 'ok' : 'drift', driftFiles };
+		return {
+			skillName,
+			status: driftFiles.length === 0 ? 'ok' : 'drift',
+			driftFiles,
+		};
 	});
 }
 
@@ -103,11 +109,16 @@ export function validateSkillStubs({
 	skillNames,
 	canonicalPrefix = 'skills',
 }) {
-	return skillNames.map(skillName => {
+	return skillNames.map((skillName) => {
 		const issues = [];
 		const srcDir = path.join(skillsRoot, skillName);
 		const stubDir = path.join(outputSkillsRoot, skillName);
-		const canonicalPath = path.join(outputRoot, canonicalPrefix, skillName, 'SKILL.md');
+		const canonicalPath = path.join(
+			outputRoot,
+			canonicalPrefix,
+			skillName,
+			'SKILL.md',
+		);
 		const pointer = `${canonicalPrefix}/${skillName}/SKILL.md`;
 
 		if (!fs.existsSync(srcDir)) {
@@ -122,7 +133,7 @@ export function validateSkillStubs({
 		}
 
 		const entries = fs.readdirSync(stubDir);
-		const extraFiles = entries.filter(name => name !== 'SKILL.md');
+		const extraFiles = entries.filter((name) => name !== 'SKILL.md');
 		if (extraFiles.length > 0) {
 			issues.push(`extra files in stub dir: ${extraFiles.join(', ')}`);
 		}
@@ -131,7 +142,9 @@ export function validateSkillStubs({
 		if (!fs.existsSync(stubPath)) {
 			issues.push('SKILL.md missing in stub dir');
 		} else {
-			const expectedStub = buildSkillStub(skillName, skillsRoot, { canonicalPrefix });
+			const expectedStub = buildSkillStub(skillName, skillsRoot, {
+				canonicalPrefix,
+			});
 			const actualStub = fs.readFileSync(stubPath, 'utf-8');
 			if (normalise(expectedStub) !== normalise(actualStub)) {
 				issues.push('stub content drift');

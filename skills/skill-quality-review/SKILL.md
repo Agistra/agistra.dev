@@ -6,6 +6,8 @@ argument-hint: "Skill path, manifest diff, plugin bundle, third-party skill cand
 
 # Skill Quality Review
 
+> The No-Ops And Pruning axis below adapts wording from https://github.com/mattpocock/skills/blob/49dd158d1076134a641b33efb035946536778336/docs/productivity/writing-for-agents.md (MIT License).
+
 Review skills as executable agent instructions, not ordinary documentation. A weak skill can create
 scope drift, unsafe tool use, false confidence, or a silent production behavior change across every
 deployed hub.
@@ -137,6 +139,30 @@ Minimum validation:
 Forward-test complex or high-impact skills with fresh subagents when feasible. Pass the skill and a
 realistic task as raw inputs. Do not leak the expected answer, suspected defect, or intended fix into
 the test prompt.
+
+### 7. No-Ops And Pruning
+
+Apply the no-op test sentence by sentence: delete the sentence and ask whether the agent's behavior
+changes. If not, delete the whole sentence — do not just trim words from it. Settle a disagreement
+about one sentence by running the skill, not by arguing style.
+
+Check for:
+
+- duplication — the same instruction restated in more than one place in the skill
+- sediment — stale wording left behind by an earlier edit, describing behavior the skill no longer asks for
+- sprawl — accurate, non-duplicated content that still runs longer than any one trigger branch needs
+- a completion criterion on every step — can the agent tell done from not-done, and does the wording
+  demand the right amount of work
+- pointer wording — whether the frontmatter `description`'s leading word and trigger list, not padding,
+  are what decide whether the skill fires
+
+Required finding: mark `Required` a passage that fails the no-op test and is not an isolated line —
+duplicated elsewhere in the skill, or left over from a prior rewrite.
+
+**Worked example:** "Be sure to always validate the input carefully before use" fails the test — the
+agent validates input by default, so deleting the sentence changes nothing; delete it outright.
+"Validate input against the schema in `references/schema.md` before parsing" survives — it names a
+concrete source the agent would not otherwise consult.
 
 ## Third-Party Skill Intake
 

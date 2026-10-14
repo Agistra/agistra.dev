@@ -16,9 +16,9 @@ These behaviours are always-on, not mode-gated. Load this skill to review or ref
 
 ## Working Buffer Protocol
 
-The working buffer is the crisis backstop — it activates at 60%. `token-economics` is the upstream discipline that delays or avoids that crisis. Load it to apply token budgeting from session start.
+The working buffer is the crisis backstop — it activates at 60%. `token-economics` is the upstream discipline that delays it. Load it for token budgeting from session start.
 
-When the session is clearly growing long — a rough signal is after many extended exchanges, or when you notice responses requiring significant context re-establishment — log every subsequent exchange to `memory/working-buffer.md`:
+When the session grows long (many extended exchanges, or responses needing heavy context re-establishment), log every subsequent exchange to the working buffer: `working-buffer.md` in the active storage plugin's Memory store (free-tier default: `memory/working-buffer.md`):
 
 ```
 # Working Buffer (Danger Zone Log)
@@ -34,7 +34,7 @@ When the session is clearly growing long — a rough signal is after many extend
 [1-2 sentence summary of response + key details]
 ```
 
-After compaction or session restart, read `memory/working-buffer.md` first before asking "where were we?"
+After compaction or session restart, read the working buffer first before asking "where were we?"
 
 ---
 
@@ -48,7 +48,7 @@ Auto-trigger when:
 
 Recovery steps:
 
-1. Read `memory/working-buffer.md` — raw danger-zone exchanges
+1. Read the working buffer — raw danger-zone exchanges
 2. Read `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) — current HOT/WARM/COLD state
 3. Read today's and yesterday's daily notes
 4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below)
@@ -135,7 +135,7 @@ If the answer to all three is "no" or "maybe", skip it. One strong "yes" is the 
 
 ## Storage-plugin note
 
-**Storage-plugin note (`memory/<agent>.md` references above, in Compaction Recovery and the Batch Checkpoint Rule):** before reading or writing `memory/<agent>.md`, check for an active storage plugin file at `agents/skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`), the literal repo-relative path is wrong — route instead via that plugin's `read-memory(agent)` / `write-memory-entry(agent, tier, content)` operations (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
+**Storage-plugin note (`memory/<agent>.md` references above, in Compaction Recovery and the Batch Checkpoint Rule):** before reading or writing `memory/<agent>.md`, check for an active storage plugin file at `skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`), the literal repo-relative path is wrong — route instead via that plugin's `read-memory(agent)` / `write-memory-entry(agent, tier, content)` operations (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
 
 ---
 

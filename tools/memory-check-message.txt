@@ -1,4 +1,4 @@
-Memory check: files were changed this session but memory/ was not updated.
-Before closing, update the HOT section in memory/<agent>.md with any
+Memory check: files were changed this session but {{MEMORY_ROOT}}/ was not updated.
+Before closing, update the HOT section in {{MEMORY_ROOT}}/<agent>.md with any
 decisions, corrections, or new context from this session.
 (WAL protocol — write first, respond second.)
