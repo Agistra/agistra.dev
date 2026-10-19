@@ -31,6 +31,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMigratedAgent } from './memory-scaffold.js';
 import { resolveMemoryRootForHub } from './memory-root.js';
 
 /** Capitalises the first letter of an agent id for the memory file title (architect -> Architect). */
@@ -73,7 +74,11 @@ export function ensureMemoryFile(
 		fsMod.mkdirSync(memoryDir, { recursive: true });
 	}
 
-	if (!fsMod.existsSync(memoryFile)) {
+	// A migrated agent (keyed entries, no single note) keeps it that way.
+	if (
+		!fsMod.existsSync(memoryFile) &&
+		!isMigratedAgent({ memoryRoot: memoryDir, agentId, fsMod })
+	) {
 		fsMod.writeFileSync(memoryFile, memorySkeleton(agentId), 'utf-8');
 		memoryFileCreated = true;
 	}

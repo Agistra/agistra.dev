@@ -9,6 +9,12 @@
  * resolveMemoryRootForHub()), so free-tier hubs are told "memory/<agent>.md"
  * and vault-backed hubs are told "vault/Memory/<agent>.md".
  *
+ * Hubs that ship the keyed memory command (pipelines/deploy/lib/memory-command.js,
+ * vault-backed tiers only) get one extra sentence before the last line,
+ * telling a migrated agent how to record entries. Other hubs get the template
+ * unchanged. The bash fallback in memory-check-message.sh renders the
+ * free-tier template without it.
+ *
  * As a CLI it prints the rendered text to stdout; the bash adapters call it
  * through memory-check-message.sh. With --neutral the first line drops the
  * claim that files were changed (used when only the marker-only fallback
@@ -24,6 +30,10 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = path.join(__dirname, 'memory-check-message.txt');
+
+const MIGRATED_NOTE = [
+	'A migrated agent keeps entries under {{MEMORY_ROOT}}/<agent>/: record them with `npm run memory -- add`.',
+];
 
 /**
  * Neutral wording for the first reminder line, for callers without work
@@ -46,12 +56,18 @@ export function neutralizeFirstLine(line) {
 export async function renderReminderLines(hubRootOverride) {
 	const hubRoot = hubRootOverride ?? resolveHubRoot();
 	const memoryRoot = await resolveMemoryRootSegment(hubRoot);
-	return fs
+	const lines = fs
 		.readFileSync(TEMPLATE_PATH, 'utf-8')
 		.replace(/\r/g, '')
 		.trimEnd()
-		.split('\n')
-		.map((line) => line.replaceAll('{{MEMORY_ROOT}}', memoryRoot));
+		.split('\n');
+	if (
+		fs.existsSync(
+			path.join(hubRoot, 'pipelines', 'deploy', 'lib', 'memory-command.js'),
+		)
+	)
+		lines.splice(lines.length - 1, 0, ...MIGRATED_NOTE);
+	return lines.map((line) => line.replaceAll('{{MEMORY_ROOT}}', memoryRoot));
 }
 
 const isMain =

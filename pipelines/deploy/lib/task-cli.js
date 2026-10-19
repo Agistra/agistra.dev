@@ -562,9 +562,20 @@ const FAIL_VERDICTS = new Set(['FAIL', 'PARTIAL', 'PARTIAL PASS']);
 export function composeQaReport(
 	id,
 	verdict,
-	{ findingsContent, gapsContent } = {},
+	{ findingsContent, gapsContent, evidence } = {},
 ) {
 	const lines = [`## QA Report — ${id}`, '', `**Verdict:** ${verdict}`];
+	if (Array.isArray(evidence) && evidence.length > 0) {
+		lines.push('', '### Evidence');
+		for (const e of evidence) {
+			lines.push(
+				'',
+				`- claim: ${e.claim}`,
+				`  source: ${e.source}`,
+				`  observed: ${e.observed}`,
+			);
+		}
+	}
 	if (findingsContent && findingsContent.trim()) {
 		lines.push('', findingsContent.trim());
 	}
@@ -573,6 +584,28 @@ export function composeQaReport(
 	}
 	lines.push('');
 	return lines.join('\n');
+}
+
+const EVIDENCE_FIELDS = ['claim', 'source', 'observed'];
+
+/**
+ * Validate a parsed evidence-block array: every entry needs a non-empty
+ * string `claim`, `source` and `observed`. Returns an error string, or null
+ * when valid.
+ */
+function validateEvidence(evidence) {
+	if (!Array.isArray(evidence) || evidence.length === 0) {
+		return 'evidence must be a non-empty JSON array';
+	}
+	for (const [i, entry] of evidence.entries()) {
+		for (const field of EVIDENCE_FIELDS) {
+			const v = entry && entry[field];
+			if (typeof v !== 'string' || !v.trim()) {
+				return `evidence entry ${i + 1} is missing a non-empty "${field}"`;
+			}
+		}
+	}
+	return null;
 }
 
 /**
@@ -644,7 +677,7 @@ function fetchComments(kind, ref, execFn) {
  * to comments). Pushes `post-<kind>`/`verify-<kind>` steps onto `steps` and
  * returns `{ ok, error }` — never throws.
  */
-function postAndVerify(kind, ref, body, execFn, steps) {
+function postAndVerify(kind, ref, body, execFn, steps, evidence) {
 	try {
 		execFn(
 			'gh',
@@ -675,6 +708,11 @@ function postAndVerify(kind, ref, body, execFn, steps) {
 			return { ok: false, error: msg };
 		}
 		steps.push({ step: `verify-${kind}`, ok: true });
+		evidence?.push({
+			claim: `QA report landed on ${kind} #${ref.number}`,
+			source: `gh ${kind} view ${ref.number} --repo ${ref.owner}/${ref.repo} --json comments`,
+			observed: 'posted comment body found in re-fetched comments',
+		});
 	} catch (err) {
 		steps.push({ step: `verify-${kind}`, ok: false, error: err.message });
 		return {
@@ -687,7 +725,7 @@ function postAndVerify(kind, ref, body, execFn, steps) {
 }
 
 /**
- * `task qa-report <id> <verdict> [--gaps <path>] [--findings <path>]`
+ * `task qa-report <id> <verdict> [--gaps <path>] [--findings <path>] [--evidence <path>]`
  * (AC 1-4). Composes the report, posts it to the linked issue and
  * (if discoverable) PR, post-verifies each post landed, appends the local
  * `## QA Report` section (plus `## Gap Closure` on FAIL/PARTIAL when
@@ -704,12 +742,13 @@ export function qaReport(
 	{
 		gapsPath,
 		findingsPath,
+		evidencePath,
 		projectsRoot = DEFAULT_PROJECTS_ROOT,
 		execFn = execFileSync,
 		fsMod = fs,
 	} = {},
 ) {
-	const result = { ok: false, steps: [] };
+	const result = { ok: false, steps: [], evidence: [] };
 
 	if (!verdict) {
 		result.error = 'verdict is required';
@@ -748,9 +787,31 @@ export function qaReport(
 		findingsContent = fsMod.readFileSync(findingsPath, 'utf-8');
 	}
 
+	let suppliedEvidence;
+	if (evidencePath) {
+		if (!fsMod.existsSync(evidencePath)) {
+			result.error = `evidence file not found: ${evidencePath}`;
+			return result;
+		}
+		let parsed;
+		try {
+			parsed = JSON.parse(fsMod.readFileSync(evidencePath, 'utf-8'));
+		} catch (err) {
+			result.error = `evidence file is not valid JSON: ${err.message}`;
+			return result;
+		}
+		const evidenceError = validateEvidence(parsed);
+		if (evidenceError) {
+			result.error = evidenceError;
+			return result;
+		}
+		suppliedEvidence = parsed;
+	}
+
 	const reportBody = composeQaReport(id, verdict, {
 		findingsContent,
 		gapsContent,
+		evidence: suppliedEvidence,
 	});
 
 	const githubRef = resolveGithubRef(meta, body);
@@ -761,6 +822,7 @@ export function qaReport(
 			reportBody,
 			execFn,
 			result.steps,
+			result.evidence,
 		);
 		if (!issueResult.ok) {
 			result.error = issueResult.error;
@@ -775,6 +837,7 @@ export function qaReport(
 				reportBody,
 				execFn,
 				result.steps,
+				result.evidence,
 			);
 			if (!prResult.ok) {
 				result.error = prResult.error;
@@ -1370,7 +1433,9 @@ function parseFlags(args) {
 function parseQaReportFlags(args) {
 	const gapsIdx = args.indexOf('--gaps');
 	const findingsIdx = args.indexOf('--findings');
+	const evidenceIdx = args.indexOf('--evidence');
 	return {
+		evidencePath: evidenceIdx !== -1 ? args[evidenceIdx + 1] : undefined,
 		gapsPath: gapsIdx !== -1 ? args[gapsIdx + 1] : undefined,
 		findingsPath: findingsIdx !== -1 ? args[findingsIdx + 1] : undefined,
 	};
@@ -1590,10 +1655,11 @@ export function runCli(
 			break;
 		}
 		case 'qa-report': {
-			const { gapsPath, findingsPath } = parseQaReportFlags(rest);
+			const { gapsPath, findingsPath, evidencePath } = parseQaReportFlags(rest);
 			output = qaReport(rest[0], rest[1], {
 				gapsPath,
 				findingsPath,
+				evidencePath,
 				execFn,
 				...rootOpts,
 			});

@@ -271,6 +271,7 @@ Do not apply a pattern when a plain function or module handles the job, when it 
 - do not leave `console.log` in production paths
 - do not use `@ts-ignore`, `as any`, or equivalent suppressions without an exact explanation at the callsite
 - do not refactor unrelated code while fixing a scoped issue
+- risky commands follow Mutation Preflight in `skills/agent-foundations/SKILL.md`; in implementation, an unconfirmed target means do not run it
 
 ### Pre-PR Checklist
 

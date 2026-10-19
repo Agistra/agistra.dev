@@ -1,0 +1,56 @@
+{
+  "tips": [
+    {
+      "id": "doctor-health-check",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Run `npm run doctor` whenever something seems off. It checks every hub component and says how to fix what it finds."
+    },
+    {
+      "id": "self-check-report",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Run `npm run self-check -- builder` for a short readiness report on one agent: its profile, skills and memory."
+    },
+    {
+      "id": "version-check",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Run `npm run version:check` to see whether a newer hub release is available."
+    },
+    {
+      "id": "dispatch-list",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Run `npm run list` to see every project's todo, in-flight and done tasks in one view."
+    },
+    {
+      "id": "install-optional-skill",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Run `npm run install-skill -- <name>` to add an optional skill to your hub, for example `frontend-design`.",
+      "skills": [
+        "frontend-design"
+      ]
+    },
+    {
+      "id": "check-ticket-drift",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Run `npm.cmd run check:tickets -- --hub-root .` to catch task files whose state no longer matches their GitHub issue."
+    },
+    {
+      "id": "memory-index-find",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Run `npm run memory-index:build`, then search your agents' memory by keyword with `npm run memory-index -- find <keyword>`."
+    }
+  ]
+}

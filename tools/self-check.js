@@ -175,7 +175,13 @@ async function memoryState(hubRoot, agent, fsMod) {
 		return { state: 'unresolvable', reason: resolved.error, caveat: null };
 	}
 	const plugin = resolved.plugin;
-	const state = classifyMemoryContent(resolved.path, fsMod);
+	const shape = resolved.shape;
+	// A migrated agent keeps its content in keyed entry files; the resolver
+	// has already found them, so the HOT index file need not exist yet.
+	const state =
+		shape === 'migrated'
+			? 'has-content'
+			: classifyMemoryContent(resolved.path, fsMod);
 
 	let caveat = null;
 	if (plugin === 'obsidian' && state === 'stub-scaffolded') {
@@ -186,7 +192,7 @@ async function memoryState(hubRoot, agent, fsMod) {
 				'memory stub-scaffolded; if `npm run setup` has not yet run on this hub, this finding will go stale the moment it does — re-run Bootstrap Self-Check manually to confirm after setup completes.';
 		}
 	}
-	return { state, path: resolved.path, plugin, caveat };
+	return { state, path: resolved.path, plugin, shape, caveat };
 }
 
 /**

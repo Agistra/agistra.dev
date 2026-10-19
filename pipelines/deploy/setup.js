@@ -38,6 +38,7 @@ import {
 	TASK_PERMISSION_CONFIG_KEY,
 } from './lib/task-permission.js';
 import { ensureHubRootDepsInstalled as ensureHubRootDepsInstalledDefault } from './lib/hub-root-install.js';
+import { runSetupTipStep as runSetupTipStepDefault } from './lib/tips.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -693,6 +694,8 @@ export const TOKEN_SENTINEL = '[token set — press Enter to keep]';
  *   feature it controls — unlike tierPluginPort/hubType below, which setup.js's own
  *   generic wiring needs by value and so names explicitly. Defaults to {} so callers
  *   that never pass cliArgs behave exactly as before this parameter existed.
+ * @param {function} [deps.runTipStep]
+ *   Injectable end-of-setup tip step (see lib/tips.js runSetupTipStep).
  * @returns {function(): Promise<void>}
  */
 export function createRun({
@@ -717,6 +720,7 @@ export function createRun({
 	offerTaskPermissions = offerTaskCliPermissionsDefault,
 	isInteractive = () => Boolean(process.stdin.isTTY && process.stdout.isTTY),
 	askPermissions = false,
+	runTipStep = runSetupTipStepDefault,
 }) {
 	return async function run() {
 		// ── Hub-root npm dependencies ──────────────────────────────────────────────
@@ -970,6 +974,8 @@ export function createRun({
 			// setup must never silently drop projects.<name> entries that `npm run scan`
 			// wrote via registerProject() (pipelines/deploy/lib/bootstrap.js).
 			...(prev.projects ? { projects: prev.projects } : {}),
+			// Preserve the tip-of-the-day settings (tips.enabled, tips.icon) across re-runs.
+			...(prev.tips ? { tips: prev.tips } : {}),
 			// Preserve a recorded task-CLI permission decline across re-runs of setup.
 			...(prev[TASK_PERMISSION_CONFIG_KEY]
 				? { [TASK_PERMISSION_CONFIG_KEY]: prev[TASK_PERMISSION_CONFIG_KEY] }
@@ -1258,6 +1264,10 @@ export function createRun({
 				'  Re-run setup and enable remote team to unlock relay skills.\n',
 			);
 		}
+
+		// -- Tip of the day: last step, so the tip is the final thing the user reads.
+		// Prints and asks nothing for a hub type without tips or in CI.
+		await runTipStep({ hubRoot: cliOutputRoot, askYN, fsMod, platform });
 
 		process.stdout.write('\n');
 	};

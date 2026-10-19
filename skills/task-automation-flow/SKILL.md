@@ -324,6 +324,22 @@ Note: For `verifier: Architect`, the intermediate state is `state:ready-for-revi
 
 Immediately after any confirmed merge (single-ticket or batch), before moving on to the next ticket or action, the agent whose local checkout tracks the merged branch runs `git fetch origin && git pull` on the default branch. This keeps the local checkout current so the next dispatch, review, or branch cut starts from the merged state rather than a stale one.
 
+## Resuming an Interrupted Run
+
+After a rate limit, usage limit, or harness kill, resume from the first unfinished state. The lifecycle state is the phase marker and the Automation Checkpoint (format owned by the Batch Checkpoint Rule in `proactive-agent`) is the persistence record. Both are hints: before acting, re-read the live facts below with `gh` and the task file, never memory alone. If a live fact disagrees with the checkpoint, trust the live fact and rewrite the checkpoint. Take the single resume action only when its guard passes; otherwise skip it and advance to the next state.
+
+| State                            | Live facts to check                                                                                | Resume action                                                                      | Idempotency guard                                                                                                   |
+| -------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `state:ready-for-implementation` | task file `status:`; `gh issue view` labels; `git branch -r` for the issue branch                  | dispatch Builder                                                                   | If the issue branch exists or a PR is open, do not dispatch; treat the ticket as `state:in-progress`                |
+| `state:in-progress`              | `git log` on the issue branch; `gh pr list --head <branch>`; task file `## Log`                    | verify Builder's output, then `transition` to the next state when work is complete | Never re-dispatch Builder when the branch has commits or a PR exists; re-dispatch only with no commits and no PR    |
+| `state:ready-for-review`         | `gh pr view` state and comments; task file `## QA Report`                                          | Architect review per the Lifecycle State Mapping note                              | If a review record comment already exists on the issue or task file, do not post another; only run the transition   |
+| `state:changes-requested`        | task file `fail-count:` and `parked:`; `gh issue view` labels                                      | route the fix to Builder per Fail Paths                                            | Do not increment `fail-count:` twice for one fail: compare it with the fail labels first; at 3, park instead        |
+| `state:ready-for-qa`             | `gh issue view --comments` re-fetched; `gh pr view` state                                          | dispatch Tester for QA                                                             | If the QA report comment already exists, do not post or re-run it; only complete the `transition`                   |
+| `state:qa-passed`                | `gh issue view` labels and comments; `gh pr view` merged state                                     | send the final report to the Team Lead                                             | If the final report was already sent (checkpoint or issue comment), do not repeat it; wait for the Team Lead        |
+| merged (out-of-band)             | `gh pr view` merged state; `git rev-parse HEAD` against `git rev-parse origin/<default>` on the base branch | run the Post-Merge Hygiene pull                                           | If the local default branch already contains the merge commit, skip the pull; never repeat the final report         |
+
+A transition that did not report `ok: true` is not complete: re-check the task file and tracker label, then re-run `transition` (it is safe to repeat). Write a fresh Automation Checkpoint after each resumed step.
+
 ## Batch Mode (Sequential Pair)
 
 Removes the per-ticket merge gate. Two tickets run back-to-back; the team lead merges both at the end.

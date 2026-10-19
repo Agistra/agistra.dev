@@ -18,6 +18,7 @@
     "task": "node pipelines/deploy/lib/task-cli.js",
     "check:tickets": "node pipelines/deploy/lib/ticket-drift.js",
     "self-check": "node tools/self-check.js",
+    "show:tip": "node pipelines/deploy/lib/tips.js",
     "memory-index": "node pipelines/deploy/lib/memory-index.js",
     "memory-index:build": "node pipelines/deploy/lib/memory-index.js build"
   },

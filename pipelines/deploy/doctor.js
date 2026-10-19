@@ -47,6 +47,7 @@ import {
 	langGraphArtifactFileName,
 } from './lib/langgraph-paths.js';
 import { checkHubRootDepsCurrent } from './lib/hub-root-install.js';
+import { buildTipFooter } from './lib/tips.js';
 import {
 	readTaskPermissionState,
 	TASK_PERMISSION_STATES,
@@ -1458,6 +1459,15 @@ if (isMain) {
 	process.stdout.write(formatReport(checks, useColor));
 	const exitCode = computeExitCode(checks);
 	markDoctorRun(hubRoot, { exitCode });
+	// Tip of the day: printed last, after the result banner. Never affects the
+	// exit code; any failure here is swallowed. Silent under --json and in CI.
+	try {
+		process.stdout.write(
+			buildTipFooter({ hubRoot, json: process.argv.includes('--json') }),
+		);
+	} catch {
+		// A tip is optional output.
+	}
 	// Set process.exitCode instead of calling process.exit(exitCode) directly.
 	// process.exit() forces immediate, synchronous process termination, which
 	// on Windows can race libuv's teardown of any handle still mid-close (a

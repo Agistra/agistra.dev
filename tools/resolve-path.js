@@ -17,6 +17,10 @@
  *
  * Output: one JSON object on stdout, always.
  *   success: { ok: true, store, plugin, path }
+ *            memory adds `shape`: single-note | migrated | absent | mixed.
+ *            A migrated agent (keyed entry files, no single note) resolves to
+ *            its HOT index, Memory/<agent>/<agent>-hot.md; every other shape
+ *            keeps Memory/<agent>.md.
  *   failure: { ok: false, code, error }
  * Exit code: 0 on success, 1 on any failure (bad usage, invalid arg, or a
  * plugin file present with an unresolvable vault root).
@@ -108,12 +112,42 @@ export async function loadMemoryRootModule(hubRoot) {
 }
 
 /**
+ * Shape of an agent's memory under `root`, judged with the shared helpers in
+ * pipelines/deploy/lib/memory-scaffold.js (shipped to every tier). When that
+ * module cannot be loaded the single note alone decides.
+ *
+ * @param {string} hubRoot
+ * @param {string} root absolute memory root
+ * @param {string} agent
+ * @param {object} fsMod
+ * @returns {Promise<'single-note' | 'migrated' | 'absent' | 'mixed'>}
+ */
+async function memoryShape(hubRoot, root, agent, fsMod) {
+	const hasNote = fsMod.existsSync(path.join(root, `${agent}.md`));
+	let scaffold = null;
+	try {
+		scaffold = await import(
+			pathToFileURL(
+				path.resolve(hubRoot, 'pipelines/deploy/lib/memory-scaffold.js'),
+			).href
+		);
+	} catch {
+		// Fall through: the note alone decides.
+	}
+	const keyed =
+		scaffold?.hasKeyedEntries({ memoryRoot: root, agentId: agent, fsMod }) ??
+		false;
+	if (hasNote) return keyed ? 'mixed' : 'single-note';
+	return keyed ? 'migrated' : 'absent';
+}
+
+/**
  * @param {object} options
  * @param {string} options.hubRoot
  * @param {string} options.store
  * @param {string} options.arg
  * @param {object} [options.fsMod]
- * @returns {Promise<{ ok: true, store: string, plugin: string, path: string } | { ok: false, code: string, error: string }>}
+ * @returns {Promise<{ ok: true, store: string, plugin: string, path: string, shape?: string } | { ok: false, code: string, error: string }>}
  */
 export async function resolvePath({ hubRoot, store, arg, fsMod = fs }) {
 	if (!STORES.includes(store)) {
@@ -145,7 +179,12 @@ export async function resolvePath({ hubRoot, store, arg, fsMod = fs }) {
 			hubRoot,
 			plugin === 'obsidian' ? 'dev:sub' : 'dev',
 		);
-		return { ok: true, store, plugin, path: path.join(root, `${arg}.md`) };
+		const shape = await memoryShape(hubRoot, root, arg, fsMod);
+		const file =
+			shape === 'migrated'
+				? path.join(root, arg, `${arg}-hot.md`)
+				: path.join(root, `${arg}.md`);
+		return { ok: true, store, plugin, path: file, shape };
 	}
 
 	if (store === 'task') {
