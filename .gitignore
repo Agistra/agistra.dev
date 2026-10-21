@@ -67,3 +67,4 @@ graphify-out/
 .vs/
 *.suo
 *.user
+.tips-state.json

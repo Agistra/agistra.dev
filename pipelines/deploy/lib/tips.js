@@ -20,6 +20,18 @@
  *   2. Runtime: getTipForHub() filters again against the hub's own tier, so a
  *      file that was copied by hand still cannot leak another tier's tip.
  *
+ * Rotation. Each run shows a tip not yet shown in the current cycle, picked at
+ * random among the unseen ones. When every eligible tip has been shown a new
+ * cycle starts, and its first tip never equals the last one shown. Tips whose
+ * ids are not in the saved state count as unseen, so tips added by a redeploy
+ * surface before old ones repeat; saved ids that are no longer eligible are
+ * dropped. The state lives in `.tips-state.json` at the hub root
+ * ({shown: [ids in this cycle], last: id}), is shared by `doctor`, setup and
+ * `show:tip`, and is gitignored by the deploy. The tier filter runs first, so
+ * state never leaks a tip from another tier. A missing, unreadable, corrupt or
+ * unwritable state file falls back to a random pick and never throws. Nothing
+ * is written when no tip is printed (JSON mode, CI, tips off).
+ *
  * Settings, in workspace.config.json:
  *   tips.enabled  boolean, default true. false silences doctor and setup;
  *                 `show:tip` still prints a tip.
@@ -36,6 +48,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const TIPS_DATA_FILENAME = 'tips-data.json';
 export const DEFAULT_TIPS_DATA_PATH = path.join(__dirname, TIPS_DATA_FILENAME);
+export const TIPS_STATE_FILENAME = '.tips-state.json';
 
 /** Hub types that carry tips. Any other hub type prints no tip. */
 export const TIP_HUB_TYPES = Object.freeze([
@@ -108,6 +121,68 @@ export function pickTip(tips, rng = Math.random) {
 	if (!Array.isArray(tips) || tips.length === 0) return null;
 	const index = Math.min(tips.length - 1, Math.floor(rng() * tips.length));
 	return tips[index];
+}
+
+// ── Rotation state ───────────────────────────────────────────────────────────
+
+/**
+ * Read the rotation state. Missing, unreadable or malformed yields an empty
+ * state, which makes the next pick a plain random one.
+ *
+ * @param {string} hubRoot
+ * @param {object} [fsMod]
+ * @returns {{shown: string[], last: string|null}}
+ */
+export function readTipsState(hubRoot, fsMod = fs) {
+	try {
+		const parsed = JSON.parse(
+			fsMod.readFileSync(path.join(hubRoot, TIPS_STATE_FILENAME), 'utf-8'),
+		);
+		const shown = Array.isArray(parsed?.shown)
+			? parsed.shown.filter((id) => typeof id === 'string')
+			: [];
+		const last = typeof parsed?.last === 'string' ? parsed.last : null;
+		return { shown, last };
+	} catch {
+		return { shown: [], last: null };
+	}
+}
+
+/** Save the rotation state. Failure is swallowed: tips are optional output. */
+export function writeTipsState(hubRoot, state, fsMod = fs) {
+	try {
+		fsMod.writeFileSync(
+			path.join(hubRoot, TIPS_STATE_FILENAME),
+			JSON.stringify(state, null, 2) + '\n',
+			'utf-8',
+		);
+	} catch {
+		// Read-only hub or missing directory: the next run just picks again.
+	}
+}
+
+/**
+ * Pick the next tip of the rotation and return it with the state to save.
+ *
+ * @param {Array<{id: string}>} eligible  Tips that passed the tier filter.
+ * @param {{shown: string[], last: string|null}} state
+ * @param {() => number} [rng]
+ * @returns {{tip: object|null, state: {shown: string[], last: string|null}}}
+ */
+export function pickNextTip(eligible, state, rng = Math.random) {
+	if (!Array.isArray(eligible) || eligible.length === 0) {
+		return { tip: null, state: { shown: [], last: null } };
+	}
+	const eligibleIds = new Set(eligible.map((tip) => tip.id));
+	let shown = [...new Set(state.shown)].filter((id) => eligibleIds.has(id));
+	let candidates = eligible.filter((tip) => !shown.includes(tip.id));
+	if (candidates.length === 0) {
+		shown = [];
+		const fresh = eligible.filter((tip) => tip.id !== state.last);
+		candidates = fresh.length > 0 ? fresh : eligible;
+	}
+	const tip = pickTip(candidates, rng);
+	return { tip, state: { shown: [...shown, tip.id], last: tip.id } };
 }
 
 // ── Hub config ───────────────────────────────────────────────────────────────
@@ -225,7 +300,9 @@ export function formatOnRequestLines() {
  * @param {string} [options.dataPath]
  * @param {() => number} [options.rng]
  * @param {() => boolean} [options.hasGraphifyInstaller]
- * @returns {{tip: object|null, tipHubType: string|undefined, config: object|null}}
+ * @returns {{tip: object|null, tipHubType: string|undefined, config: object|null, remember: () => void}}
+ *   `remember()` saves the rotation state; callers invoke it only when the tip
+ *   is actually printed.
  */
 export function getTipForHub({
 	hubRoot,
@@ -237,7 +314,11 @@ export function getTipForHub({
 	const config = readWorkspaceConfig(hubRoot, fsMod);
 	const tipHubType = resolveHubTipHubType(config, { hasGraphifyInstaller });
 	const eligible = filterTipsForHubType(loadTips(dataPath), tipHubType);
-	return { tip: pickTip(eligible, rng), tipHubType, config };
+	const next = pickNextTip(eligible, readTipsState(hubRoot, fsMod), rng);
+	const remember = () => {
+		if (next.tip) writeTipsState(hubRoot, next.state, fsMod);
+	};
+	return { tip: next.tip, tipHubType, config, remember };
 }
 
 /** True when the process runs under CI. */
@@ -273,7 +354,7 @@ export function buildTipFooter({
 	hasGraphifyInstaller,
 }) {
 	if (json || isCi(env)) return '';
-	const { tip, config } = getTipForHub({
+	const { tip, config, remember } = getTipForHub({
 		hubRoot,
 		fsMod,
 		dataPath,
@@ -281,6 +362,7 @@ export function buildTipFooter({
 		hasGraphifyInstaller,
 	});
 	if (!tip || !tipsEnabled(config)) return '';
+	remember();
 	const emoji = supportsEmoji({
 		env,
 		platform,
@@ -324,7 +406,7 @@ export async function runSetupTipStep({
 	hasGraphifyInstaller,
 }) {
 	if (isCi(env)) return { shown: false, enabled: null };
-	const { tip, config } = getTipForHub({
+	const { tip, config, remember } = getTipForHub({
 		hubRoot,
 		fsMod,
 		dataPath,
@@ -342,6 +424,7 @@ export async function runSetupTipStep({
 			configIcon: config?.tips?.icon,
 		});
 		write(`\n  ${formatTip(tip, { emoji })}\n\n`);
+		remember();
 		for (const l of formatOnRequestLines()) write(`  ${l}\n`);
 		write('\n');
 		shown = true;
@@ -395,7 +478,7 @@ export function runShowTip(
 	const rootIdx = argv.indexOf('--hub-root');
 	const hubRoot =
 		rootIdx !== -1 && argv[rootIdx + 1] ? path.resolve(argv[rootIdx + 1]) : cwd;
-	const { tip, config } = getTipForHub({
+	const { tip, config, remember } = getTipForHub({
 		hubRoot,
 		fsMod,
 		dataPath,
@@ -413,6 +496,7 @@ export function runShowTip(
 		configIcon: config?.tips?.icon,
 	});
 	write(`${formatTip(tip, { emoji })}\n`);
+	remember();
 	return 0;
 }
 

@@ -51,6 +51,110 @@
         "dev"
       ],
       "text": "Run `npm run memory-index:build`, then search your agents' memory by keyword with `npm run memory-index -- find <keyword>`."
+    },
+    {
+      "id": "skill-discovery-via-use-when",
+      "tiers": [
+        "dev"
+      ],
+      "text": "You don't need to remember skill names. Open any skill's SKILL.md in your provider's skills folder. Its description line has a \"Use when:\" list of trigger phrases. Say one of those phrases to your agent and the skill loads."
+    },
+    {
+      "id": "prompt-grill-with-docs",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell your agent \"grill me\", \"let's brainstorm\", or \"walk me through\" a decision and it starts a one-question-at-a-time design interrogation.",
+      "skills": [
+        "grill-with-docs"
+      ]
+    },
+    {
+      "id": "prompt-assumptions-audit",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell Architect \"audit assumptions\", \"check for hidden assumptions\", or \"what am I assuming\" on a ticket before it goes to Builder, and it runs a hidden-assumptions audit pass.",
+      "skills": [
+        "assumptions-audit"
+      ]
+    },
+    {
+      "id": "prompt-migration-completeness-check",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell Architect \"did we miss anything from my old hub\" or \"check what didn't get migrated\" and it runs a completeness pass against your prior migration.",
+      "skills": [
+        "migration-completeness-check"
+      ]
+    },
+    {
+      "id": "prompt-security-audit-lens",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell Architect \"how hard\" it would be to rewrite this codebase, or ask for a \"security audit\", and it runs a structured security-and-feasibility pass.",
+      "skills": [
+        "security-audit-lens"
+      ]
+    },
+    {
+      "id": "prompt-legacy-investigation-lens",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell Architect you \"inherited\" this codebase, or that it's an \"unfamiliar codebase\", before a refactor, and it typically starts an investigation pass.",
+      "skills": [
+        "legacy-investigation-lens"
+      ]
+    },
+    {
+      "id": "prompt-debugging-and-error-recovery",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell your agent to find the \"root cause\" when \"tests fail\" or you hit an \"unexpected error\", and it runs a systematic debugging pass instead of guessing.",
+      "skills": [
+        "debugging-and-error-recovery"
+      ]
+    },
+    {
+      "id": "prompt-code-review-and-quality",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell your agent to review this PR \"before merging\" it, or ask for a \"code review\", and it runs a multi-axis quality pass across the diff.",
+      "skills": [
+        "code-review-and-quality"
+      ]
+    },
+    {
+      "id": "prompt-morning-standup",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell Architect \"Good morning Team\" or ask for a \"start-of-day briefing\" and it runs the whole team's morning briefing for you.",
+      "skills": [
+        "morning-standup"
+      ]
+    },
+    {
+      "id": "prompt-dreaming",
+      "tiers": [
+        "dev"
+      ],
+      "text": "Tell Architect \"Good night Team\", \"Wrapping up\", or \"EOD\" at day's end and it consolidates and archives the session.",
+      "skills": [
+        "dreaming"
+      ]
+    },
+    {
+      "id": "switch-project",
+      "tiers": [
+        "dev"
+      ],
+      "text": "To switch projects, start a fresh session (or clear the current one), greet your agent (\"Hi Architect\"), then tell it which project to work on, for example \"Let's work on project <name>\". A clean start keeps the old project's context from leaking into the new one."
     }
   ]
 }
