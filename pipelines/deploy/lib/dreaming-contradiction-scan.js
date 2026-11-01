@@ -38,7 +38,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveMemoryRootForHub } from './memory-root.js';
+import { archiveSnapshotDirs, resolveMemoryRootForHub } from './memory-root.js';
 
 const DEFAULT_SINCE_DAYS = 7;
 const ENTRY_TIERS = ['hot', 'warm', 'cold'];
@@ -133,7 +133,8 @@ export function readOwnKeyedEntries(agent, hubRoot, { fsMod = fs } = {}) {
 }
 
 /**
- * Lists this agent's own archive snapshots (`<memory-root>/archive/<agent>-YYYY-MM-DD.md`)
+ * Lists this agent's own archive snapshots (`<memory-root>/archive/<agent>/<agent>-YYYY-MM-DD.md`, or the older flat
+ * `<memory-root>/archive/<agent>-YYYY-MM-DD.md`)
  * dated within the last `sinceDays` days (inclusive), sorted most-recent-first.
  * Uses the filename's own date component (not file mtime) — matching the
  * same convention `findMostRecentArchiveDate` in nightly-dreaming.js already
@@ -147,34 +148,35 @@ export function listRecentArchiveSnapshots(
 	hubRoot,
 	{ fsMod = fs, sinceDays = DEFAULT_SINCE_DAYS, now = () => new Date() } = {},
 ) {
-	const archiveDir = path.join(
-		resolveScanLayout(hubRoot, { fsMod }).memoryRoot,
-		'archive',
-	);
-	let files;
-	try {
-		files = fsMod.readdirSync(archiveDir);
-	} catch {
-		return [];
-	}
-
+	const memoryRoot = resolveScanLayout(hubRoot, { fsMod }).memoryRoot;
 	const pattern = new RegExp(`^${agent}-(\\d{4}-\\d{2}-\\d{2})\\.md$`);
 	const cutoff = new Date(now());
 	cutoff.setHours(0, 0, 0, 0);
 	cutoff.setDate(cutoff.getDate() - sinceDays);
 
 	const snapshots = [];
-	for (const file of files) {
-		const match = pattern.exec(file);
-		if (!match) continue; // not this agent's snapshot (own-agent-only) or not a dated archive file
-		const date = match[1];
-		const snapshotDate = new Date(`${date}T00:00:00`);
-		if (snapshotDate < cutoff) continue; // outside the scan window
-		snapshots.push({
-			date,
-			path: path.join(archiveDir, file),
-			content: fsMod.readFileSync(path.join(archiveDir, file), 'utf-8'),
-		});
+	const seen = new Set();
+	// archive/<agent>/ first, then the flat archive/ of a hub not yet migrated.
+	for (const archiveDir of archiveSnapshotDirs(memoryRoot, agent)) {
+		let files;
+		try {
+			files = fsMod.readdirSync(archiveDir);
+		} catch {
+			continue;
+		}
+		for (const file of files) {
+			const match = pattern.exec(file);
+			if (!match || seen.has(file)) continue; // not this agent's snapshot (own-agent-only) or not a dated archive file
+			const date = match[1];
+			const snapshotDate = new Date(`${date}T00:00:00`);
+			if (snapshotDate < cutoff) continue; // outside the scan window
+			seen.add(file);
+			snapshots.push({
+				date,
+				path: path.join(archiveDir, file),
+				content: fsMod.readFileSync(path.join(archiveDir, file), 'utf-8'),
+			});
+		}
 	}
 
 	return snapshots.sort((a, b) => b.date.localeCompare(a.date));

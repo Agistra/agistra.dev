@@ -47,7 +47,7 @@ Do not hand-list memory or skill files here — the profile's own "Session Start
 
 ✅ **Correct** — profile read first, its full "Session Start" sequence executed, then the config check:
 > *[Read tool call: `<hub>/.cursor/agents/builder.md`]*
-> *[follows Session Start section exactly: memory/builder.md, then every always-on skill it names, in order]*
+> *[follows Session Start section exactly: memory, then every always-on skill it names, in order]*
 > *[Read tool call: `<hub>/workspace.config.json`]* (if present)
 > *[task work begins]*
 
@@ -81,7 +81,7 @@ The user can also say "check for updates" at any time to force a check.
 
 ## Session end — memory discipline
 
-Before closing a session, check whether any decisions, corrections, or new context were established. If yes, update the HOT section in `memory/<agent>.md` before closing.
+Before closing a session, check whether any decisions, corrections, or new context were established. If yes, record them in your HOT memory before closing, as Find and Write Your Memory in `skills/agent-foundations/SKILL.md` says for your memory's shape.
 
 Do not wait for the team lead to ask. Write first, respond second — this is the WAL protocol defined in `skills/agent-foundations/SKILL.md`.
 

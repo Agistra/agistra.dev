@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { projectTaskDir, taskDirContext } from './vault-layout.js';
 
 /**
  * Canonical set of task state tokens (ticket-lifecycle-mode State Vocabulary).
@@ -131,7 +132,7 @@ export function listAllTasks(projectsRoot) {
 		.filter((e) => e.isDirectory())
 		.sort((a, b) => a.name.localeCompare(b.name))
 		.map((e) => {
-			const projectDir = path.join(projectsRoot, e.name);
+			const projectDir = projectTaskDir(projectsRoot, e.name);
 			const doneDir = doneTasksDir(projectDir);
 			const rootFiles = listMdFiles(projectDir).filter((f) =>
 				f.match(/^task_\d+_.+$/),
@@ -356,13 +357,13 @@ export function hasStateTokenInfix(filename) {
 
 /** Path to a project's hub note, derived from its project directory. */
 function projectHubNotePath(projectDir) {
-	const project = path.basename(projectDir);
-	return path.join(projectDir, `${project}.md`);
+	const { project, noteDir } = taskDirContext(projectDir);
+	return path.join(noteDir, `${project}.md`);
 }
 
 /** Path to a project's `<subfolder>` hub note (e.g. `done`, `dropped`). */
 function subfolderHubNotePath(projectDir, subfolder) {
-	const project = path.basename(projectDir);
+	const { project } = taskDirContext(projectDir);
 	return path.join(projectDir, subfolder, `${project}-${subfolder}.md`);
 }
 
@@ -395,7 +396,7 @@ function appendWikilinkToSubfolderHubNote(
 	subfolder,
 	taskFilenameNoExt,
 ) {
-	const project = path.basename(projectDir);
+	const { project } = taskDirContext(projectDir);
 	const hubNotePath = subfolderHubNotePath(projectDir, subfolder);
 	const linkLine = `- [[${taskFilenameNoExt}]]`;
 

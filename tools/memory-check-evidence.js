@@ -85,11 +85,85 @@ const WRITE_WORDS =
 const CD_PREFIX =
 	/^\s*cd\s+("[^"&;|<>`$\r\n]+"|'[^'&;|<>`$\r\n]+'|[^\s"'&;|<>`$()\r\n]+)\s*&&\s*(.*)$/s;
 
+// The read commands of the agent memory contract (agent-foundations, "Find and
+// Write Your Memory"): the resolver, the self-check (its write round trip runs in
+// a temp copy) and `memory get|list`. Session Start runs them every session, so
+// they must not count as work; `memory add|resolve|pin|...` stay work.
+const MEMORY_STORES = new Set(['memory', 'task', 'document', 'learnings']);
+const MEMORY_READ_SUBCOMMANDS = new Set(['get', 'list']);
+const NAME_TOKEN = /^[A-Za-z0-9_.:-]+$/;
+
+/** Split on whitespace, keeping a quoted path (which may hold spaces) as one token. */
+function shellTokens(segment) {
+	return (segment.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((t) =>
+		t.replace(/^(["'])(.*)\1$/, '$2'),
+	);
+}
+
+/** Flags after the positional arguments: only --json and --hub-root <value>. */
+function onlyHubFlags(flags) {
+	for (let i = 0; i < flags.length; i++) {
+		if (flags[i] === '--json') continue;
+		if (
+			flags[i] === '--hub-root' &&
+			flags[i + 1] &&
+			!flags[i + 1].startsWith('--')
+		) {
+			i++;
+			continue;
+		}
+		return false;
+	}
+	return true;
+}
+
+/** A script token is the tail path, optionally under any directory. */
+function scriptIs(token, tail) {
+	const norm = String(token ?? '')
+		.split(String.fromCharCode(92))
+		.join('/');
+	return norm === tail || norm.endsWith(`/${tail}`);
+}
+
+/**
+ * @param {string} segment one pipeline segment
+ * @returns {boolean} true when it is a memory-contract read command
+ */
+function isMemoryReadCommand(segment) {
+	const t = shellTokens(segment);
+	// `npm --prefix <hub root> run …` points npm at the hub from any other directory.
+	if (t[0] === 'npm' && t[1] === '--prefix' && t[2] && !t[2].startsWith('--'))
+		t.splice(1, 2);
+	if (t[0] === 'node') {
+		if (scriptIs(t[1], 'tools/resolve-path.js'))
+			return (
+				MEMORY_STORES.has(t[2]) &&
+				NAME_TOKEN.test(t[3] ?? '') &&
+				onlyHubFlags(t.slice(4))
+			);
+		if (scriptIs(t[1], 'tools/self-check.js'))
+			return NAME_TOKEN.test(t[2] ?? '') && onlyHubFlags(t.slice(3));
+		if (scriptIs(t[1], 'pipelines/deploy/lib/memory-command.js'))
+			return MEMORY_READ_SUBCOMMANDS.has(t[2]);
+		return false;
+	}
+	if (t[0] === 'npm' && t[1] === 'run') {
+		if (t[2] === 'self-check')
+			return (
+				t[3] === '--' && NAME_TOKEN.test(t[4] ?? '') && onlyHubFlags(t.slice(5))
+			);
+		if (t[2] === 'memory')
+			return t[3] === '--' && MEMORY_READ_SUBCOMMANDS.has(t[4]);
+	}
+	return false;
+}
+
 /**
  * @param {string} segment one pipeline segment
  * @returns {boolean} true when the segment starts with an allowlisted read-only verb
  */
 function isReadOnlySegment(segment) {
+	if (isMemoryReadCommand(segment)) return true;
 	const words = segment.trim().split(/\s+/);
 	const verb = words[0].toLowerCase();
 	if (!verb) return false;

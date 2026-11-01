@@ -39,6 +39,7 @@ import {
 } from './lib/task-permission.js';
 import { ensureHubRootDepsInstalled as ensureHubRootDepsInstalledDefault } from './lib/hub-root-install.js';
 import { runSetupTipStep as runSetupTipStepDefault } from './lib/tips.js';
+import { offerOptionalSkillsInstall as offerOptionalSkillsInstallDefault } from './lib/optional-skills-setup.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -696,6 +697,11 @@ export const TOKEN_SENTINEL = '[token set — press Enter to keep]';
  *   that never pass cliArgs behave exactly as before this parameter existed.
  * @param {function} [deps.runTipStep]
  *   Injectable end-of-setup tip step (see lib/tips.js runSetupTipStep).
+ * @param {function} [deps.offerOptionalSkillsInstall]
+ *   Injectable optional-skills opt-in install step (see
+ *   lib/optional-skills-setup.js offerOptionalSkillsInstall). Tier-agnostic —
+ *   see that function's own doc comment for why it differs from the
+ *   dev:sub-only marketing-skills prompt it mirrors.
  * @returns {function(): Promise<void>}
  */
 export function createRun({
@@ -721,6 +727,7 @@ export function createRun({
 	isInteractive = () => Boolean(process.stdin.isTTY && process.stdout.isTTY),
 	askPermissions = false,
 	runTipStep = runSetupTipStepDefault,
+	offerOptionalSkillsInstall = offerOptionalSkillsInstallDefault,
 }) {
 	return async function run() {
 		// ── Hub-root npm dependencies ──────────────────────────────────────────────
@@ -1265,9 +1272,24 @@ export function createRun({
 			);
 		}
 
-		// -- Tip of the day: last step, so the tip is the final thing the user reads.
-		// Prints and asks nothing for a hub type without tips or in CI.
+		// -- Tip of the day: prints last among the "normal" steps, so the tip is
+		// one of the final things the user reads. Prints and asks nothing for a
+		// hub type without tips or in CI.
 		await runTipStep({ hubRoot: cliOutputRoot, askYN, fsMod, platform });
+
+		// ── Optional skills ────────────────────────────────────────────────────────
+		// Tier-agnostic, runs genuinely last: Builder/Architect declare
+		// frontend-design/skill-development/codebase-design `optional: true` in
+		// every hub tier's own manifest (docs/product/optional-third-party-skills-PRD.md),
+		// not gated to one tier the way the dev:sub-only marketing-skills prompt is.
+		// Placed after every other prompt in this run so a declined/empty answer
+		// here can never shift which answer an earlier prompt in this same run
+		// consumes.
+		await offerOptionalSkillsInstall({
+			hubRoot: cliOutputRoot,
+			catalogPath: path.join(cliOutputRoot, 'skill-catalog.json'),
+			askYN,
+		});
 
 		process.stdout.write('\n');
 	};

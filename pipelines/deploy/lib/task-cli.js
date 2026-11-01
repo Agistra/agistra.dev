@@ -79,6 +79,7 @@ import {
 } from './tasks.js';
 import { parseGithubIssueRef, fetchIssueState } from './ticket-drift.js';
 import { resolveTasksRoot, isVaultBackedHubType } from './memory-root.js';
+import { projectTaskDir } from './vault-layout.js';
 import { readJsonSafe } from '../wizard.js';
 import { scanForSecrets, formatSecretScanError } from './secret-scan.js';
 
@@ -123,7 +124,7 @@ export function resolveTaskPath(
 	if (hashIdx !== -1) {
 		const project = id.slice(0, hashIdx);
 		const query = id.slice(hashIdx + 1);
-		return findTaskByQuery(path.join(projectsRoot, project), query);
+		return findTaskByQuery(projectTaskDir(projectsRoot, project), query);
 	}
 
 	if (!fsMod.existsSync(projectsRoot)) return null;
@@ -133,7 +134,7 @@ export function resolveTaskPath(
 		.map((e) => e.name);
 
 	for (const project of projects) {
-		const found = findTaskByQuery(path.join(projectsRoot, project), id);
+		const found = findTaskByQuery(projectTaskDir(projectsRoot, project), id);
 		if (found) return found;
 	}
 	return null;
@@ -1389,7 +1390,7 @@ export function createTask(
 		return { ok: false, error: err.message };
 	}
 
-	const projectDir = path.join(projectsRoot, project);
+	const projectDir = projectTaskDir(projectsRoot, project);
 	const filenameNoExt = isVaultShaped
 		? `task_${id}_${slug}`
 		: `task_${id}_${token}_${slug}`;

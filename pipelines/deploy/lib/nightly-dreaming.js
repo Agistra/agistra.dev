@@ -53,7 +53,11 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { resolveMemoryRoot, resolveMemoryRootForHub } from './memory-root.js';
+import {
+	archiveSnapshotDirs,
+	resolveMemoryRoot,
+	resolveMemoryRootForHub,
+} from './memory-root.js';
 // vault-index.js is intentionally NOT statically imported here (and must never be) —
 // it ships only to vault-backed tiers (dev:sub/ops; see extras.js), while this
 // module ships unconditionally to every tier and is itself statically imported by
@@ -412,6 +416,9 @@ export function removeNightlyDreamingTask({
  * @param {function} [opts.buildVaultIndexFn]  Injectable `buildVaultIndex`-shaped function
  *   for testing. Defaults to a lazy `await import('./vault-index.js')` — see the file
  *   header comment above for why this is never a static top-level import.
+ * @param {function} [opts.sweepFn]  Injectable sweep runner, `({ hubRoot, fsMod }) =>
+ *   sweepMemory-shaped result` (sync or async). Defaults to `runForcedMemorySweep`, a lazy
+ *   import of the memory sweep (vault-backed tiers only).
  * @param {function} [opts.verifyEffectFn]  Injectable `verifyDreamingEffect`-shaped function
  *   for testing. After a clean (exit 0) `claude -p` run it must confirm consolidation left
  *   evidence on disk; a run that exits 0 but changed nothing is reported as `NO-EFFECT`
@@ -427,6 +434,7 @@ export async function runNightlyDreamingWithLogging({
 	fsMod = fs,
 	now = () => new Date(),
 	buildVaultIndexFn = null,
+	sweepFn = null,
 	verifyEffectFn = verifyDreamingEffect,
 } = {}) {
 	const runStartedAt = now();
@@ -465,6 +473,36 @@ export async function runNightlyDreamingWithLogging({
 	append(result.stderr ?? '');
 	if (result.error) {
 		append(`[nightly-dreaming-runner] error: ${result.error.message}\n`);
+	}
+
+	// Final forced memory sweep, in code. The dreaming skill asks the cold session to run
+	// it as a prose step; that session consolidates first and sweeps while entries it just
+	// resolved are still younger than hotToWarmHours, so nothing ages out. Running it here,
+	// after the session has exited, is the guaranteed run. It runs before the vault index
+	// refresh so the index sees the moved files. A sweep failure is logged and never
+	// fails the dreaming run.
+	try {
+		const runSweep = sweepFn ?? runForcedMemorySweep;
+		const sweep = await runSweep({ hubRoot, fsMod });
+		if (sweep?.skipped === 'not-vault-tier') {
+			append(`
+memory-sweep: skipped (${sweep.reason})
+`);
+		} else if (sweep?.ok) {
+			append(`
+memory-sweep: ${sweep.summary}
+`);
+		} else {
+			append(
+				`
+memory-sweep: failed — ${sweep?.error ?? 'unknown error'}${sweep?.summary ? ` (${sweep.summary})` : ''}
+`,
+			);
+		}
+	} catch (err) {
+		append(`
+memory-sweep: failed — ${err.message}
+`);
 	}
 
 	// Guaranteed post-session vault index refresh — runs unconditionally after the
@@ -540,6 +578,24 @@ export async function runNightlyDreamingWithLogging({
 	};
 }
 
+/**
+ * Run the memory sweep with `force`, as `memory sweep --force` does. The memory modules
+ * ship to vault-backed tiers only, so they are imported lazily (see the header comment).
+ */
+async function runForcedMemorySweep({ hubRoot, fsMod }) {
+	const [{ resolveMemoryPaths }, { resolveSweepConfig }, { sweepMemory }] =
+		await Promise.all([
+			import('./memory-paths.js'),
+			import('./memory-config.js'),
+			import('./memory-sweep.js'),
+		]);
+	const paths = resolveMemoryPaths({ hubRoot, fsMod });
+	if (!paths.ok) return { skipped: 'not-vault-tier', reason: paths.error };
+	const settings = resolveSweepConfig({ hubRoot, fsMod });
+	if (!settings.ok) return settings;
+	return sweepMemory({ paths, config: settings.config, force: true, fsMod });
+}
+
 function resolveMemoryRootSafe(hubRoot, fsMod) {
 	try {
 		return resolveMemoryRootForHub(hubRoot, { fsMod });
@@ -574,22 +630,30 @@ export function verifyDreamingEffect({
 	agent = 'architect',
 	fsMod = fs,
 }) {
-	const archiveDir = path.join(
-		resolveMemoryRootSafe(hubRoot, fsMod),
-		'archive',
-	);
+	const memoryRoot = resolveMemoryRootSafe(hubRoot, fsMod);
 	const dates = [
 		...new Set([localDateString(runStartedAt), localDateString(runFinishedAt)]),
 	];
 	const startMs = runStartedAt.getTime();
 	const problems = [];
 	for (const date of dates) {
-		const archivePath = path.join(archiveDir, `${agent}-${date}.md`);
+		// Per-agent folder first, then the flat archive of a hub not yet migrated.
+		const candidates = archiveSnapshotDirs(memoryRoot, agent).map((dir) =>
+			path.join(dir, `${agent}-${date}.md`),
+		);
+		let archivePath;
 		let mtimeMs;
-		try {
-			mtimeMs = fsMod.statSync(archivePath).mtimeMs;
-		} catch {
-			problems.push(`${archivePath} does not exist`);
+		for (const candidate of candidates) {
+			try {
+				mtimeMs = fsMod.statSync(candidate).mtimeMs;
+				archivePath = candidate;
+				break;
+			} catch {
+				// try the next layout
+			}
+		}
+		if (archivePath === undefined) {
+			problems.push(`${candidates.join(' or ')} does not exist`);
 			continue;
 		}
 		if (typeof mtimeMs !== 'number' || mtimeMs < startMs) {
@@ -642,7 +706,7 @@ export function getNightlyDreamingTaskRuntimeInfo({
 /**
  * Finds the most recent dated archive snapshot for an agent under the tier-correct
  * archive directory (`memory/archive/` on free tiers, `vault/Memory/archive/` on
- * vault-backed tiers — resolved by memory-root.js), e.g. `architect-2026-07-30.md`. Returns the YYYY-MM-DD date string of the newest
+ * vault-backed tiers — resolved by memory-root.js), e.g. `architect-2026-07-30.md`, in `archive/<agent>/` or the older flat `archive/`. Returns the YYYY-MM-DD date string of the newest
  * one found, or null if none exist. Used to detect a known regression pattern: the
  * Scheduled Task reporting success while the dreaming skill's own archive-before-
  * compact step never actually ran.
@@ -664,19 +728,21 @@ export function findMostRecentArchiveDate({
 		hubType === undefined
 			? resolveMemoryRootSafe(hubRoot, fsMod)
 			: resolveMemoryRoot(hubRoot, hubType);
-	const archiveDir = path.join(memoryRoot, 'archive');
-	let files;
-	try {
-		files = fsMod.readdirSync(archiveDir);
-	} catch {
-		return null;
-	}
 	const pattern = new RegExp(`^${agent}-(\\d{4}-\\d{2}-\\d{2})\\.md$`);
-	const dates = files
-		.map((f) => pattern.exec(f))
-		.filter(Boolean)
-		.map((m) => m[1])
-		.sort();
+	const dates = [];
+	for (const archiveDir of archiveSnapshotDirs(memoryRoot, agent)) {
+		let files;
+		try {
+			files = fsMod.readdirSync(archiveDir);
+		} catch {
+			continue;
+		}
+		for (const f of files) {
+			const m = pattern.exec(f);
+			if (m) dates.push(m[1]);
+		}
+	}
+	dates.sort();
 	return dates.length ? dates[dates.length - 1] : null;
 }
 

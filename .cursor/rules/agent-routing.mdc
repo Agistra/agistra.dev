@@ -17,19 +17,19 @@ alwaysApply: true
 This hub folder must be open in your Cursor workspace for `@architect` to resolve.
 
 ```
-@architect  Read .cursor/agents/architect.md. Then read memory/architect.md. Then: you are in architecture mode. Review <project>...
-@builder    Read .cursor/agents/builder.md. Then read memory/builder.md. Then: implement projects/<project>/task_N_todo_<slug>.md
-@tester     Read .cursor/agents/tester.md. Then read memory/tester.md. Then: QA projects/<project>/task_N_todo_<slug>.md
-@router     Read .cursor/agents/router.md. Then read memory/router.md. Then: classify and route: [inbound message]
+@architect  Read .cursor/agents/architect.md. Then follow its Session Start to read your memory. Then: you are in architecture mode. Review <project>...
+@builder    Read .cursor/agents/builder.md. Then follow its Session Start to read your memory. Then: implement projects/<project>/task_N_todo_<slug>.md
+@tester     Read .cursor/agents/tester.md. Then follow its Session Start to read your memory. Then: QA projects/<project>/task_N_todo_<slug>.md
+@router     Read .cursor/agents/router.md. Then follow its Session Start to read your memory. Then: classify and route: [inbound message]
 ```
 
 If the short name doesn't resolve (hub folder not in workspace, not yet indexed), use the explicit file path:
 
 ```
-@.cursor/agents/architect.md  Read .cursor/agents/architect.md. Then read memory/architect.md. Then: you are in architecture mode. Review <project>...
-@.cursor/agents/builder.md    Read .cursor/agents/builder.md. Then read memory/builder.md. Then: implement projects/<project>/task_N_todo_<slug>.md
-@.cursor/agents/tester.md     Read .cursor/agents/tester.md. Then read memory/tester.md. Then: QA projects/<project>/task_N_todo_<slug>.md
-@.cursor/agents/router.md     Read .cursor/agents/router.md. Then read memory/router.md. Then: classify and route: [inbound message]
+@.cursor/agents/architect.md  Read .cursor/agents/architect.md. Then follow its Session Start to read your memory. Then: you are in architecture mode. Review <project>...
+@.cursor/agents/builder.md    Read .cursor/agents/builder.md. Then follow its Session Start to read your memory. Then: implement projects/<project>/task_N_todo_<slug>.md
+@.cursor/agents/tester.md     Read .cursor/agents/tester.md. Then follow its Session Start to read your memory. Then: QA projects/<project>/task_N_todo_<slug>.md
+@.cursor/agents/router.md     Read .cursor/agents/router.md. Then follow its Session Start to read your memory. Then: classify and route: [inbound message]
 ```
 
 ## Task queue

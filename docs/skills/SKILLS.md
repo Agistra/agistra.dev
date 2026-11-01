@@ -40,7 +40,11 @@ Activate for any ticket that touches a Supabase RPC, edge function, or TypeScrip
 
 ## `debugging-and-error-recovery` — Builder
 
-Guides systematic root-cause debugging. Use when tests fail, builds break, behavior doesn't match expectations, or you encounter any unexpected error. Use when you need a systematic approach to finding and fixing the root cause rather than guessing.
+Guides systematic root-cause debugging. Use when tests fail, builds break, something that worked yesterday stopped working, behavior doesn't match expectations, or you encounter any unexpected error. Use when you need a systematic approach to finding and fixing the root cause rather than guessing.
+
+## `design-quality-lens` — Architect
+
+Use when: auditing a web page or site for design quality, meaning the generic generated look plus objective engineering and accessibility defects (tokens, motion, focus, overflow, no-script content, invented proof). Child skill of ui-audit-lens; audit only, never redesigns or generates pages.
 
 ## `documentation-and-adrs` — Architect
 
@@ -56,7 +60,7 @@ Use when: 'intake this repo/skill', 'evaluate external skill', 'should we adopt 
 
 ## `frontend-design`
 
-Activate for any ticket that builds new UI, reshapes an existing interface, or requires visual direction. Guidance for distinctive, intentional visual design, aesthetic direction, typography, and layout choices. Do not apply when the project has an established design system and the ticket is within its constraints.
+_(no description)_
 
 ## `grill-with-docs` — Architect
 
@@ -81,10 +85,6 @@ Behavioral guardrails for implementation work. Reduces common LLM coding mistake
 ## `legacy-investigation-lens` — Architect
 
 Use when: investigating a legacy, inherited, third-party-built, or otherwise newly-unfamiliar codebase before scoping a migration or major refactor. Formalizes a repeatable five-step investigation pass — entry-point census, business-rule classification, side-effect/idempotency cataloging, implicit-contract discovery, semantic-duplication detection — plus a canonical per-project Open Questions document. Requires checkable signals: ticket keywords or prior documentation gaps. Not a mandatory gate; reserved for entry-point-heavy work in code areas with no prior investigation record.
-
-## `migration-completeness-check` — Architect
-
-Use when the team lead points Architect at a prior agistra.dev hub path and asks it to check for or perform additional migration — trigger phrasing such as 'migrate my data from <path>', 'check what didn't get migrated', 'did we miss anything from my old hub', or 'do a completeness pass on <path>'. Walks the prior hub's full directory tree read-only, diffs it against the fixed scripted migration scope plus any existing migration report, and asks the team lead one clear question at a time about anything a scripted migration would never have discovered. Never writes or copies anything itself — every confirmed item is delegated to the existing migration primitives. Do not use for the first-run scripted migration prompt during `npm run setup` — that is unrelated, already-automated flow this skill does not replace.
 
 ## `morning-standup` — Architect, Router, Tester
 
@@ -132,7 +132,7 @@ Use when: analysing a project's user-facing health — discoverability, document
 
 ## `security-audit-lens` — Architect
 
-Use when: a general codebase assessment, pre-migration/pre-rewrite review, feasibility question about converting/migrating/rewriting a codebase (how hard, effort), or explicit security-focused request needs a structured, repeatable security audit pass covering hardcoded secrets, injection-prone constructs, auth/debug backdoors, insecure config defaults, and weak credential storage. Complements (does not replace) the built-in /security-review command. Not a mandatory gate on every ticket.
+Use when: a general codebase assessment, pre-migration/pre-rewrite review, feasibility question about converting/migrating/rewriting a codebase (how hard, effort), or explicit security-focused request needs a structured, repeatable security audit pass covering hardcoded secrets, injection-prone constructs, auth/debug backdoors, insecure config defaults, weak credential storage, and (via reference files) AI/LLM risks, supply chain and CI, and authorization and data isolation. Complements (does not replace) the built-in /security-review command. Not a mandatory gate on every ticket.
 
 ## `self-improving-agent` — Architect, Builder, Router, Tester
 
@@ -140,7 +140,7 @@ Use when: the agent captures a correction from the team lead, hits an unexpected
 
 ## `skill-development`
 
-Use when: writing or reviewing a SKILL.md file, improving skill descriptions, organizing skill content, or needing guidance on skill structure, progressive disclosure, or skill development best practices for Claude Code plugins.
+_(no description)_
 
 ## `skill-quality-review` — Architect
 
@@ -168,7 +168,7 @@ Use when: Router bridges your team and the remote team across Telegram. Classifi
 
 ## `test-driven-development` — Builder
 
-Drives development with tests. Use when implementing any logic, fixing any bug, or changing any behavior. Use when you need to prove that code works, when a bug report arrives, or when you're about to modify existing functionality.
+Drives development with tests. Use when implementing any logic, fixing any bug, or changing any behavior. Use when you need to prove that code works, when a bug report arrives, or when you're about to modify existing functionality. Use when asked to add tests to, fix a bug in, or change the behavior of a function, even when the code is pasted inline and the request does not mention tests.
 
 ## `ticket-lifecycle-mode` — Architect, Builder, Router, Tester
 

@@ -18,7 +18,7 @@ These behaviours are always-on, not mode-gated. Load this skill to review or ref
 
 The working buffer is the crisis backstop — it activates at 60%. `token-economics` is the upstream discipline that delays it. Load it for token budgeting from session start.
 
-When the session grows long (many extended exchanges, or responses needing heavy context re-establishment), log every subsequent exchange to the working buffer: `working-buffer.md` in the active storage plugin's Memory store (free-tier default: `memory/working-buffer.md`):
+When the session grows long (many extended exchanges, or responses needing heavy context re-establishment), log every subsequent exchange to the working buffer: `working-buffer.md` in the memory root (free-tier default: `memory/working-buffer.md`; on a vault hub the same file sits in the memory root beside the agent folders), appended directly:
 
 ```
 # Working Buffer (Danger Zone Log)
@@ -49,9 +49,9 @@ Auto-trigger when:
 Recovery steps:
 
 1. Read the working buffer — raw danger-zone exchanges
-2. Read `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) — current HOT/WARM/COLD state
+2. Read your memory (Find and Write Your Memory in `agent-foundations`): current HOT/WARM/COLD state
 3. Read today's and yesterday's daily notes
-4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below)
+4. Promote: pull important context from the buffer into your HOT memory (same section)
 5. Present: "Recovered from working buffer. Last task was X. Continue?"
 
 Do NOT ask "what were we discussing?" — the buffer has the conversation.
@@ -87,7 +87,7 @@ During any automation run involving multiple sequential agent dispatches, write 
 
 ### Checkpoint format
 
-Write to `memory/<agent>.md` HOT section (the loading agent's own memory file; or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
+Write one HOT entry (Find and Write Your Memory in `agent-foundations`); for a single-note memory it is a section in the note:
 
 ```
 ## Automation Checkpoint — [timestamp]
@@ -100,7 +100,7 @@ Next dispatch: task_P
 
 On session resume after an interruption (rate limit, session end, compaction):
 
-1. Read HOT section — look for the most recent Automation Checkpoint entry.
+1. Read your HOT memory — look for the most recent Automation Checkpoint entry.
 2. If found: dispatch from `Next dispatch`. Do not re-run completed items.
 3. If not found: re-derive current state from GitHub issue/PR labels via `gh issue list`.
 
@@ -131,11 +131,6 @@ Before proposing a change to agent behavior, ask three questions:
 
 If the answer to all three is "no" or "maybe", skip it. One strong "yes" is the bar — not a weighted total.
 
----
-
-## Storage-plugin note
-
-**Storage-plugin note (`memory/<agent>.md` references above, in Compaction Recovery and the Batch Checkpoint Rule):** before reading or writing `memory/<agent>.md`, check for an active storage plugin file at `skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`), the literal repo-relative path is wrong — route instead via that plugin's `read-memory(agent)` / `write-memory-entry(agent, tier, content)` operations (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
 
 ---
 

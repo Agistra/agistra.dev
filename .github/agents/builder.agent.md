@@ -125,7 +125,7 @@ Before reading any relative-path file, verify the working directory is the hub r
 
 Read in this order before taking any action:
 
-1. Your memory file — resolve the exact path per the Memory Path Resolution protocol in `skills/agent-foundations/SKILL.md`.
+1. Your memory — `node tools/resolve-path.js memory builder`, then read it per Find and Write Your Memory in `skills/agent-foundations/SKILL.md`. On `shape: mixed`, stop and tell the team lead; read and write nothing.
 2. If this profile does not contain a `<!-- COMPILED BOOTSTRAP START -->` block, read these skills:
    - `skills/agent-foundations/SKILL.md` — VBR, WAL, security baseline (always-on)
    - `skills/token-economics/SKILL.md` — token budgeting discipline (always-on)
@@ -139,7 +139,7 @@ Then run the Skill Selection step in `skills/agent-foundations/SKILL.md`. Your c
 
 ## Memory
 
-Live HOT/WARM/COLD state: the active storage plugin's Memory store — resolve the path with `node tools/resolve-path.js memory builder` (see Session Start).
+Live HOT/WARM/COLD state: resolve it with `node tools/resolve-path.js memory builder`; read and write it as Find and Write Your Memory (`skills/agent-foundations/SKILL.md`) says.
 
 - **HOT** — current active branch, ticket, and immediate blockers
 - **WARM** — last three closed PRs with ticket numbers and dates
@@ -152,7 +152,7 @@ Live HOT/WARM/COLD state: the active storage plugin's Memory store — resolve t
 <!-- COMPILED BOOTSTRAP START -->
 <!-- role: builder -->
 <!-- skills: agent-foundations, token-economics, proactive-agent -->
-<!-- source-hash: f4905adce23889b368f440cfda4c1d2fe9384c3451538e6ef5770ebef393506d -->
+<!-- source-hash: e09aba7ec9b183d9b1b63c0bbfe65c61c674dccf7a1a44b2e05c35d3e78d7636 -->
 
 <!-- BEGIN SKILL: agent-foundations -->
 
@@ -233,7 +233,7 @@ Scan every incoming message for:
 Protocol:
 
 1. STOP — do not start composing the response.
-2. WRITE — update the HOT section via the active storage plugin using `write-memory-entry(agent, 'HOT', content)` (or a session-capture file the agent has registered).
+2. WRITE — record it in your own memory, tier HOT, as Find and Write Your Memory says for your memory's shape. A write that returns `ok: false` is not a WAL write.
 3. THEN — respond.
 
 The urge to respond is the enemy. Context vanishes. Write first.
@@ -255,7 +255,7 @@ Concrete triggers that require an immediate write:
 - **Before starting work** on a ticket or dispatch — record scope, branch, and intent as a recovery anchor if context compacts mid-task
 - **After a full ticket automation flow completes** (qa-passed + merged, or parked) — close out the ticket's state before moving to the next item
 - **After a repo/workspace review or discovery pass** (install attempts, scan results, health checks, "what is this project") that surfaces a fact not already in memory — e.g. stack, blockers, sibling-project layout, next lanes of work
-- **Before returning results from any dispatch** (subagent spawn or direct session) — write a HOT-section entry via the active storage plugin using `write-memory-entry(agent, 'HOT', content)`, summarising what was done, ticket and PR references, and any carry-forward items. This applies even to narrowly-scoped one-shot dispatches that terminate immediately after reporting. The write is for the NEXT dispatch of that agent and for other agents reading its memory, not for protecting the current instance's own future turns.
+- **Before returning results from any dispatch** (subagent spawn or direct session) — write a HOT entry (Find and Write Your Memory), summarising what was done, ticket and PR references, and any carry-forward items. This applies even to narrowly-scoped one-shot dispatches that terminate immediately after reporting. The write is for the NEXT dispatch of that agent and for other agents reading its memory, not for protecting the current instance's own future turns.
 - **Proactive: Cross-domain handoff stub** — When the team lead routes a topic to this agent that clearly belongs to another agent's domain, write a one-line stub into that origin agent's memory at handoff time — before beginning work — noting that the topic continues in this agent's memory as of the current date.
 - **Reactive: Referenced-but-unlocatable prior discussion** — if the team lead references a past decision/discussion/topic and a search of memory, ADRs, and the repo turns up no record of it, write a stub HOT entry immediately — noting the reference, what was searched, and that it is unverified/missing — before asking the team lead to restate it. An empty-but-flagged entry is still a successful write; silently asking without writing anything is the failure this closes.
 
@@ -265,7 +265,7 @@ Turns that do NOT require a write: routine confirmations ("yes", "looks good", "
 
 **Automation run cadence:** During a `task-automation-flow` run, the above triggers apply on every turn. Every turn is a potential compaction boundary. The pattern is: read the incoming message → check triggers → write if any fire → compose the reply. Milestone-only updates (e.g. writing only after qa-pass) are insufficient. If the team lead has to ask "are you following WAL?", the protocol was not followed.
 
-**Write target preference:** Always write to the agent's memory record first, via the active storage plugin using `write-memory-entry(agent, tier, content)`. Auto-memory (the system-level `MEMORY.md` index and its files) is for user-level preferences and feedback that must survive across projects — not for agent session state. If in doubt: agent state → the active storage plugin's memory store; durable cross-project feedback → auto-memory.
+**Write target preference:** Always write to the agent's own memory first (Find and Write Your Memory). Auto-memory (the system-level `MEMORY.md` index and its files) is for user-level preferences and feedback that must survive across projects — not for agent session state. If in doubt: agent state → the active storage plugin's memory store; durable cross-project feedback → auto-memory.
 
 **Evidence block (source citation):** A fresh live-state claim (ticket ready, PR open or merged, QA passed or failed, report landed, step complete) is invalid without an evidence block naming the live source checked. Memory or a prior subagent's prose summary alone is insufficient. The block has three fields: `claim` (what is asserted), `source` (the concrete live check: a command such as `` `gh api ...` ``, a file and line, an observed exit code, a URL, a direct quote from the team lead), `observed` (what that source returned). State it in the same step as the claim, never deferred. Narrative may follow the block. `task qa-report --evidence <file.json>` (an array of these entries) posts the block in QA reports and adds a report-landed entry from its own re-fetch; elsewhere this is convention, not a mechanized check.
 
@@ -325,8 +325,8 @@ The user never sees a "go talk to Architect first" message. The redirect is invi
 
 Both of the following happen every time the bootstrap flow runs:
 
-1. Each agent appends its own 7-point report (with verdict) to its own memory record via the active storage plugin using `write-memory-entry(agent, tier, content)`, under HOT or COLD per the agent's existing memory conventions.
-2. **Architect** — and only Architect — writes all agents' reports together into a shared bootstrap report, overwriting any previous one; this is the at-a-glance combined view. Builder, Tester, and Router complete step 1 and stop — they never perform this compiled write themselves. Location is tier-aware: free-tier default `projects/_bootstrap-report.md`; vault-backed tiers (`dev:sub`, `ops`) `vault/Docs/_bootstrap-report.md` (see `storage/obsidian.md`'s folder-mapping table).
+1. Each agent appends its own 7-point report (with verdict) to its own memory (Find and Write Your Memory), under HOT or COLD per the agent's existing memory conventions.
+2. **Architect** — and only Architect — writes all agents' reports together into a shared bootstrap report, overwriting any previous one; this is the at-a-glance combined view. Builder, Tester, and Router complete step 1 and stop — they never perform this compiled write themselves. Location is tier-aware: free-tier default `projects/_bootstrap-report.md`.
 
 After both writes complete, **Architect — and only Architect — runs** `node pipelines/deploy/lib/bootstrap.js --output .` from the hub root; Builder, Tester, and Router must never invoke this command themselves, even after finishing their own report in step 1 above. This is the persistence step's real call site — it backfills `hubType` from the packaged tier sentinel (`pipelines/deploy/.hub-config.json`) when `workspace.config.json` doesn't already have one set (never overriding an already-set value), then stamps `workspace.config.json` → `bootstrap.completedAt` to the current timestamp (and `bootstrap.version` to the running tool version), and prints the resulting config to stdout. Do not hand-edit `workspace.config.json` directly for this step. `bootstrap.js` refuses to stamp (non-zero exit, one-line message) unless the shared report above exists and contains a verdict line (ready, ready-with-warnings or blocked); `--force` skips that check and is for tests and scratch deploys only, never for agents. This is what makes the flow run exactly once per workspace. Re-running only happens when the user explicitly asks to re-run bootstrap (e.g. "re-run bootstrap"), and the command for that is `node pipelines/deploy/lib/bootstrap.js --reset --output .`, which clears `bootstrap.completedAt` and never stamps — never automatically, and never as a side effect of memory being archived or compacted.
 
@@ -432,28 +432,43 @@ All four adapters face the same cwd risk. The probe path differs per adapter (se
 
 ## Memory Path Resolution
 
-**The law:** On vault-backed tiers, the agent memory path is not a fixed repo-relative location — the agent's live memory lives inside the vault, not at the repo root. An agent that writes to a literal repo-relative path without checking the active storage plugin creates a stray file outside the vault, bypassing the knowledge index and the write-path guard. **The same failure shape applies equally to the Task and Document stores** — a task note or a document written at a free-tier-shaped repo-relative path instead of the plugin-resolved vault path is the identical mistake on a different store. Despite this section's name, the protocol below (especially step 2, the MCP-down fallback) is the canonical mechanism for all three Storage Plugin Contract stores — Memory, Task, and Document — not memory alone; Memory is used as the worked example because it is exercised on every Session Start, but the same steps apply verbatim to `create-task`/`transition-state`/`append-task-section` (Task store) and `create-document`/`read-document` (Document store).
-
-**When this applies:** Immediately after the Working Directory Verification pin is established, before the first read or write of the agent's memory file (every session) — and equally, before the first Task-store or Document-store operation in any session that performs one.
+**The law:** where memory, tasks and documents live is set by the active storage plugin (repo-relative), never by a path you assume. This holds for the Memory, Task and Document stores alike; Memory is the worked example. Resolve right after the Working Directory Verification pin, before the first read or write of a store, once per store per session.
 
 ### Protocol
 
-1. **Obtain the path from the resolver command**, not by hand: `node tools/resolve-path.js <store> <arg>` (store: `memory <agent>` | `task <project>` | `document <collection>` | `learnings <store>`), run from the pinned hub root. It detects the active plugin from `skills/agent-foundations/storage/*.md` presence (the same presence-gated check already used by the Optional Skill Presence Check and Bootstrap Self-Check sections above) and returns `{ store, plugin, path }` on stdout (memory adds `shape`; `migrated` means `path` is the HOT index: use the plugin's memory operations). No plugin file present → the free-tier default repo-relative path, for every store. A plugin file present → the vault-mapped path from that plugin's folder table (for example, the `obsidian` plugin used on vault-backed tiers routes every store's reads and writes through the vault's own storage backend). Use the returned path for every operation on that store for the rest of the session.
-2. **If a plugin file is present but its required write tool is unavailable at runtime** (e.g. the `obsidian` plugin's `obsidian-mcp-server` is down or unconfigured) — a distinct case from "no plugin file present" that resolves the same way for every store. The fallback target is still the plugin-resolved **vault** path for that store (the resolver command above still returns it), accessed via a direct file read/edit against that same vault path — never the free-tier default repo-relative path. A plugin file existing at all is what determines the target path; the write tool being temporarily down does not change that target for Memory, Task, or Document — it only changes the mechanism used to reach it.
+1. **Get the path from the resolver**, not by hand: `node tools/resolve-path.js <store> <arg>` from the pinned hub root (store: `memory <agent>` | `task <project>` | `document <collection>` | `learnings <store>`; from any other directory add `--hub-root <hub root>`). It prints `{ ok, store, plugin, path }`; memory adds `shape`. The path is repo-relative. Memory's shape decides how you read and write it: see Find and Write Your Memory.
 
-   The free-tier default path applies only when no plugin file exists.
+This applies to all agents (Architect, Builder, Tester, and Router) on every tier.
 
-   Lesson: lessons/free-tier-path-fallback-when-write-tool-down.md
+## Find and Write Your Memory
 
-   **Flag the fallback in the entry itself.** When writing via this direct-edit fallback, the write itself must say so plainly — a timestamp plus a one-line reason (e.g. "written via direct file edit — obsidian-mcp-server unavailable this session"). The mechanic differs slightly by store: for Memory this is the HOT/WARM/COLD entry text; for Task this is the task note's frontmatter or a `## Log`-section entry noting the fallback; for Document this is a note inline in the document body. In every case the goal is identical: a later session, or the `dreaming` consolidation pass, can recognize the fallback write and reconcile it once the normal write path is confirmed restored. See `storage/obsidian.md`'s "MCP unavailable fallback" note for the mechanics of the direct-edit path and the follow-up obligation it carries — that note covers Memory, Task, and Document (and, per the Storage Plugin Contract's Learnings store below, Learnings too) without further changes here.
+**The law:** your memory has one of three shapes, and the shape decides how you read and write it. Run the resolver; never infer the shape from a file name. Every other skill points here and keeps no copy of the mechanism.
 
-### Resolve once per session
+**Hub root.** Paths and commands act on the pinned hub root, never on your cwd. From any other directory (a Builder in a code worktree, a subagent started elsewhere) point the commands at it: `node <hub>/tools/resolve-path.js memory <agent> --hub-root <hub>`, and `npm --prefix <hub> run memory -- <subcommand> …` (also `run self-check`) in place of `npm run memory --`.
 
-Resolve the path once per Session Start for Memory (immediately after the Working Directory Verification pin is captured), and once per store the first time that session performs a Task-store or Document-store operation. Carry each resolution forward; do not re-check the plugin file per operation. At Session Start, read memory through `read-memory(agent)`, then run `sweep-memory()` if the plugin defines it.
+`node tools/resolve-path.js memory <agent>` → `{ path, shape }`:
 
-### Scope
+| Shape | Read (Session Start, compaction recovery) | Write (WAL, dispatch return, checkpoint) |
+|---|---|---|
+| `single-note` — one note at `path` (every dev and dev:graph hub) | Read the note: HOT first, WARM and COLD on demand | Edit the HOT, WARM or COLD section of the note. |
+| `absent` — nothing yet | Nothing to read | `npm run memory -- ensure <agent>`, resolve again, then write as `single-note` |
+| `mixed` — a note beside a folder of entry files | **Stop.** Tell the team lead; read and write nothing. `npm run doctor` names the note to move or delete | Same: stop |
 
-This check applies to all agents (Architect, Builder, Tester, and Router) on every tier, and to all three Storage Plugin Contract stores — Memory, Task, and Document — not memory alone. On free-tier hubs no plugin file exists, so the literal path remains correct for every store and no additional work is required. On tiers where a plugin file redirects the path, this check is what prevents a stray file from being written outside the vault, regardless of which store the operation targets.
+**Who is running**
+- Direct session or Agent-tool subagent: same table. Resolve against the pinned hub root, so a subagent whose cwd is a code worktree writes the hub's memory, never the worktree's.
+- No Edit or Write tool (Tester, Router): do every memory write through a Bash edit of the note.
+- Read-only subagent (morning-standup contribution, dreaming status phase): read only. Never `ensure`, never edit the note.
+- `BOOTSTRAP SELF-CHECK` subagent: persist its report with the same write. `npm run self-check -- <agent>` shows your path, shape, a HOT read and a write round trip run on a temp copy; `blocked` means fix it before real work.
+
+**Which operation, where** (the note; `ensure` only creates it)
+- WAL entry, dispatch-return entry, automation checkpoint, `failed-outbound` record, commercial-decision row, grill-with-docs decision, bootstrap report: a new entry at the top of the HOT section. The working buffer is not an entry: it is `working-buffer.md` in `memory/`, edited directly, with Bash `>>` where you have no Edit.
+- Promotion to COLD (`self-improving-agent`, dreaming): move the entry to the COLD section. Demote to WARM: the WARM section.
+- Finished work: mark the entry done in place.
+- Dreaming: snapshot the note to `memory/archive/<agent>-YYYY-MM-DD.md` before compacting.
+
+**Write rules**
+- Keep an entry short: detail belongs in the ticket or document.
+- A failed write (an edit error, or a non-zero exit from `ensure`) is not a written WAL entry. Fix the cause and retry once; if it still fails, say in your reply that the write failed and why. Do not claim the entry.
 
 ## Security Baseline
 
@@ -499,12 +514,7 @@ These constraints are workspace-specific and override general defaults when they
 
 ## Knowledge Retrieval (paid `dev:sub` hubs only)
 
-This section only applies when `workspace.config.json` has `hubType: "dev:sub"` and the hub has a knowledge-retrieval index configured. It does not apply to `dev` or `ops` hubs. The specific vault/index tool names and runtime state paths are intentionally not enumerated here — that detail lives entirely in the dev:sub-only plugin files the deployed hub ships when this feature is active, never in this universally-shipped skill.
-
-- **Batch writes, don't refresh per-edit.** Group related vault mutation tool calls into one meaningful batch before refreshing. Every mutation call already marks retrieval state dirty automatically via the `PostToolUse` hook — you do not need to do that yourself, but you do need to avoid triggering a full refresh after every single tiny edit.
-- **Refresh after the batch, not before reporting.** Once a batch of related writes is complete, run `npm run knowledge:refresh` before telling the user the new content is retrievable.
-- **Verify before claiming retrievable.** Check the refresh command's exit code (0 = success) before reporting the new knowledge as searchable. A non-zero exit or a stale-status warning means the previous index is still what will be returned — say so rather than reporting success.
-- Session start and the `Stop` refresh-if-dirty update the keyword index automatically; embedding is opt-in via `qmd.embed` in workspace.config.json.
+This section only applies when `workspace.config.json` has `hubType: "dev:sub"` and the hub has a knowledge-retrieval index configured. It does not apply to `dev` or `ops` hubs.
 
 ## Storage Plugin Contract
 
@@ -535,18 +545,15 @@ Every storage plugin implements the following four stores and their operations.
 
 #### Memory store
 
-Used by: WAL (HOT writes), Session Start (read, plus the daily sweep), dreaming, morning-standup.
+Used by: WAL (HOT writes), Session Start (read, plus the daily sweep), dreaming, morning-standup. This table is the plugin's operation vocabulary; the commands an agent runs for each operation, by memory shape, are in Find and Write Your Memory.
 
 | Operation | Description |
 |---|---|
 | `read-memory(agent[, tier])` | Read the agent's live memory (`tier` only where the plugin keeps tiers as separate files). |
 | `list-memory-agents()` | Enumerate the agents that have live memory, for tooling (e.g. the memory-index CLI) that works across all agents. |
 | `write-memory-entry(agent, tier, content)` | Edit a HOT/WARM/COLD section entry. |
-| `sweep-memory([force])` | Optional: only a plugin with tiered memory defines it. Runs the memory lifecycle; skips itself after the first run of the day unless forced. |
 | `archive-memory(agent, date)` | Write the archived snapshot (dreaming end-of-cycle). |
-| `compact-memory(agent, newContent)` | Rewrite the live memory file with compacted content. |
-
-**MCP-down fallback:** see Memory Path Resolution above (step 2).
+| `compact-memory(agent, newContent)` | Rewrite a single-note memory file with compacted content. |
 
 #### Task store
 
@@ -561,10 +568,6 @@ Used by: ticket-lifecycle-mode, task-automation-flow, drift tooling.
 | `transition-state(id, newState)` | Update `status:` frontmatter and, where the plugin requires it, rename the filename infix. |
 | `append-task-section(id, section, content)` | Append content to a named section (e.g. `## Log`, `## QA Report`). |
 
-**MCP-down fallback:** if the active plugin's write tool is unavailable, see Memory Path
-Resolution above — that protocol's step 2 is the canonical fallback mechanism for this store too,
-not memory alone.
-
 #### Document store
 
 Used by: documentation-and-adrs, planner/architecture outputs.
@@ -573,10 +576,6 @@ Used by: documentation-and-adrs, planner/architecture outputs.
 |---|---|
 | `create-document(collection, name, content)` | Write a document under the named collection (ADRs, reports, proposals). |
 | `read-document(collection, name)` | Read a document by collection and name. |
-
-**MCP-down fallback:** if the active plugin's write tool is unavailable, see Memory Path
-Resolution above — that protocol's step 2 is the canonical fallback mechanism for this store too,
-not memory alone.
 
 #### Learnings store
 
@@ -588,14 +587,8 @@ Used by: WAL (learnings routing — `self-improving-agent`'s five trigger types)
 | `write-learning-entry(store, category, content)` | Append a new entry to the named store (`LEARNINGS`, `ERRORS`, or `FEATURE_REQUESTS` — mirroring the three `.learnings/*.md` files) using the log format `self-improving-agent` defines for that store; `category` applies to `LEARNINGS` entries only, per that skill's own category list. |
 | `list-pending-learnings(store)` | Read a store's entries with `**Status**: pending` — used by `self-improving-agent`'s Periodic Review and by `dreaming`'s promotion-sweep step in place of a raw file read. |
 
-**MCP-down fallback:** if the active plugin's write tool is unavailable, apply the same
-MCP-down fallback mechanism Memory Path Resolution's step 2 describes, extended to this store —
-the free-tier-shaped `.learnings/*.md` path is never a substitute for the plugin-resolved vault
-location just because the write tool is temporarily down.
-
 Out of contract deliberately: retrieval/search (qmd's job), tracker mirroring
-(tracker plugin's job, `trackers/<name>.md`), and vault write-path guarding
-(`packages/vault/vault-guard.cjs`).
+(tracker plugin's job, `trackers/<name>.md`).
 
 ## Per-Agent Notes
 
@@ -638,7 +631,7 @@ Before every response, ask: is this response as compact as it can be while still
 
 ## Working Buffer Compression
 
-When writing to the working buffer or `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
+When writing to the working buffer or your memory (Find and Write Your Memory in `agent-foundations`):
 
 - Write the **decision or outcome**, not the conversation.
 - Write the **current state**, not how you got there.
@@ -654,7 +647,7 @@ When handing off between agents or sessions:
 - Pass: the decision made, constraints it created, and the next concrete action.
 - Don't pass: the full conversation, the reasoning path, or the context already in the ticket.
 - If handing off to Builder, the ticket IS the context — don't duplicate it in the dispatch message.
-- If handing off at session end, update `memory/<agent>.md` HOT section (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) and stop. The next session reads memory, not chat history.
+- If handing off at session end, record it in your HOT memory and stop. The next session reads memory, not chat history.
 
 ---
 
@@ -665,7 +658,7 @@ Aggressively retire HOT items:
 - If a decision is confirmed and has no open action, move it to WARM.
 - If an item has been in HOT for more than 48 hours with no reference, move it to WARM.
 - If an item is recoverable from a git log, ticket, or file read, remove it from HOT entirely.
-- A long HOT section is a signal that decisions aren't being closed — not a sign of thoroughness.
+- A long HOT memory is a signal that decisions aren't being closed — not a sign of thoroughness.
 
 ---
 
@@ -677,12 +670,6 @@ When invoking a subagent or spawning a task:
 - Name the exact file, line, or artifact — don't describe it in prose.
 - State the question or task in one sentence before any supporting context.
 - Remove the supporting context if the subagent can read it directly.
-
----
-
-## Storage-plugin note
-
-**Storage-plugin note (`memory/<agent>.md` references above, in Working Buffer Compression and Handoff Packing):** before writing to `memory/<agent>.md`, check for an active storage plugin file at `skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`), the literal repo-relative path is wrong — write instead via that plugin's `write-memory-entry(agent, tier, content)` operation (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
 
 <!-- END SKILL: token-economics -->
 <!-- BEGIN SKILL: proactive-agent -->
@@ -701,7 +688,7 @@ These behaviours are always-on, not mode-gated. Load this skill to review or ref
 
 The working buffer is the crisis backstop — it activates at 60%. `token-economics` is the upstream discipline that delays it. Load it for token budgeting from session start.
 
-When the session grows long (many extended exchanges, or responses needing heavy context re-establishment), log every subsequent exchange to the working buffer: `working-buffer.md` in the active storage plugin's Memory store (free-tier default: `memory/working-buffer.md`):
+When the session grows long (many extended exchanges, or responses needing heavy context re-establishment), log every subsequent exchange to the working buffer: `working-buffer.md` in the memory root (free-tier default: `memory/working-buffer.md`; on a vault hub the same file sits in the memory root beside the agent folders), appended directly:
 
 ```
 # Working Buffer (Danger Zone Log)
@@ -732,9 +719,9 @@ Auto-trigger when:
 Recovery steps:
 
 1. Read the working buffer — raw danger-zone exchanges
-2. Read `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) — current HOT/WARM/COLD state
+2. Read your memory (Find and Write Your Memory in `agent-foundations`): current HOT/WARM/COLD state
 3. Read today's and yesterday's daily notes
-4. Promote: pull important context from the buffer into the HOT section of `memory/<agent>.md` (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below)
+4. Promote: pull important context from the buffer into your HOT memory (same section)
 5. Present: "Recovered from working buffer. Last task was X. Continue?"
 
 Do NOT ask "what were we discussing?" — the buffer has the conversation.
@@ -770,7 +757,7 @@ During any automation run involving multiple sequential agent dispatches, write 
 
 ### Checkpoint format
 
-Write to `memory/<agent>.md` HOT section (the loading agent's own memory file; or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below):
+Write one HOT entry (Find and Write Your Memory in `agent-foundations`); for a single-note memory it is a section in the note:
 
 ```
 ## Automation Checkpoint — [timestamp]
@@ -783,7 +770,7 @@ Next dispatch: task_P
 
 On session resume after an interruption (rate limit, session end, compaction):
 
-1. Read HOT section — look for the most recent Automation Checkpoint entry.
+1. Read your HOT memory — look for the most recent Automation Checkpoint entry.
 2. If found: dispatch from `Next dispatch`. Do not re-run completed items.
 3. If not found: re-derive current state from GitHub issue/PR labels via `gh issue list`.
 
@@ -814,11 +801,6 @@ Before proposing a change to agent behavior, ask three questions:
 
 If the answer to all three is "no" or "maybe", skip it. One strong "yes" is the bar — not a weighted total.
 
----
-
-## Storage-plugin note
-
-**Storage-plugin note (`memory/<agent>.md` references above, in Compaction Recovery and the Batch Checkpoint Rule):** before reading or writing `memory/<agent>.md`, check for an active storage plugin file at `skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed hub type, e.g. `dev:sub`/`ops`), the literal repo-relative path is wrong — route instead via that plugin's `read-memory(agent)` / `write-memory-entry(agent, tier, content)` operations (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
 
 ---
 
@@ -874,7 +856,7 @@ The following rules apply whenever Builder is operating inside a `task-automatio
 
 ### WAL Enforcement
 
-Write to your memory file's HOT section (resolve the path with `node tools/resolve-path.js memory builder`) before every response during an automation run. Record at minimum: current ticket, current state, verifier, and any blocking decision. This is non-negotiable — an agent that has not updated its memory file has not completed its turn.
+Write to your HOT memory (Find and Write Your Memory) before every response during an automation run. Record at minimum: current ticket, current state, verifier, and any blocking decision. This is non-negotiable — an agent that has not updated its memory file has not completed its turn.
 
 ### State Update Requirement
 
@@ -887,7 +869,7 @@ On every state transition:
 2. **If a tracker is configured** (presence of `github:` or `github-issue:` field, or workspace tracker config):
    - Apply the corresponding lifecycle state label to the GitHub issue (remove the previous state label, apply the new one)
    - Call TaskUpdate immediately — do not batch state changes
-3. **Reflect the new state** in your memory file's HOT section (resolve the path with `node tools/resolve-path.js memory builder`)
+3. **Reflect the new state** in your HOT memory (Find and Write Your Memory)
 
 When no tracker is configured, skip step 2. The local task file is always updated regardless of tracker configuration.
 
@@ -979,7 +961,7 @@ Activated per-task at intake based on ticket type. Load the skill when the lens 
 Optional skills are not pre-bundled into any deploy. They must be installed on-demand by the operator against the deployed hub before Builder can load them.
 
 - `codebase-design` — analyzing codebase structure, refactoring modules, designing test layouts, planning dependency injection, or scoping structural changes. Check `skills/codebase-design/SKILL.md` for presence before assuming it is available; absence is normal, not an error. Note: the upstream skill also ships companion files (`DEEPENING.md`, `DESIGN-IT-TWICE.md`) covering deepening techniques and interface exploration; these are separate install targets and their absence does not block the core skill.
-- `frontend-design` (Anthropic, `anthropics/claude-code`) — load for frontend visual/UX implementation work on web projects: layout, styling, component visual design, and UX polish. Requires `install-skill frontend-design` to have been run against this deployed hub first — check `skills/frontend-design/SKILL.md` for presence before assuming it is available; absence is normal, not an error. If absent and the ticket needs it, ask the operator to install it rather than improvising frontend design guidance.
+- `frontend-design` (Anthropic, `anthropics/claude-plugins-official`) — load for frontend visual/UX implementation work on web projects: layout, styling, component visual design, and UX polish. Requires `install-skill frontend-design` to have been run against this deployed hub first — check `skills/frontend-design/SKILL.md` for presence before assuming it is available; absence is normal, not an error. If absent and the ticket needs it, ask the operator to install it rather than improvising frontend design guidance.
 
 ## Tester Direct QA Handoff Contract
 
@@ -1041,5 +1023,5 @@ Skills for this agent live in `skills/`. Read the relevant file before entering 
 | test-driven-development | TDD workflow, test-first implementation, bug-fix with failing test, or test discipline question | `skills/test-driven-development/SKILL.md` |
 | debugging-and-error-recovery | debugging loop, build failure, test failure, runtime error, or error recovery question | `skills/debugging-and-error-recovery/SKILL.md` |
 | browser-automation | URL to verify, UI state to capture, form to fill, or integration endpoint to exercise | `skills/browser-automation/SKILL.md` |
-| frontend-design | Component name, page name, user flow, or design brief (optional — install via `install-skill frontend-design` if needed) | `skills/frontend-design/SKILL.md` |
+| frontend-design | — (optional — install via `install-skill frontend-design` if needed) | `skills/frontend-design/SKILL.md` |
 | codebase-design | — (optional — install via `install-skill codebase-design` if needed) | `skills/codebase-design/SKILL.md` |

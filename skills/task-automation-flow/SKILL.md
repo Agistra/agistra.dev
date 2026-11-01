@@ -412,7 +412,7 @@ All three rules below are mandatory during an automation run.
    - **If a tracker is configured** (presence of a tracker reference field in the task file frontmatter, or workspace tracker config): the same CLI invocation syncs the tracker's `state:*` label and post-verifies it landed — this is mandatory, not optional, and happens automatically as part of the atomic transition
    - **If the CLI reports a non-zero exit / `ok: false`:**
      - The JSON output names the specific failed step (`local-write`, `label-sync`, or `verify`) — append the failure to the task file's `## Log` section (timestamp, attempted action, error)
-     - Record the failed outbound in Router's memory HOT section under `failed-outbound` via the active storage plugin using `write-memory-entry('router', 'HOT', content)` (if Router is active)
+     - Record the failed outbound in Router's HOT memory under `failed-outbound` (Find and Write Your Memory in `agent-foundations`; if Router is active)
      - Reconcile the mirror before the ticket is considered closed
    - **A transition is not complete** until the CLI reports `ok: true` (exit 0) or the failure is explicitly recorded for retry
    - Fail-counter and QA-report tracker comments (as opposed to the `state:*` label) still use the active tracker plugin's update-record procedure directly (see `trackers/<plugin-name>.md`)
@@ -432,9 +432,7 @@ The CLI (`pipelines/deploy/lib/task-cli.js`) handles the atomic local write (fro
 
 All agents write to their own memory file before every response during an automation run. This is not optional.
 
-- Architect writes via the active storage plugin using `write-memory-entry('architect', tier, content)`
-- Builder writes via the active storage plugin using `write-memory-entry('builder', tier, content)`
-- Tester writes via the active storage plugin using `write-memory-entry('tester', tier, content)`
+- Each agent writes to its own memory as Find and Write Your Memory in `agent-foundations` says (a write that returns `ok: false` is not a write).
 
 Each write must reflect the current ticket state and any decisions made in that turn. An agent that has not updated its memory file has not completed its turn.
 

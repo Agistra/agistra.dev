@@ -1,6 +1,6 @@
 ---
 name: security-audit-lens
-description: "Use when: a general codebase assessment, pre-migration/pre-rewrite review, feasibility question about converting/migrating/rewriting a codebase (how hard, effort), or explicit security-focused request needs a structured, repeatable security audit pass covering hardcoded secrets, injection-prone constructs, auth/debug backdoors, insecure config defaults, and weak credential storage. Complements (does not replace) the built-in /security-review command. Not a mandatory gate on every ticket."
+description: "Use when: a general codebase assessment, pre-migration/pre-rewrite review, feasibility question about converting/migrating/rewriting a codebase (how hard, effort), or explicit security-focused request needs a structured, repeatable security audit pass covering hardcoded secrets, injection-prone constructs, auth/debug backdoors, insecure config defaults, weak credential storage, and (via reference files) AI/LLM risks, supply chain and CI, and authorization and data isolation. Complements (does not replace) the built-in /security-review command. Not a mandatory gate on every ticket."
 argument-hint: "Codebase, module, config set, or diff to audit for security findings"
 ---
 
@@ -55,13 +55,14 @@ same evidence discipline as VBR:
   the code or config in question and can quote it.
 - If you suspect a class of issue but have not located concrete evidence (e.g. "there's probably a
   secret somewhere in config" without having found one), do not report it as a finding. Either keep
-  looking or report it as an open question in the audit summary, not as a finding.
+  looking or report it as an open question in the audit summary (see the split below).
 - Prefer under-reporting with an explicit "not fully covered" note over over-reporting with
   low-confidence guesses.
-- Reuse the Confidence Tiers from `code-review-and-quality`: **Confirmed** (the exact string or
-  pattern was read directly), **Likely** (a known-bad shape observed with a specific counter-example,
-  but not exercised), **Speculative** (inferred without a direct quote — report only at
-  Critical/Required severity, tagged `(unconfirmed)`, never at Nit/Optional/FYI).
+- The Confidence column reuses two tiers from `code-review-and-quality`: **Confirmed** (the exact
+  string or pattern was read directly) and **Likely** (a known-bad shape observed with a specific
+  counter-example, but not exercised). A lead inferred without a direct quote is never a finding at
+  any severity. If it has a location and a named unresolved fact that a safe read-only step can
+  settle, list it as Needs validation (see Output Format); with no location yet, it is an open question.
 
 ## Checklist Categories
 
@@ -125,21 +126,59 @@ Search for how stored user credentials are protected (distinct from category 1, 
 - fast or unsalted hashes (MD5, SHA-1, plain SHA-256) used for passwords
 - password material round-tripped to the client, or held in page or session state
 
+### Reference Categories
+
+Load the matching file from `references/` only when the target contains the area:
+
+- agent prompts or tool wiring: `references/ai-llm.md`
+- CI workflows or dependency manifests: `references/supply-chain-ci.md`
+- a database, RLS policies, or per-user data: `references/authorization-isolation.md`
+
 ## Output Format
 
 Findings are structured records, not free prose. Reuse the Critical/Required/Nit/Optional/FYI
 severity vocabulary from `code-review-and-quality` so findings from this skill sit consistently
-alongside code review output.
+alongside code review output. Every candidate ends with one of three verdicts, each in its own table.
 
 ```markdown
 ## Security Audit Findings
 
 | # | Category | Location | Description | Severity | Confidence | Remediation direction |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | [hardcoded-credentials / injection / auth-backdoor / insecure-config-default / weak-credential-storage] | [file:line] | [what was observed, quoted] | [Critical/Required/Nit/Optional/FYI] | [Confirmed/Likely/Speculative] | [what direction fixes it, not a full patch] |
+| 1 | [hardcoded-credentials / injection / auth-backdoor / insecure-config-default / weak-credential-storage / ai-llm / supply-chain-ci / authz-isolation] | [file:line] | [what was observed, quoted] | [Critical/Required/Nit/Optional/FYI] | [Confirmed/Likely] | [what direction fixes it, not a full patch] |
+| 2 | injection | src/users:42 | `run("SELECT ... " + id)` builds a query from a request value | Critical | Confirmed | Bind the value as a parameter |
+
+## Needs Validation
+
+No severity. Name the exact unresolved fact and a safe, read-only way to settle it.
+
+| # | Category | Location | Unresolved fact | Safe way to settle it |
+| --- | --- | --- | --- | --- |
+| 3 | auth-backdoor | server/login:88 | Whether the `DEBUG_LOGIN` flag is set in any deployed environment | Read the deployment config for that key; call no live endpoint |
+
+## Rejected
+
+Disproved candidates, kept so a later pass does not raise them again.
+
+| # | Category | Location | Reason |
+| --- | --- | --- | --- |
+| 4 | insecure-config-default | cfg/dev:5 | Wildcard CORS applies to dev only; cfg/prod:9 overrides it |
 ```
 
-Run each confirmed finding through `pattern-sweep` before listing it as final.
+## Independent Disproof (Critical and Required)
+
+Before a Critical or Required finding is listed as final, a different agent checks it. The verifier
+works in a fresh context (a subagent where the platform has them, otherwise a separate session) and
+receives only the claim, the location, and the cited code. It tries to refute the claim from source
+and returns one outcome:
+
+- **Upheld**: the code supports the claim; the finding stays Confirmed or Likely.
+- **Refuted**: the code contradicts the claim; move it to Rejected with a one-line reason.
+- **Cannot decide**: move it to Needs validation.
+
+The finder never verifies its own finding. The verifier reads source only and does not run target
+code. Nit, Optional, and FYI skip this step. Run it before `pattern-sweep`, then run each upheld
+finding through `pattern-sweep` before listing it as final.
 
 Severity definitions (reused verbatim from `code-review-and-quality`):
 
@@ -151,16 +190,28 @@ Severity definitions (reused verbatim from `code-review-and-quality`):
 | **Optional** / **Consider** | Worth considering, not required. |
 | **FYI** | Informational only — context for future reference, no action required. |
 
+Two rules apply when rating:
+
+- Severity is likelihood times impact. A severe outcome that is very unlikely, or a likely one with
+  trivial impact, rates lower than either factor alone suggests.
+- A missing second defence layer is a Nit or Optional hardening note when the first layer is shown
+  to stop the attack. It is Required only when the first layer is shown to be absent or bypassable.
+
 Close every audit pass with a short summary block, even when findings are zero:
 
 ```markdown
 ## Audit Summary
 
 - Scope: [what was actually reviewed — paths, modules, or "full repository"]
-- Categories covered: [which of the five checklist categories were actually searched]
-- Categories not covered / out of scope this pass: [name them explicitly, do not silently omit]
-- Open questions: [suspected issues without located evidence — not reported as findings]
+- Coverage: [full-codebase pass: the table below; diff-scoped pass: one line each for categories searched and categories not searched, with reasons]
+- Open questions: [suspicions with no location yet — leads with a location go to Needs Validation]
+
+| Module or path | Secrets | Injection | Auth/debug | Config defaults | Credential storage | AI/LLM | Supply chain/CI | Authz/isolation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| src/api | searched | partly searched | searched | searched | not searched: no user store here | not examined: no agent code | not examined | searched |
 ```
+
+Each cell is `searched`, `partly searched`, `not searched`, or `not examined` (reference file not loaded); every `not searched` or `not examined` cell gives a reason. Never leave a cell blank or imply a clean result for an area not examined.
 
 ## What This Skill Does Not Do
 
@@ -180,3 +231,7 @@ Close every audit pass with a short summary block, even when findings are zero:
 - `skill-quality-review` applies when editing this skill.
 - `architecture-mode` — load this skill during a general codebase assessment or before
   migration/rewrite planning, per the "When to Load" section above.
+
+## Sources
+
+Idea source (concepts only, no text copied): `cloudflare/security-audit-skill` (MIT).

@@ -1,6 +1,6 @@
 ---
 name: debugging-and-error-recovery
-description: "Guides systematic root-cause debugging. Use when tests fail, builds break, behavior doesn't match expectations, or you encounter any unexpected error. Use when you need a systematic approach to finding and fixing the root cause rather than guessing."
+description: "Guides systematic root-cause debugging. Use when tests fail, builds break, something that worked yesterday stopped working, behavior doesn't match expectations, or you encounter any unexpected error. Use when you need a systematic approach to finding and fixing the root cause rather than guessing."
 argument-hint: "debugging loop, build failure, test failure, runtime error, or error recovery question"
 ---
 
@@ -34,7 +34,7 @@ When anything unexpected happens:
 6. RESUME only after verification passes
 ```
 
-Do not push past a failing test or broken build to work on the next feature. Errors compound. A bug in Step 3 that goes unfixed makes Steps 4-10 wrong.
+Do not push past a failing test or broken build to work on the next feature. Errors compound. A bug in Step 3 that goes unfixed makes Steps 4-6 wrong.
 
 ## The Six-Step Triage Loop
 
@@ -62,7 +62,7 @@ Cannot reproduce on demand:
 │   ├── Try with artificial delays to widen race windows
 │   └── Run under load or concurrency to increase collision probability
 ├── Environment-dependent?
-│   ├── Compare Node/browser versions, OS, environment variables
+│   ├── Compare runtime and browser versions, OS, environment variables
 │   ├── Check for differences in data (empty vs populated database)
 │   └── Try reproducing in CI where the environment is clean
 ├── State-dependent?
@@ -77,15 +77,16 @@ Cannot reproduce on demand:
 
 For test failures:
 
+Use the project's own test command. Find it in the README, contributing guide, or CI config; do not assume one. Run these three ways:
+
+- Only the failing test, selected by name.
+- With verbose output.
+- Alone, in a single test file, to rule out test pollution.
+
+One runner's syntax for the single-file case (Jest 30; older flags such as `--testPathPattern` are rejected there, so check your runner's current docs):
+
 ```bash
-# Run the specific failing test
-npm test -- --grep "test name"
-
-# Run with verbose output
-npm test -- --verbose
-
-# Run in isolation (rules out test pollution)
-npm test -- --testPathPattern="specific-file" --runInBand
+npx jest path/to/specific-file.test.js --runInBand
 ```
 
 **Completion gate:** The step is complete only when you can name and run a single command that reliably triggers the failure. If you cannot, do not proceed to Step 2 — return to the strategies above.
@@ -112,7 +113,7 @@ git bisect start
 git bisect bad                    # Current commit is broken
 git bisect good <known-good-sha>  # This commit worked
 # Git will checkout midpoint commits; run your test at each
-git bisect run npm test -- --grep "failing test"
+git bisect run <focused test command for the failing test>
 ```
 
 ### Step 3: Reduce
@@ -171,19 +172,12 @@ This test should fail without the fix and pass with it.
 
 After fixing, verify the complete scenario:
 
-```bash
-# Run the specific test
-npm test -- --grep "specific test"
+Use the project's own commands:
 
-# Run the full test suite (check for regressions)
-npm test
-
-# Build the project (check for type/compilation errors)
-npm run build
-
-# Manual spot check if applicable
-npm run dev  # Verify in browser or CLI
-```
+- The specific test that reproduced the failure.
+- The full test suite, to check for regressions.
+- The build, to check for type and compilation errors.
+- A manual spot check of the original scenario, if applicable.
 
 "Tests pass" is not the same as "the bug is fixed." Verify the original failure scenario end-to-end before reporting complete.
 
@@ -210,8 +204,8 @@ Build fails:
 ├── Type error → Read the error, check the types at the cited location
 ├── Import error → Check the module exists, exports match, paths are correct
 ├── Config error → Check build config files for syntax/schema issues
-├── Dependency error → Check package.json, run npm install
-└── Environment error → Check Node version, OS compatibility
+├── Dependency error → Check the dependency manifest, reinstall dependencies
+└── Environment error → Check runtime version, OS compatibility
 ```
 
 ### Runtime Error Triage

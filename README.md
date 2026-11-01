@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="pipelines/deploy/assets/agistra-logo.png" alt="Agistra" width="200">
+</p>
+
+<p align="center">
+  <strong>Agentic Intelligence &amp; Strategic Orchestration</strong>
+</p>
+
 # Agistra Dev
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -335,6 +343,17 @@ memory/
 Agents read their memory file at session start and update it at session end. HOT items surface in the morning briefing. WARM items inform planning. COLD items are archived or dropped.
 
 If a memory file goes missing (e.g. a fresh deploy, or a file deleted by accident), `npm run doctor` scaffolds it automatically the next time it runs — no extra flag or command needed. Files that already exist are left untouched.
+
+### Untrack generated state in an existing hub
+
+Deploy ignores `.learnings/` and `.claude/settings.json` in the hub `.gitignore`. Both are local state: `settings.json` is regenerated on every deploy and collects your own `permissions.allow` entries. New lines reach an existing hub through the usual `.gitignore` merge, but ignoring a file does not untrack one that is already committed. If your hub tracks it, run this once and commit the result:
+
+```bash
+git rm --cached .claude/settings.json
+git rm -r --cached .learnings   # only if .learnings/ is tracked
+```
+
+The files stay on disk. Deploy recreates `.claude/settings.json` whenever it is missing, so a fresh clone gets it back on the next deploy. Nothing runs this for you.
 
 ---
 

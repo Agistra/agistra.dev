@@ -5,10 +5,11 @@
  * instead of an agent assembling it by hand from doctor.js, skills-audit.js,
  * a memory read and workspace.config.json.
  *
- * Usage: node tools/self-check.js <agent> [--json]
+ * Usage: node tools/self-check.js <agent> [--json] [--hub-root <path>]
  * (also exposed as `npm run self-check -- <agent>`)
  *
- * Run from the hub root. Exit code 0 for a `ready`/`ready-with-warnings`
+ * Run from the hub root, or pass --hub-root when the cwd is elsewhere (a
+ * subagent started in a code worktree). Exit code 0 for a `ready`/`ready-with-warnings`
  * verdict, 1 for `blocked`.
  */
 import fs from 'node:fs';
@@ -21,6 +22,11 @@ import {
 	detectPlugin,
 	loadMemoryRootModule,
 } from './resolve-path.js';
+import {
+	memoryLimits,
+	readMemory,
+	writeRoundTrip,
+} from './self-check-memory.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -192,13 +198,38 @@ async function memoryState(hubRoot, agent, fsMod) {
 				'memory stub-scaffolded; if `npm run setup` has not yet run on this hub, this finding will go stale the moment it does — re-run Bootstrap Self-Check manually to confirm after setup completes.';
 		}
 	}
-	return { state, path: resolved.path, plugin, shape, caveat };
+	// What the agent would read, and whether a write would land (temp copy only).
+	const read = readMemory(resolved, agent);
+	const roundTrip = await writeRoundTrip({ hubRoot, agent, resolved });
+	const limits = shape === 'migrated' ? await memoryLimits(hubRoot) : null;
+	return {
+		state,
+		path: resolved.path,
+		plugin,
+		shape,
+		caveat,
+		read,
+		roundTrip,
+		limits,
+	};
+}
+
+/** Why a memory problem blocks the verdict, or null. Names the files involved. */
+function memoryBlock(memory) {
+	if (memory.shape === 'mixed') {
+		return `memory is mixed: the note ${memory.path} sits beside keyed entries in ${path.join(path.dirname(memory.path), path.basename(memory.path, '.md'))}; stop, tell the team lead, read and write nothing until the note is moved or deleted`;
+	}
+	if (memory.roundTrip && memory.roundTrip.ok === false) {
+		const failed = memory.roundTrip.steps.find((s) => !s.ok);
+		return `memory write round trip failed${failed ? ` at step "${failed.step}"` : ''}: ${memory.roundTrip.error ?? 'unknown error'}`;
+	}
+	return null;
 }
 
 /**
  * "projects/ directory scaffolded" mirrors doctor.js's own check 14
  * (checkProjectsDir): vault-backed tiers (dev:sub/ops) scaffold
- * `vault/Tasks`, not a literal `projects/` — resolved via the same
+ * `vault/Projects`, not a literal `projects/` — resolved via the same
  * `resolveTasksRootSegment(hubType)` doctor.js uses, read from
  * workspace.config.json's hubType, matching doctor.js's own precedent
  * exactly rather than a tier-naive literal path check.
@@ -265,16 +296,21 @@ export async function runSelfCheck({ hubRoot, agent, fsMod = fs }) {
 	if (!workspace.projectsScaffolded)
 		gaps.push('projects/ directory not scaffolded');
 
+	const memoryBlocked = memoryBlock(memory);
+	if (memoryBlocked) gaps.push(memoryBlocked);
 	const blocked =
 		!identity.profilePath ||
-		(skills.ok && skills.missingGuaranteed?.length > 0);
+		(skills.ok && skills.missingGuaranteed?.length > 0) ||
+		memoryBlocked !== null;
 	let verdict;
 	let reason;
 	if (blocked) {
 		verdict = 'blocked';
-		reason = !identity.profilePath
-			? 'no profile file found for any known adapter'
-			: `missing guaranteed skills: ${skills.missingGuaranteed.join(', ')}`;
+		if (!identity.profilePath)
+			reason = 'no profile file found for any known adapter';
+		else if (skills.ok && skills.missingGuaranteed?.length > 0)
+			reason = `missing guaranteed skills: ${skills.missingGuaranteed.join(', ')}`;
+		else reason = memoryBlocked;
 	} else if (gaps.length > 0) {
 		verdict = 'ready-with-warnings';
 		reason = memory.caveat ?? gaps[0];
@@ -314,6 +350,23 @@ function formatHuman(report) {
 	lines.push(
 		`4. Memory state — ${report.memory.state}${report.memory.caveat ? ` (${report.memory.caveat})` : ''}`,
 	);
+	if (report.memory.path) {
+		const m = report.memory;
+		lines.push(
+			`   Memory path — ${m.path} (shape ${m.shape}, plugin ${m.plugin})`,
+		);
+		lines.push(
+			`   Memory read — ${m.read.ok ? 'ok' : 'FAILED'}: ${m.read.detail}`,
+		);
+		const rt = m.roundTrip;
+		lines.push(
+			`   Memory write round trip (temp copy, live memory untouched) — ${rt.skipped ? 'skipped' : rt.ok ? 'ok' : 'FAILED'}: ${rt.steps.length ? rt.steps.map((s) => `${s.step} ${s.ok ? 'ok' : 'FAILED'}`).join(', ') : (rt.error ?? '')}${!rt.ok && !rt.skipped ? ` (${rt.error})` : ''}`,
+		);
+		if (m.limits)
+			lines.push(
+				`   Memory limits — summary ${m.limits.summaryMaxChars} chars; HOT index ${m.limits.hotIndexMaxLines} lines / ${m.limits.hotIndexMaxBytes} bytes; entry ${m.limits.entryMaxBytes} bytes`,
+			);
+	}
 	lines.push(`5. Workspace signals — ${JSON.stringify(report.workspace)}`);
 	lines.push(
 		`6. Gaps — ${report.gaps.length ? report.gaps.join('; ') : 'none'}`,
@@ -324,15 +377,29 @@ function formatHuman(report) {
 
 async function main() {
 	const args = process.argv.slice(2);
+	let hubRoot = process.cwd();
+	const hubFlag = args.indexOf('--hub-root');
+	if (hubFlag !== -1) {
+		const value = args[hubFlag + 1];
+		if (!value || value.startsWith('--')) {
+			process.stderr.write('--hub-root needs a path\n');
+			process.exit(1);
+			return;
+		}
+		hubRoot = path.resolve(value);
+		args.splice(hubFlag, 2);
+	}
 	const asJson = args.includes('--json');
 	const agent = args.find((a) => !a.startsWith('--'));
 	if (!agent) {
-		process.stderr.write('Usage: node tools/self-check.js <agent> [--json]\n');
+		process.stderr.write(
+			'Usage: node tools/self-check.js <agent> [--json] [--hub-root <path>]\n',
+		);
 		process.exit(1);
 		return;
 	}
 
-	const report = await runSelfCheck({ hubRoot: process.cwd(), agent });
+	const report = await runSelfCheck({ hubRoot, agent });
 	process.stdout.write(
 		asJson ? `${JSON.stringify(report)}\n` : `${formatHuman(report)}\n`,
 	);

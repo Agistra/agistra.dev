@@ -1,6 +1,6 @@
 ---
 name: test-driven-development
-description: "Drives development with tests. Use when implementing any logic, fixing any bug, or changing any behavior. Use when you need to prove that code works, when a bug report arrives, or when you're about to modify existing functionality."
+description: "Drives development with tests. Use when implementing any logic, fixing any bug, or changing any behavior. Use when you need to prove that code works, when a bug report arrives, or when you're about to modify existing functionality. Use when asked to add tests to, fix a bug in, or change the behavior of a function, even when the code is pasted inline and the request does not mention tests."
 argument-hint: "TDD workflow, test-first implementation, bug-fix with failing test, or test discipline question"
 ---
 
@@ -21,6 +21,20 @@ Write a failing test before writing the code that makes it pass. For bug fixes, 
 - Any change that could break existing behavior
 
 **When NOT to use:** Pure configuration changes, documentation updates, or static content changes that have no behavioral impact.
+
+## Discover the Stack First
+
+The TDD cycle is the same everywhere; the commands are not. Before writing the first test, find out how this project runs its tests:
+
+- Read the README, contributing guide, and CI workflow for the commands that gate merges.
+- Check the build and dependency files to identify the language and test runner.
+- Prefer a checked-in wrapper or script over a globally installed tool.
+- Note how to run one focused test and how to run the full suite.
+- Look at neighboring tests for file location, naming, and style.
+
+Use the focused-test command during the loop and the full-suite command before you finish. Never assume a command. If the project does not document one, say so and ask.
+
+The examples below use TypeScript for illustration. The workflow is identical in any language.
 
 ## The TDD Cycle
 
@@ -319,13 +333,14 @@ describe('TaskService', () => {
 - Test names that don't describe the expected behavior
 - Skipping tests to make the suite pass
 - Running the same test command twice in a row without any intervening code change
+- Assuming a default test command without checking what the project actually uses
 
 ## Verification
 
 After completing any implementation:
 
 - [ ] Every new behavior has a corresponding test
-- [ ] All tests pass: `npm test`
+- [ ] All tests pass, run with the project's own test command
 - [ ] Bug fixes include a reproduction test that failed before the fix
 - [ ] Test names describe the behavior being verified
 - [ ] No tests were skipped or disabled

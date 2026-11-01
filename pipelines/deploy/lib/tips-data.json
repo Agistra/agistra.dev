@@ -80,16 +80,6 @@
       ]
     },
     {
-      "id": "prompt-migration-completeness-check",
-      "tiers": [
-        "dev"
-      ],
-      "text": "Tell Architect \"did we miss anything from my old hub\" or \"check what didn't get migrated\" and it runs a completeness pass against your prior migration.",
-      "skills": [
-        "migration-completeness-check"
-      ]
-    },
-    {
       "id": "prompt-security-audit-lens",
       "tiers": [
         "dev"
@@ -144,7 +134,7 @@
       "tiers": [
         "dev"
       ],
-      "text": "Tell Architect \"Good night Team\", \"Wrapping up\", or \"EOD\" at day's end and it consolidates and archives the session.",
+      "text": "Tell Architect \"Good night Team\", \"Wrapping up\", or \"EOD\" at day's end and it consolidates and archives the session and each agent's memory.",
       "skills": [
         "dreaming"
       ]

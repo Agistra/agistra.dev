@@ -139,7 +139,7 @@ every file type, not just code.
 
 When an ADR or report needs to be shared with a non-technical stakeholder or presented visually, additionally publish it as an Artifact via Claude Code's `artifact-design` or `artifact-diagramming` skill. The Artifact is a presentation layer on top of the committed document — it does not replace it.
 
-The committed markdown in `docs/decisions/` remains the source of truth. The Edit-or-supersede convention and the Authoring and Review Flow above are unaffected: the Artifact is produced after the ADR file is merged via the standard Builder-PR flow, as a separate presentation step, never as a substitute for it.
+The written ADR (the committed markdown in `docs/decisions/`) remains the source of truth. The Edit-or-supersede convention and the Authoring and Review Flow above are unaffected: the Artifact is produced after the ADR is merged via the standard Builder-PR flow, as a separate presentation step, never as a substitute for it.
 
 There is no Codex equivalent for this path. Codex's `imagegen` produces static bitmap assets — a materially narrower and different capability that does not produce a shareable, interactive, or editable presentation of an ADR. On Codex, stakeholder presentation of a decision document means sharing the committed markdown directly, or producing an HTML/PDF export separately; do not imply parity with Claude Code's Artifacts that does not exist.
 

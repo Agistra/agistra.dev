@@ -28,8 +28,8 @@
  *
  * Path scoping: only file paths under a memory/task/doc/learnings-shaped top-
  * level folder are scanned — free-tier shapes (memory/, projects/, docs/,
- * .learnings/) and vault-tier shapes (Memory/, Tasks/, Docs/, Research/,
- * Drafts/ — see storage/obsidian.md's folder-mapping table). Any other path
+ * .learnings/) and vault-tier shapes (Memory/, Projects/, Workspace/, plus
+ * the earlier layout's Tasks/, Docs/, Research/, Drafts/ until migrated). Any other path
  * (source code, config, skills, etc.) is allowed without scanning at all —
  * this hook has no way to know the hub's hubType at hook-invocation time, so
  * it checks both shapes rather than guessing which tier it is running on.
@@ -51,6 +51,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scanForSecrets, formatSecretScanError } from './secret-scan.js';
+import { WORKSPACE_ROOT_FOLDER } from './vault-layout.js';
 
 const ALLOW_PRE_TOOL_USE = {
 	hookSpecificOutput: {
@@ -70,7 +71,8 @@ const SCOPED_TOP_LEVEL_DIRS = new Set([
 	'.learnings', // free-tier (repo-files.md)
 	'tasks',
 	'research',
-	'drafts', // vault-tier additions (storage/obsidian.md) — 'memory'/'docs' already covered above (case-insensitive)
+	'drafts', // earlier vault layout — 'memory'/'docs' already covered above (case-insensitive)
+	WORKSPACE_ROOT_FOLDER.toLowerCase(), // cross-project vault material; 'projects' above also covers vault/Projects
 ]);
 
 /**

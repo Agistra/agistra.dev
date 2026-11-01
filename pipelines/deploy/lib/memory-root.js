@@ -7,7 +7,7 @@
  * and tasks as plain repo files at <hubRoot>/projects/<project>/task_*.md.
  * Vault-backed paid tiers (dev:sub, ops) store memory as an
  * Obsidian vault note at <hubRoot>/vault/Memory/<agent>.md and tasks as
- * vault notes at <hubRoot>/vault/Tasks/<project>/task_*.md (the obsidian.md
+ * vault notes at <hubRoot>/vault/Projects/<project>/Tasks/task_*.md (the obsidian.md
  * storage plugin — see the Storage Plugin Contract in
  * agents/skills/agent-foundations/SKILL.md, and the vault-canonical record
  * convention it documents for vault-backed tiers).
@@ -31,13 +31,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonSafe } from '../wizard.js';
+import {
+	VAULT_BACKED_HUB_TYPES,
+	isVaultBackedHubType,
+	resolveVaultLayout,
+	tasksRootSegment,
+} from './vault-layout.js';
 
-/** Hub tiers whose canonical memory record lives in the Obsidian vault, not plain repo files. */
-export const VAULT_BACKED_HUB_TYPES = ['dev:sub', 'ops'];
-
-export function isVaultBackedHubType(hubType) {
-	return VAULT_BACKED_HUB_TYPES.includes(hubType);
-}
+// The vault-backed tier list lives in vault-layout.js (the layout resolver
+// needs it); re-exported here so existing importers are unaffected.
+export { VAULT_BACKED_HUB_TYPES, isVaultBackedHubType };
 
 /**
  * Resolve the memory-root path segment for a given hubType, relative to
@@ -88,18 +91,16 @@ export function resolveMemoryRootForHub(hubRoot, { fsMod = fs } = {}) {
 
 /**
  * Resolve the projects/tasks-root path segment for a given hubType, relative
- * to hubRoot. Vault-backed tiers resolve to "vault/Tasks"; every other
- * (including unset/unrecognised) hubType resolves to "projects", matching
- * the pre-existing free-tier default. Mirrors resolveMemoryRootSegment()
- * exactly — same VAULT_BACKED_HUB_TYPES gate, same fallback shape.
+ * to hubRoot. Delegates to the vault layout resolver (lib/vault-layout.js):
+ * vault-backed tiers resolve to "vault/Projects"; every other (including
+ * unset/unrecognised) hubType resolves to "projects", matching the free-tier
+ * default.
  *
  * @param {string|undefined|null} hubType
  * @returns {string} OS-native relative path segment
  */
 export function resolveTasksRootSegment(hubType) {
-	return isVaultBackedHubType(hubType)
-		? path.join('vault', 'Tasks')
-		: 'projects';
+	return tasksRootSegment(resolveVaultLayout(hubType));
 }
 
 /**
@@ -112,4 +113,21 @@ export function resolveTasksRootSegment(hubType) {
  */
 export function resolveTasksRoot(hubRoot, hubType) {
 	return path.join(hubRoot, resolveTasksRootSegment(hubType));
+}
+
+/**
+ * The folders that can hold an agent's dated archive snapshots
+ * (`<agent>-YYYY-MM-DD.md`), newest layout first: `archive/<agent>/` (written by
+ * `memory archive`), then the flat `archive/` (older hubs, or free tiers, until
+ * `memory archive-migrate --apply` has run). A reader checks them in this order.
+ *
+ * @param {string} memoryRoot
+ * @param {string} agent
+ * @returns {string[]} absolute paths
+ */
+export function archiveSnapshotDirs(memoryRoot, agent) {
+	return [
+		path.join(memoryRoot, 'archive', agent),
+		path.join(memoryRoot, 'archive'),
+	];
 }

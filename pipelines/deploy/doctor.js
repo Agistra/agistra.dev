@@ -22,11 +22,18 @@ import {
 	readSettingsForMerge,
 } from './wizard.js';
 import { resolveRouterModel, parseProfileModel } from './lib/models.js';
-import { scaffoldMemoryFile } from './lib/memory-scaffold.js';
 import {
+	hasKeyedEntries,
+	isPlaceholderMemoryNote,
+	memoryShape,
+	scaffoldMemoryFile,
+} from './lib/memory-scaffold.js';
+import {
+	isVaultBackedHubType,
 	resolveMemoryRootSegment,
 	resolveTasksRootSegment,
 } from './lib/memory-root.js';
+import { legacyVaultFolders } from './lib/vault-layout.js';
 import {
 	isNightlyDreamingTaskRegistered,
 	NIGHTLY_DREAMING_TASK_NAME,
@@ -179,7 +186,119 @@ function discoverDeployedAgentIds({ hubRoot, fsMod }) {
 	}
 }
 
-function checkMemoryFiles({ hubRoot, fsMod }) {
+/**
+ * Memory notes that collide with the keyed store: a single note
+ * `<memory-root>/<agent>.md` beside keyed entries under `<agent>/` (shape
+ * `mixed`), or any basename held by two notes at the top level and one folder
+ * down (`builder.md` and `builder/builder.md`). Obsidian resolves a bare link
+ * by file name, so the shallower note wins and cuts off the keyed tree.
+ * `archive/` is skipped: its snapshot names repeat by design.
+ *
+ * @returns {Array<{ rel: string, abs: string, reason: string }>} one per note to delete
+ */
+function findMemoryCollisions({ memoryRoot, fsMod }) {
+	let dirents;
+	try {
+		dirents = fsMod.readdirSync(memoryRoot, { withFileTypes: true });
+	} catch {
+		return [];
+	}
+	// A filesystem stand-in that lists names rather than directory entries cannot be scanned.
+	if (dirents.some((e) => typeof e?.isFile !== 'function')) return [];
+	const found = new Map();
+	const add = (abs, reason) => {
+		if (!found.has(abs)) found.set(abs, { abs, reason });
+	};
+	const byName = new Map();
+	const note = (abs) => {
+		const name = path.basename(abs).toLowerCase();
+		byName.set(name, [...(byName.get(name) ?? []), abs]);
+	};
+	for (const e of dirents) {
+		if (e.isFile() && e.name.endsWith('.md'))
+			note(path.join(memoryRoot, e.name));
+	}
+	for (const e of dirents) {
+		if (!e.isDirectory() || e.name === 'archive') continue;
+		const dir = path.join(memoryRoot, e.name);
+		const topNote = path.join(memoryRoot, `${e.name}.md`);
+		if (
+			fsMod.existsSync(topNote) &&
+			hasKeyedEntries({ memoryRoot, agentId: e.name, fsMod })
+		) {
+			add(
+				topNote,
+				`it sits beside the keyed memory in ${e.name}/ (shape mixed)`,
+			);
+		}
+		try {
+			for (const f of fsMod.readdirSync(dir, { withFileTypes: true })) {
+				if (f.isFile() && f.name.endsWith('.md')) note(path.join(dir, f.name));
+			}
+		} catch {
+			// unreadable folder: nothing to compare
+		}
+	}
+	for (const [name, files] of byName) {
+		if (files.length < 2) continue;
+		// The shallowest copy is the legacy one; the deeper notes are generated.
+		const [shallow] = [...files].sort(
+			(a, b) => a.split(path.sep).length - b.split(path.sep).length,
+		);
+		add(shallow, `another note is also named ${name}`);
+	}
+	return [...found.values()].map(({ abs, reason }) => {
+		let template;
+		try {
+			template = isPlaceholderMemoryNote(fsMod.readFileSync(abs, 'utf-8'));
+		} catch {
+			template = false;
+		}
+		return {
+			abs,
+			reason,
+			rel: path.relative(memoryRoot, abs).split(path.sep).join('/'),
+			template,
+		};
+	});
+}
+
+/**
+ * The shape of each agent's memory and, on vault-backed tiers, the limits a
+ * keyed write is checked against, as one line for the "memory files" result so
+ * both are discoverable from `npm run doctor`. The limits come from the hub's
+ * own memory-config.js / memory-entry.js (shipped to vault-backed tiers only).
+ */
+async function describeMemory({
+	hubRoot,
+	memoryRoot,
+	agentIds,
+	hubType,
+	fsMod,
+}) {
+	const shapes = agentIds
+		.map(
+			(agentId) => `${agentId}=${memoryShape({ memoryRoot, agentId, fsMod })}`,
+		)
+		.join(', ');
+	let text = `shape: ${shapes}`;
+	if (!isVaultBackedHubType(hubType)) return text;
+	try {
+		const { resolveMemoryLimits } = await import('./lib/memory-config.js');
+		const { SUMMARY_MAX_LENGTH } = await import('./lib/memory-entry.js');
+		const resolved = resolveMemoryLimits({ hubRoot, fsMod });
+		if (resolved.ok) {
+			const { hotIndexMaxLines, hotIndexMaxBytes, entryMaxBytes } =
+				resolved.limits;
+			text += `; write limits: summary ${SUMMARY_MAX_LENGTH} characters, HOT index ${hotIndexMaxLines} lines / ${hotIndexMaxBytes} bytes, entry ${entryMaxBytes} bytes`;
+		}
+	} catch {
+		// the memory modules are not on this hub: nothing to print
+	}
+	return text;
+}
+
+async function checkMemoryFiles({ hubRoot, fsMod }) {
 	const agentIds = discoverDeployedAgentIds({ hubRoot, fsMod });
 	// hubType-aware: vault-backed tiers (dev:sub/ops) scaffold into
 	// vault/Memory (see lib/memory-root.js, the single source of truth shared
@@ -203,7 +322,7 @@ function checkMemoryFiles({ hubRoot, fsMod }) {
 	// masking its own "vault root not found" fail with a misleading "present"
 	// signal on every doctor run. vault/Memory is instead scaffolded at deploy
 	// time by lib/extras.js — same precedent already established for
-	// vault/Tasks (see checkProjectsDir below).
+	// vault/Projects (see checkProjectsDir below).
 	if (segment !== 'memory' && !fsMod.existsSync(memoryRoot)) {
 		return warn(
 			4,
@@ -218,17 +337,39 @@ function checkMemoryFiles({ hubRoot, fsMod }) {
 			scaffolded.push(`${agentId}.md`);
 		}
 	}
+	const described = await describeMemory({
+		hubRoot,
+		memoryRoot,
+		agentIds,
+		hubType: config?.hubType,
+		fsMod,
+	});
+	const collisions = findMemoryCollisions({ memoryRoot, fsMod });
+	if (collisions.length > 0) {
+		const named = collisions
+			.map(
+				(c) =>
+					`${displaySegment}/${c.rel} (${c.reason}; ${c.template ? 'untouched template, safe to delete' : 'has its own content: move what you need into entries with npm run memory, then delete'})`,
+			)
+			.join('; ');
+		return fail(
+			4,
+			'memory files',
+			`ambiguous memory note(s): ${named} (${described})`,
+			`delete ${collisions.map((c) => `${displaySegment}/${c.rel}`).join(', ')} so a bare agent link resolves to the keyed memory`,
+		);
+	}
 	if (scaffolded.length === 0) {
 		return pass(
 			4,
 			'memory files',
-			`all ${agentIds.length} agent memory file(s) present`,
+			`all ${agentIds.length} agent memory file(s) present (${described})`,
 		);
 	}
 	return pass(
 		4,
 		'memory files',
-		`${scaffolded.length} file(s) scaffolded: ${scaffolded.join(', ')}`,
+		`${scaffolded.length} file(s) scaffolded: ${scaffolded.join(', ')} (${described})`,
 	);
 }
 
@@ -577,13 +718,13 @@ function checkAutoDispatchRouterModel({ hubRoot, fsMod, profilesRoot }) {
 }
 
 function checkProjectsDir({ hubRoot, fsMod }) {
-	// hubType-aware: vault-backed tiers (dev:sub/ops) use vault/Tasks
+	// hubType-aware: vault-backed tiers (dev:sub/ops) use vault/Projects
 	// (see lib/memory-root.js, the single source of truth shared with
 	// lib/extras.js). readHubConfig() is the same workspace.config.json
 	// reader checkHubType() (check 15) uses below.
 	//
 	// Unlike the free-tier "projects" default, this check deliberately does
-	// NOT auto-scaffold vault/Tasks via a raw fs.mkdirSync when it is missing
+	// NOT auto-scaffold vault/Projects via a raw fs.mkdirSync when it is missing
 	// on a vault-backed tier. Two reasons: (1) a raw mkdirSync here bypasses
 	// the vault storage plugin's own mutation path the Storage Plugin
 	// Contract (agents/skills/agent-foundations/SKILL.md) documents for all
@@ -594,12 +735,23 @@ function checkProjectsDir({ hubRoot, fsMod }) {
 	// unconditional mkdirSync here would make the vault root appear to exist
 	// before that later check evaluates it, masking its own "vault root not
 	// found" fail with a misleading "present" signal on every doctor run.
-	// vault/Tasks is instead scaffolded at deploy time by lib/extras.js —
+	// vault/Projects is instead scaffolded at deploy time by lib/extras.js —
 	// same precedent already established for vault/Memory.
 	const { config } = readHubConfig(hubRoot, fsMod);
 	const segment = resolveTasksRootSegment(config?.hubType);
 	const displaySegment = segment.replace(/\\/g, '/');
 	const tasksPath = path.join(hubRoot, segment);
+	if (segment !== 'projects') {
+		const legacy = legacyVaultFolders(path.join(hubRoot, 'vault'), fsMod);
+		if (legacy.length > 0) {
+			return warn(
+				14,
+				'projects directory',
+				`the vault still has legacy top-level folders: ${legacy.map((f) => `${f}/`).join(', ')}`,
+				'run the vault layout migration to move them under Projects/ and Workspace/',
+			);
+		}
+	}
 	if (fsMod.existsSync(tasksPath)) {
 		return pass(
 			14,
@@ -914,7 +1066,7 @@ function checkNightlyDreamingConsolidationFreshness({
 			19,
 			'nightly dreaming freshness',
 			`Scheduled Task last reported success (exit 0, ${lastRunTime}) but the newest archived ` +
-				`memory snapshot (<memory root>/archive/architect-*.md) is ${latestArchiveDate ?? 'missing entirely'}` +
+				`memory snapshot (<memory root>/archive/architect/architect-*.md) is ${latestArchiveDate ?? 'missing entirely'}` +
 				`${latestArchiveDate ? ` (${staleDays} days old)` : ''} — the task reported success but ` +
 				'consolidation did not actually run',
 			`inspect logs/nightly-dreaming-<date>.log; re-run manually via: schtasks /run /tn ${taskName}`,
@@ -1308,7 +1460,7 @@ export async function runChecks({
 		checkWorkspaceConfig({ hubRoot, fsMod }),
 		checkGitignore({ hubRoot, fsMod }),
 		checkGitattributes({ hubRoot, fsMod }),
-		checkMemoryFiles({ hubRoot, fsMod }),
+		await checkMemoryFiles({ hubRoot, fsMod }),
 		checkMcpJson({ hubRoot, fsMod }),
 		await checkRelayDaemonAsync({ hubRoot, fsMod, probeHealth }),
 		checkRelayMcp({ hubRoot, fsMod }),

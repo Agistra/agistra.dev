@@ -8,6 +8,7 @@ import {
 	projectDirFromTaskPath,
 	buildDispatchPrompt,
 } from './lib/tasks.js';
+import { projectTaskDir } from './lib/vault-layout.js';
 
 /**
  * Dispatch command — reads the current _todo_ task for a project,
@@ -113,7 +114,7 @@ export function dispatch({
 
 function resolveTask(projectsRoot, project, task) {
 	if (project) {
-		const projectDir = path.join(projectsRoot, project);
+		const projectDir = projectTaskDir(projectsRoot, project);
 		if (task) {
 			const found = findTaskByQuery(projectDir, task);
 			if (!found) {

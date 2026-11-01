@@ -4,11 +4,13 @@
  * Learnings stores defined by the Storage Plugin Contract
  * (agents/skills/agent-foundations/SKILL.md).
  *
- * Usage: node tools/resolve-path.js <store> <arg> [--json]
+ * Usage: node tools/resolve-path.js <store> <arg> [--hub-root <path>] [--json]
  *   store: memory | task | document | learnings
  *   arg:   agent id (memory) | project id (task) | collection (document) | store name (learnings)
  *
- * Run from the hub root. Detects the active storage plugin by checking for
+ * Run from the hub root, or pass --hub-root <path> when the cwd is somewhere else
+ * (a subagent started in a code worktree): the hub is then the path given, never
+ * the cwd. Detects the active storage plugin by checking for
  * `skills/agent-foundations/storage/obsidian.md` (vault-backed tiers) vs its
  * absence (repo-files default — the free-tier shape), then maps the store +
  * arg to an absolute path using that plugin's documented folder table. This
@@ -112,6 +114,38 @@ export async function loadMemoryRootModule(hubRoot) {
 }
 
 /**
+ * Load the vault layout resolver (`pipelines/deploy/lib/vault-layout.js`),
+ * which ships beside memory-root.js. Null when the hub predates it; callers
+ * then keep the legacy paths.
+ *
+ * @param {string} hubRoot
+ * @returns {Promise<object | null>}
+ */
+export async function loadVaultLayoutModule(hubRoot) {
+	const modPath = path.resolve(hubRoot, 'pipelines/deploy/lib/vault-layout.js');
+	try {
+		return await import(pathToFileURL(modPath).href);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Load the layout resolver and report the layout of a vault-backed hub
+ * (always the projects layout). Null module: the hub predates the resolver.
+ *
+ * @param {string} hubRoot
+ * @returns {Promise<{ layoutMod: object | null, layout: string }>}
+ */
+async function resolveVaultLayoutFor(hubRoot) {
+	const layoutMod = await loadVaultLayoutModule(hubRoot);
+	return {
+		layoutMod,
+		layout: layoutMod?.resolveVaultLayout('dev:sub') ?? 'projects',
+	};
+}
+
+/**
  * Shape of an agent's memory under `root`, judged with the shared helpers in
  * pipelines/deploy/lib/memory-scaffold.js (shipped to every tier). When that
  * module cannot be loaded the single note alone decides.
@@ -134,8 +168,12 @@ async function memoryShape(hubRoot, root, agent, fsMod) {
 	} catch {
 		// Fall through: the note alone decides.
 	}
+	// The shared definition (a keyed tree with empty tiers is still `migrated`).
+	if (scaffold?.memoryShape)
+		return scaffold.memoryShape({ memoryRoot: root, agentId: agent, fsMod });
+	// An older scaffold module without the shared definition: entries alone decide.
 	const keyed =
-		scaffold?.hasKeyedEntries({ memoryRoot: root, agentId: agent, fsMod }) ??
+		scaffold?.hasKeyedEntries?.({ memoryRoot: root, agentId: agent, fsMod }) ??
 		false;
 	if (hasNote) return keyed ? 'mixed' : 'single-note';
 	return keyed ? 'migrated' : 'absent';
@@ -196,10 +234,18 @@ export async function resolvePath({ hubRoot, store, arg, fsMod = fs }) {
 				'memory-root-unavailable',
 				'could not load pipelines/deploy/lib/memory-root.js',
 			);
-		const root = mod.resolveTasksRoot(
-			hubRoot,
-			plugin === 'obsidian' ? 'dev:sub' : 'dev',
-		);
+		if (plugin === 'obsidian') {
+			const { layoutMod, layout } = await resolveVaultLayoutFor(hubRoot);
+			return {
+				ok: true,
+				store,
+				plugin,
+				path: layoutMod
+					? layoutMod.projectPaths(hubRoot, layout, arg).tasks
+					: path.join(mod.resolveTasksRoot(hubRoot, 'dev:sub'), arg, 'Tasks'),
+			};
+		}
+		const root = mod.resolveTasksRoot(hubRoot, 'dev');
 		return { ok: true, store, plugin, path: path.join(root, arg) };
 	}
 
@@ -207,15 +253,28 @@ export async function resolvePath({ hubRoot, store, arg, fsMod = fs }) {
 		const safe = assertSafeName('collection', arg);
 		if (!safe.ok) return safe;
 		if (plugin === 'obsidian') {
-			// obsidian.md's Document store section documents only the
-			// hub-wide Docs/<collection>/ shape; it carries no
-			// project-scoped exception, unlike repo-files.md below.
-			return {
-				ok: true,
-				store,
-				plugin,
-				path: path.join(hubRoot, 'vault', 'Docs', arg),
-			};
+			// Documents are per project: a project name resolves to that
+			// project's Docs folder; a cross-project collection resolves to
+			// its Workspace folder.
+			const { layoutMod, layout } = await resolveVaultLayoutFor(hubRoot);
+			if (!layoutMod)
+				return fail(
+					'layout-unavailable',
+					'could not load pipelines/deploy/lib/vault-layout.js',
+				);
+			const project = layoutMod.projectPaths(hubRoot, layout, arg);
+			if (fsMod.existsSync(project.dir)) {
+				return { ok: true, store, plugin, path: project.docs };
+			}
+			const workspace = layoutMod.workspacePaths(hubRoot, layout);
+			const shared = { adrs: workspace.adrs, reports: workspace.reports };
+			if (Object.hasOwn(shared, arg.toLowerCase())) {
+				return { ok: true, store, plugin, path: shared[arg.toLowerCase()] };
+			}
+			return fail(
+				'unknown-collection',
+				`document ${JSON.stringify(arg)} is neither a project under ${path.dirname(project.dir)} nor a Workspace collection (adrs, reports)`,
+			);
 		}
 		if (HUB_WIDE_DOC_COLLECTIONS.includes(arg)) {
 			return { ok: true, store, plugin, path: path.join(hubRoot, 'docs', arg) };
@@ -240,15 +299,19 @@ export async function resolvePath({ hubRoot, store, arg, fsMod = fs }) {
 	}
 	const storeName = arg.toUpperCase();
 	if (plugin === 'obsidian') {
+		const { layoutMod, layout } = await resolveVaultLayoutFor(hubRoot);
+		if (!layoutMod)
+			return fail(
+				'layout-unavailable',
+				'could not load pipelines/deploy/lib/vault-layout.js',
+			);
 		return {
 			ok: true,
 			store,
 			plugin,
 			path: path.join(
-				hubRoot,
-				'vault',
-				'Research',
-				'Learnings',
+				vaultRoot,
+				layoutMod.workspaceFolderRel(layout, 'learnings'),
 				`${storeName}.md`,
 			),
 		};
@@ -263,16 +326,28 @@ export async function resolvePath({ hubRoot, store, arg, fsMod = fs }) {
 
 async function main() {
 	const args = process.argv.slice(2);
+	let hubRoot = process.cwd();
+	const hubFlag = args.indexOf('--hub-root');
+	if (hubFlag !== -1) {
+		const value = args[hubFlag + 1];
+		if (!value || value.startsWith('--')) {
+			process.stderr.write('--hub-root needs a path\n');
+			process.exit(1);
+			return;
+		}
+		hubRoot = path.resolve(value);
+		args.splice(hubFlag, 2);
+	}
 	const [store, arg] = args;
 	if (!store || !arg) {
 		process.stderr.write(
-			'Usage: node tools/resolve-path.js <memory|task|document|learnings> <arg> [--json]\n',
+			'Usage: node tools/resolve-path.js <memory|task|document|learnings> <arg> [--hub-root <path>] [--json]\n',
 		);
 		process.exit(1);
 		return;
 	}
 
-	const result = await resolvePath({ hubRoot: process.cwd(), store, arg });
+	const result = await resolvePath({ hubRoot, store, arg });
 	process.stdout.write(`${JSON.stringify(result)}\n`);
 	process.exit(result.ok ? 0 : 1);
 }

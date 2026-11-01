@@ -12,7 +12,7 @@ This workspace is an **Agistra hub** — it holds planning, memory, and task que
 | Path | Purpose |
 |------|---------|
 | `projects/<project>/` | Task files for a project — one Markdown file per task |
-| `memory/<agent>.md` | Live HOT/WARM/COLD agent memory (tracked in repo — commit between sessions to persist state) |
+| `memory/` | Live HOT/WARM/COLD agent memory, read and written as Find and Write Your Memory in `skills/agent-foundations/SKILL.md` says (tracked in repo — commit between sessions to persist state) |
 | `memory/archive/` | Daily memory snapshots from end-of-day `dreaming` |
 | `skills/<name>/` | Canonical skill corpus — full directory trees (scripts, assets, `SKILL.md`) |
 | `.cursor/agents/` | Cursor agent profiles (generated — do not edit directly) |
@@ -45,13 +45,13 @@ node pipelines/deploy/index.js scan <project> --dry-run     # Preview scan witho
 This hub folder must be open in your Cursor workspace for `@architect` to resolve:
 
 ```text
-@architect Read .cursor/agents/architect.md. Then read memory/architect.md. Then: [your instruction]
+@architect Read .cursor/agents/architect.md. Then follow its Session Start to read your memory. Then: [your instruction]
 ```
 
 If the short name doesn't resolve (hub folder not in workspace), use the explicit file path:
 
 ```text
-@.cursor/agents/architect.md Read .cursor/agents/architect.md. Then read memory/architect.md. Then: [your instruction]
+@.cursor/agents/architect.md Read .cursor/agents/architect.md. Then follow its Session Start to read your memory. Then: [your instruction]
 ```
 
 ## Edit rules

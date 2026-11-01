@@ -14,7 +14,7 @@ Profiles should bind themselves to one or more lifecycle roles. The skill stays 
 
 **Local task files are the canonical system of record for the ticket lifecycle.** External trackers (GitHub Issues, Telegram) are downstream **mirrors / projections** of the local record, used primarily as a communication and info-passing surface for external teams.
 
-The task file's **`status:` frontmatter field is authoritative** for lifecycle state. On the free-tier (repo-files) default, the **filename infix** (`task_N_<state>_slug.md`) is a derived, human- and CLI-readable **index** of that state, kept in sync by the CLI on every transition — see the `transition` operation description under State Transition CLI below for exactly when this applies. If the two ever diverge, frontmatter wins; the CLI reconciles the filename. On vault-backed tiers there is no filename infix at all; the active storage plugin's Task store section (e.g. `storage/obsidian.md`) is authoritative for that tier's on-disk state-encoding convention.
+The task file's **`status:` frontmatter field is authoritative** for lifecycle state. On the free-tier (repo-files) default, the **filename infix** (`task_N_<state>_slug.md`) is a derived, human- and CLI-readable **index** of that state, kept in sync by the CLI on every transition — see the `transition` operation description under State Transition CLI below for exactly when this applies. If the two ever diverge, frontmatter wins; the CLI reconciles the filename.
 
 ## Role Model
 
@@ -83,8 +83,7 @@ process's own cwd.
 2. check for an active storage plugin file at `skills/agent-foundations/storage/*.md`
    — the same presence-gated check `agent-foundations`'s own Memory Path Resolution
    protocol uses for Memory/Task/Document store operations. If a plugin is present and its
-   Task store section's `transition-state` operation documents a rename-free transition
-   (as `storage/obsidian.md`'s does), skip the rename — the plugin file is the source of
+   Task store section's `transition-state` operation documents a rename-free transition, skip the rename — the plugin file is the source of
    truth for whether this step applies, not this skill. Only on the free-tier default (no
    plugin file present) does this step rename the filename infix to match.
 3. when a tracker reference field is present in frontmatter (e.g. `github:` /
@@ -101,13 +100,7 @@ the Mirror Update Obligation below).
 
 Backend note: `task-cli.js` implements the repo-files task store operations from the
 Storage Plugin Contract in `agent-foundations/SKILL.md` (`read-task`, `list-tasks`,
-`update-task-fields`, `transition-state`). The `obsidian` plugin
-(`agent-foundations/storage/obsidian.md`) is a real, already-shipped, currently-active
-storage backend on vault-backed tiers (`dev:sub`, `ops`) — not hypothetical
-future work. It implements the same operations behind this CLI's module boundary with
-materially different transition behavior on that tier: no filename rename. See that
-plugin's own Task store section (`transition-state`) for the authoritative statement of
-what changes on a vault-tier transition — this file does not restate it. Agents must
+`update-task-fields`, `transition-state`). Agents must
 check which storage plugin is active, per the same presence-gated check named in step 2
 above, before assuming the repo-files rename step applies.
 
@@ -140,9 +133,7 @@ Rules:
 
 ## State Vocabulary (Filename Token ↔ Lifecycle State)
 
-The filename-token column below documents the free-tier (repo-files) convention only.
-Vault-backed tiers have no filename infix — state lives solely in the `status:` property
-(see the active storage plugin's Task store section, e.g. `storage/obsidian.md`). The
+The filename-token column below documents the free-tier (repo-files) convention only. The
 `status:` frontmatter value column applies on every tier.
 
 | Filename token      | `status:` frontmatter value      | Auto-dispatchable                 |
@@ -216,7 +207,7 @@ When a tracker is configured for a project — signalled by a tracker reference 
 **Failed mirror write handling:**
 
 - Append the failure to the task file's `## Log` section (timestamp, attempted action, error).
-- Record the failed outbound in Router's memory HOT section under `failed-outbound` via the active storage plugin using `write-memory-entry('router', 'HOT', content)` (if Router is active).
+- Record the failed outbound in Router's HOT memory under `failed-outbound` (Find and Write Your Memory in `agent-foundations`; if Router is active).
 - Reconcile the mirror before the ticket is considered closed.
 
 **No tracker configured:** local-only; no mirror obligation exists.

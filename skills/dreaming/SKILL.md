@@ -19,7 +19,6 @@ Read your agent identity and follow the per-agent delta below after running the 
 - Preserve scope. Do not flatten all memories into one file. Session, repo, and user memory remain in their native stores.
 - Treat the agent's live memory record (accessed via the active storage plugin using `read-memory(agent)`) as the current-state file for the next session, not as the full historical archive.
 - Write a dated archive snapshot via the active storage plugin using `archive-memory(agent, date)` before compacting the live file.
-- If the storage plugin's write tool (e.g. `obsidian-mcp-server`) is unavailable, do **not** switch to the free-tier path (`memory/<agent>.md`) — write via a direct file edit to the **same** vault path instead (the path `resolve-path.js` returns; a migrated agent writes with `memory add`). Only the mechanism changes.
 - Before compacting, run `npm run memory -- ensure <agent>` to scaffold the agent's memory record (with HOT / WARM / COLD headings) and the archive directory if either does not already exist yet. This is a no-op — it never overwrites or truncates an existing file — so it is safe to run unconditionally at the start of every dreaming cycle.
 - Session memory may be deleted after it has been captured in the daily checkpoint or promoted elsewhere.
 - Repo and user memory compaction is opt-in only. Rewrite or delete entries there only when they are explicitly marked `dreaming-managed` or were created as transient capture for the same dreaming cycle.
@@ -28,7 +27,7 @@ Read your agent identity and follow the per-agent delta below after running the 
 
 ## Tiered Memory Lifecycle
 
-Where the active storage plugin defines `sweep-memory()`, moving entries between tiers is a script, not this skill's job. Good night order: Architect runs `sweep-memory(force)`, then dreaming, then `sweep-memory(force)` again; dispatched agents never sweep. The decay rules (step 3 and the Compaction Decision Table age rows) and compaction (steps 4 and 8) then do not apply, and the skill keeps only judgement: promoting durable items into COLD via `write-memory-entry(agent, 'COLD', content)`, the contradiction review (step 5), and the one-line summary for the archive snapshot. Where the plugin defines no sweep, every rule in this skill applies as written.
+Where the active storage plugin defines `sweep-memory()`, moving entries between tiers is a script, not this skill's job. Good night order: Architect runs `sweep-memory(force)`, then dreaming, then `sweep-memory(force)` again; dispatched agents never sweep. The decay rules (step 3 and the Compaction Decision Table age rows) and compaction (steps 4 and 8) then do not apply, and the skill keeps only judgement: promoting durable items into COLD (Find and Write Your Memory), the contradiction review (step 5), and the one-line summary for the archive snapshot. Where the plugin defines no sweep, every rule in this skill applies as written.
 
 ## Compaction Decision Table
 
@@ -59,22 +58,22 @@ Every agent runs these steps. Per-agent sections below specify only the variable
 4. **Size audit LAST_EVENT entries** — entries exceeding 500 chars are summarised to a one-liner (date + outcome + ticket ref) in the live file; full detail moves to archive.
 5. **Contradiction review pass (best-effort, human-review only)** — before or alongside promoting durable items (next step), review this agent's own recent memory for statements that appear to contradict an existing entry on the same tracked topic (same entity/fact — e.g. a tier's stack description, a port number, a repo path, a capability claim — asserted with a different value in two places).
    - **Scope: own memory only.** Never read another agent's memory record (do not call `read-memory(other-agent)`) or their archive snapshots for this step — the Cascade rule below ("no agent reads or writes another agent's memory during dreaming") applies here too. The review covers this agent's own current HOT section plus its own archive snapshots from roughly the last 7 days (the same window the WARM → COLD decay rule already uses), not its full historical archive — a full-history semantic scan is out of scope and would blow out a nightly pass's cost.
-   - **Gather the scan corpus mechanically, judge it yourself.** Run `node pipelines/deploy/lib/dreaming-contradiction-scan.js scan <agent-id> --hub-root <hub root>` to assemble the corpus (own live memory, which is the agent's keyed entries on a vault hub, plus own recent archive snapshots, scoped to the window above) — this is pure file-gathering, not detection. Its JSON output includes `indexAvailable`: when `true`, a memory-index CLI has shipped into this hub and `node pipelines/deploy/lib/memory-index.js find <keyword>` can additionally be used for cheaper cross-entry lookup within this agent's own entries only (filter any results to `agent === <this agent's own id>` — never act on another agent's indexed entries this way, same isolation rule as above); when `false` (memory-index hasn't shipped in this hub, or hasn't been built yet), the scan-corpus script's own file reads are already the full fallback — no separate action needed.
+   - **Gather the scan corpus mechanically, judge it yourself.** Run `node pipelines/deploy/lib/dreaming-contradiction-scan.js scan <agent-id> --hub-root <hub root>` to assemble the corpus (own live memory, which is the agent's note, plus own recent archive snapshots, scoped to the window above) — this is pure file-gathering, not detection. Its JSON output includes `indexAvailable`: when `true`, a memory-index CLI has shipped into this hub and `node pipelines/deploy/lib/memory-index.js find <keyword>` can additionally be used for cheaper cross-entry lookup within this agent's own entries only (filter any results to `agent === <this agent's own id>` — never act on another agent's indexed entries this way, same isolation rule as above); when `false` (memory-index hasn't shipped in this hub, or hasn't been built yet), the scan-corpus script's own file reads are already the full fallback — no separate action needed.
    - **Deciding whether two statements actually conflict is judgment, not mechanics** — per established best-practice and architectural decision-making protocols. Only flag entries that plausibly assert a different value for the same tracked fact; do not flag a routine update, a correction already reconciled by a later entry, or two entries that merely share a keyword without actually disagreeing.
    - **Write findings, never resolve them.** Record each finding in a new `## Flagged Contradictions` section in this cycle's archive snapshot (see structure below): both conflicting statements (verbatim or a faithful excerpt), their source (tier/section and date), and nothing else. Never edit, delete, or pick a winner between the two entries as part of this step — a human (the team lead) decides which is current. Omit the section entirely from the snapshot when no contradiction is found this cycle.
    - **This is a best-effort net, not a guarantee.** The pass will miss real contradictions — it only catches what a routine read of the scoped window surfaces, depends on the judgment quality of whichever model runs `dreaming`, and does not attempt full-corpus or semantic coverage. Never present this step to a customer as complete or guaranteed contradiction detection.
 6. **Promote durable items** — append to the targets listed in the agent's per-agent delta, preserving source labels when helpful.
-7. **Write daily archive snapshot** — write the archive file at the per-agent path using the structure below. On a vault hub run `npm run memory -- archive <agent> --body -` (snapshot text on stdin; `--date YYYY-MM-DD` to set the day): it creates the snapshot when none exists for the date and otherwise appends a `## Consolidation pass <n> (<time>)` section, so an earlier pass the same day is never replaced. Record before/after line counts in the "Compacted" section.
-8. **Compact live memory** — rewrite the live file so it remains a short current-state file:
+7. **Write daily archive snapshot** — write the archive file at the per-agent path using the structure below. Record before/after line counts in the "Compacted" section.
+8. **Compact live memory** — for a single-note agent, rewrite the live file so it remains a short current-state file (a migrated agent is never rewritten: it moves entries between tiers, see Find and Write Your Memory):
    - keep active HOT items only (apply 48h decay rule)
    - preserve explicit carry-forward items that still matter tomorrow
    - move durable longer-lived facts into WARM / COLD as appropriate (apply 7d decay rule for WARM → COLD)
    - retire resolved or expired LAST_EVENT entries (apply 7d retirement rule and 10-entry cap)
    - remove resolved day-only detail that is now preserved in the archive snapshot
 9. **Compact safe memory only** — delete session memory files whose content has been captured above; optionally trim or rewrite only `dreaming-managed` entries; never clear untouched repo or user memory.
-10. **Refresh vault index** (vault-backed hubs only — `dev:sub`, `ops`) — run `npm run vault:index` from the hub root. This is the nightly maintenance pass that keeps the hierarchical index notes current after any task, memory, or document activity during the day. The script is idempotent and deterministic: it adds only links that are not yet present in existing index notes and produces zero writes when nothing has changed. Skip silently on free-tier (`dev`, `dev:graph`) hubs where no `vault/` directory exists. **Interactive/manual trigger only.** This step is a prose instruction to whichever agent is running the trigger by hand and has no execution guarantee on its own — a real incident found it silently skipped or run against a stale on-disk state across several consecutive automated nights (see `nightly-dreaming.js`'s own header comment). For the automated Scheduled Task path specifically, `pipelines/deploy/lib/nightly-dreaming.js`'s `runNightlyDreamingWithLogging()` already invokes the equivalent scan directly in code, unconditionally, after the whole session's `claude -p` subprocess has exited — so that path does not depend on this prose step at all. Still follow this step for every interactive/manual "Good night Team" run, since there is no wrapping process to guarantee it there.
-11. **Sweep the Learnings store for threshold-crossing entries and promote** — repo-wide, not agent-scoped (`.learnings/LEARNINGS.md`/`.learnings/ERRORS.md`, or their vault-tier `Research/Learnings/` equivalents, live once at the project root, not per agent — see `agent-foundations/SKILL.md`'s Storage Plugin Contract Learnings store). Read `self-improving-agent/SKILL.md`'s own "Promotion threshold" definition and Promotion table directly rather than restating either here — both may evolve independently of this step, and a copy here would drift.
-    - Read pending entries via `list-pending-learnings('LEARNINGS')` and `list-pending-learnings('ERRORS')` — the active storage plugin's operation, not a raw file read. On free tier this resolves to a direct read of `.learnings/LEARNINGS.md`/`.learnings/ERRORS.md`; on vault-backed tiers it resolves to `Research/Learnings/LEARNINGS.md`/`Research/Learnings/ERRORS.md` (see `storage/obsidian.md`) — so this step is correct on every tier without a tier-specific branch here.
+10. **Not used on this hub** — the vault index belongs to the vault-backed tiers. Skip.
+11. **Sweep the Learnings store for threshold-crossing entries and promote** — repo-wide, not agent-scoped (`.learnings/LEARNINGS.md`/`.learnings/ERRORS.md`, live once at the project root, not per agent — see `agent-foundations/SKILL.md`'s Storage Plugin Contract Learnings store). Read `self-improving-agent/SKILL.md`'s own "Promotion threshold" definition and Promotion table directly rather than restating either here — both may evolve independently of this step, and a copy here would drift.
+    - Read pending entries via `list-pending-learnings('LEARNINGS')` and `list-pending-learnings('ERRORS')` — the active storage plugin's operation, not a raw file read. On this tier it resolves to a direct read of `.learnings/LEARNINGS.md`/`.learnings/ERRORS.md`.
     - Sweep the returned entries for ones that meet the promotion threshold defined in `self-improving-agent`'s own "Promotion threshold" section.
     - Promote every entry that crosses the threshold in this same pass — not just flag it for a human to promote later — using `self-improving-agent`'s own Promotion table to pick the correct target (including that table's storage-plugin note for vault-backed tiers).
     - Mark the entry `**Status**: promoted` and add `**Promoted**: <target file>`, per `self-improving-agent`'s own Resolving Entries format — write the update via `write-learning-entry` on vault-backed tiers rather than a raw file edit.
@@ -134,7 +133,7 @@ The "Compacted" section must always report:
 
 **Promotion targets:**
 
-- Session corrections from the team lead → agent memory WARM/COLD tiers via `write-memory-entry('architect', tier, content)` every run
+- Session corrections from the team lead → agent memory WARM/COLD tiers (Find and Write Your Memory) every run
 - Cross-project architectural patterns → auto-memory (user-level memory files) when the pattern recurs across 2+ projects
 - Dreaming-managed transient captures → compacted in their original memory file after checkpoint (only when explicitly marked)
 
@@ -161,7 +160,7 @@ The "Compacted" section must always report:
 
 **Promotion targets:**
 
-- Project conventions and verified practices → agent memory WARM/COLD tiers via `write-memory-entry('builder', tier, content)` every run
+- Project conventions and verified practices → agent memory WARM/COLD tiers (Find and Write Your Memory) every run
 - Cross-project coding patterns → auto-memory (user-level memory files) when the pattern recurs across 2+ projects
 - Dreaming-managed transient captures → compacted in their original memory file after checkpoint (only when explicitly marked)
 
@@ -182,8 +181,8 @@ The "Compacted" section must always report:
 
 **Promotion targets:**
 
-- Recurring QA failure patterns → agent memory WARM/COLD tiers via `write-memory-entry('tester', tier, content)` every run
-- Environment-specific gotchas → agent memory WARM/COLD tiers via `write-memory-entry('tester', tier, content)` every run
+- Recurring QA failure patterns → agent memory WARM/COLD tiers (Find and Write Your Memory) every run
+- Environment-specific gotchas → agent memory WARM/COLD tiers (Find and Write Your Memory) every run
 - Dreaming-managed transient captures → compacted in their original memory file after checkpoint (only when explicitly marked)
 
 (Tester does not promote to user memory — QA intelligence is project-scoped.)
@@ -205,7 +204,7 @@ The "Compacted" section must always report:
 
 **Promotion targets:**
 
-- Stable routing classification patterns → agent memory WARM/COLD tiers via `write-memory-entry('router', tier, content)` every run
+- Stable routing classification patterns → agent memory WARM/COLD tiers (Find and Write Your Memory) every run
 - Resolved ambiguous message types → same as above
 - Dreaming-managed transient captures → compacted in their original memory file after checkpoint (only when explicitly marked)
 

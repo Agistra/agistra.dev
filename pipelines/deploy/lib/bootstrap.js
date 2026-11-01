@@ -21,6 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readHubConfig } from '../setup.js';
 import { parseVersion } from './version.js';
+import { LAYOUT_PROJECTS, workspaceFolderRel } from './vault-layout.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -264,7 +265,7 @@ export function registerProject(
 
 /**
  * Repo-relative (posix) path(s) where the shared bootstrap report may live.
- * Vault tiers (`dev:sub`, `ops`) keep it under vault/Docs; every other known
+ * Vault tiers (`dev:sub`, `ops`) keep it under vault/Workspace; every other known
  * tier keeps it under projects/. Unknown hubType accepts either.
  *
  * @param {string|undefined} hubType
@@ -272,7 +273,11 @@ export function registerProject(
  */
 export function bootstrapReportPaths(hubType) {
 	const free = 'projects/_bootstrap-report.md';
-	const vault = 'vault/Docs/_bootstrap-report.md';
+	const vault = [
+		'vault',
+		...workspaceFolderRel(LAYOUT_PROJECTS, 'root').split(path.sep),
+		'_bootstrap-report.md',
+	].join('/');
 	if (hubType === 'dev:sub' || hubType === 'ops') return [vault];
 	if (hubType) return [free];
 	return [free, vault];

@@ -18,6 +18,8 @@ The vault-backed plugin used by other tiers covers the paid-tier implementation.
 
 ## Memory store
 
+On this plugin an agent's memory is always the single note; `npm run memory -- ensure <agent>` creates a missing note. Which command to run, by memory shape, is `agent-foundations/SKILL.md`'s Find and Write Your Memory.
+
 ### read-memory(agent)
 
 Read `memory/<agent>.md` from the hub root.
@@ -143,7 +145,7 @@ resolve which one applies from the `collection` argument alone.
 
 | Path | Real content found | Interpretation |
 | --- | --- | --- |
-| `docs/decisions/` | 2 files following the `ADR-<n>-<slug>.md` pattern | Hub-wide collection, real usage confirmed |
+| `docs/decisions/` | 2 files following the `ADR-<n>-<slug>.md` pattern | Hub-wide collection on a repo-files hub (a vault-backed hub keeps ADRs in its vault), real usage confirmed |
 | `docs/reports/` | 1 report (the handover doc for this exact fix — genuinely hub-wide content, not scoped to any one project) | Hub-wide collection, real usage confirmed |
 | `docs/architecture/` | Does not exist on this hub | Hub-wide collection, documented but currently unused — kept, since a one-hub audit doesn't justify removing an available option |
 | `docs/proposals/` | Does not exist on this hub | Hub-wide collection, documented but currently unused — kept, same reasoning as `architecture` |

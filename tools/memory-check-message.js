@@ -10,8 +10,11 @@
  * and vault-backed hubs are told "vault/Memory/<agent>.md".
  *
  * Hubs that ship the keyed memory command (pipelines/deploy/lib/memory-command.js,
- * vault-backed tiers only) get one extra sentence before the last line,
- * telling a migrated agent how to record entries. Other hubs get the template
+ * vault-backed tiers only) and have at least one migrated agent get keyed
+ * wording in place of the middle lines: `npm run memory -- add` with the
+ * 160-character summary limit and a warning that the tier files are generated,
+ * then one line each, by agent name, for unmigrated agents (their single note,
+ * never `memory add`) and mixed ones (stop). Every other hub gets the template
  * unchanged. The bash fallback in memory-check-message.sh renders the
  * free-tier template without it.
  *
@@ -22,7 +25,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
 	resolveHubRoot,
 	resolveMemoryRootSegment,
@@ -31,9 +34,80 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = path.join(__dirname, 'memory-check-message.txt');
 
-const MIGRATED_NOTE = [
-	'A migrated agent keeps entries under {{MEMORY_ROOT}}/<agent>/: record them with `npm run memory -- add`.',
-];
+/** Top-level memory notes that are not agents. */
+const NON_AGENT_NAMES = new Set(['memory-index', 'working-buffer']);
+
+/**
+ * Group the agents under the memory root by memory shape with the shared
+ * definition in the hub's memory-scaffold.js (memoryShape). An agent id is a
+ * folder (not archive/) or a top-level note, minus the non-agent notes. Null
+ * when the shared definition cannot be loaded: the caller then keeps the
+ * single-note template.
+ *
+ * @param {string} hubRoot
+ * @param {string} memoryRootAbs
+ * @returns {Promise<{ migrated: string[], single: string[], mixed: string[] } | null>}
+ */
+async function groupAgentsByShape(hubRoot, memoryRootAbs) {
+	let scaffold;
+	try {
+		scaffold = await import(
+			pathToFileURL(
+				path.resolve(hubRoot, 'pipelines/deploy/lib/memory-scaffold.js'),
+			).href
+		);
+	} catch {
+		return null;
+	}
+	if (typeof scaffold.memoryShape !== 'function') return null;
+	let dirents;
+	try {
+		dirents = fs.readdirSync(memoryRootAbs, { withFileTypes: true });
+	} catch {
+		return { migrated: [], single: [], mixed: [] };
+	}
+	const ids = new Set();
+	for (const e of dirents) {
+		if (e.isDirectory() && e.name !== 'archive' && !e.name.startsWith('.'))
+			ids.add(e.name);
+		if (e.isFile() && e.name.endsWith('.md')) {
+			const id = e.name.slice(0, -3);
+			if (!NON_AGENT_NAMES.has(id) && !id.startsWith('_')) ids.add(id);
+		}
+	}
+	const groups = { migrated: [], single: [], mixed: [] };
+	for (const agentId of [...ids].sort()) {
+		const shape = scaffold.memoryShape({ memoryRoot: memoryRootAbs, agentId });
+		if (shape === 'migrated') groups.migrated.push(agentId);
+		else if (shape === 'single-note') groups.single.push(agentId);
+		else if (shape === 'mixed') groups.mixed.push(agentId);
+	}
+	return groups;
+}
+
+/**
+ * The lines between the first line and the WAL line when at least one agent is
+ * migrated.
+ *
+ * @param {{ migrated: string[], single: string[], mixed: string[] }} groups
+ * @returns {string[]}
+ */
+function keyedLines(groups) {
+	const lines = [
+		'Before closing, record decisions, corrections, or new context from this session with',
+		`\`npm run memory -- add <agent> <key> --summary "<up to 160 characters>"\` for a migrated agent (${groups.migrated.join(', ')}).`,
+		'The tier files under {{MEMORY_ROOT}}/<agent>/ are generated: never edit them by hand.',
+	];
+	if (groups.single.length > 0)
+		lines.push(
+			`An unmigrated agent (${groups.single.join(', ')}) keeps one note: update the HOT section in {{MEMORY_ROOT}}/<agent>.md; never use memory add for it.`,
+		);
+	if (groups.mixed.length > 0)
+		lines.push(
+			`Mixed memory (${groups.mixed.join(', ')}): stop and tell the team lead; read and write nothing for it.`,
+		);
+	return lines;
+}
 
 /**
  * Neutral wording for the first reminder line, for callers without work
@@ -56,17 +130,24 @@ export function neutralizeFirstLine(line) {
 export async function renderReminderLines(hubRootOverride) {
 	const hubRoot = hubRootOverride ?? resolveHubRoot();
 	const memoryRoot = await resolveMemoryRootSegment(hubRoot);
-	const lines = fs
+	let lines = fs
 		.readFileSync(TEMPLATE_PATH, 'utf-8')
 		.replace(/\r/g, '')
 		.trimEnd()
 		.split('\n');
+	// Only a hub that ships the keyed memory command can have migrated agents.
 	if (
 		fs.existsSync(
 			path.join(hubRoot, 'pipelines', 'deploy', 'lib', 'memory-command.js'),
 		)
-	)
-		lines.splice(lines.length - 1, 0, ...MIGRATED_NOTE);
+	) {
+		const groups = await groupAgentsByShape(
+			hubRoot,
+			path.join(hubRoot, memoryRoot),
+		);
+		if (groups && groups.migrated.length > 0)
+			lines = [lines[0], ...keyedLines(groups), lines[lines.length - 1]];
+	}
 	return lines.map((line) => line.replaceAll('{{MEMORY_ROOT}}', memoryRoot));
 }
 

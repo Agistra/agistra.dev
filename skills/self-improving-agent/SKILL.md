@@ -38,7 +38,7 @@ Also review `.learnings/` before starting a major task or entering a new codebas
 ## First-Use Initialisation
 
 Free-tier only — see the Storage-plugin note above; on vault-backed tiers the plugin
-provisions `Research/Learnings/` itself, no manual initialisation step applies. Before
+provisions `Workspace/Learnings/` itself, no manual initialisation step applies. Before
 logging anything, ensure the `.learnings/` directory exists in the project root. If missing, create:
 
 ```
@@ -179,12 +179,11 @@ When a learning applies across multiple files or features, or prevents a recurri
 
 | Promotion target | What goes there |
 | ---------------- | --------------- |
-| `memory/<agent>.md` COLD section (or the active storage plugin's memory store on vault-backed tiers — see the storage-plugin note below) | Project facts, conventions, verified practices |
+| Your COLD memory (the COLD section for a single note: Find and Write Your Memory in `agent-foundations`) | Project facts, conventions, verified practices |
 | `AGENTS.md` in the workspace | Workflow improvements, automation rules — applies to Codex and GitHub Copilot environments; for Claude Code the equivalent is `CLAUDE.md` |
 | `.cursor/rules/*.mdc` | Workflow improvements, automation rules — Cursor's equivalent mechanism to the `CLAUDE.md`/`AGENTS.md` row above |
 | `~/.claude/projects/.../memory/` auto-memory | Cross-project patterns and preferences — Claude-Code-only; there is no equivalent promotion target on Cursor, Codex, or GitHub Copilot |
 
-**Storage-plugin note (`memory/<agent>.md` COLD row):** before promoting to `memory/<agent>.md`, check for an active storage plugin file at `skills/agent-foundations/storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution protocol uses. If no plugin file is present, the literal `memory/<agent>.md` path is correct as-is (free-tier default). If a plugin file is present (vault-backed tier, e.g. `dev:sub`/`ops`), the literal repo-relative path is wrong — promote instead via that plugin's `write-memory-entry(agent, 'COLD', content)` operation (see `agent-foundations`'s Memory Path Resolution protocol and the active plugin file, e.g. `storage/obsidian.md`, for the authoritative procedure). Writing to the literal path on a vault-backed tier creates a stray file outside the vault, bypassing the knowledge index.
 
 ### Promotion threshold
 

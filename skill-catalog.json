@@ -2,13 +2,13 @@
 	"skills": [
 		{
 			"name": "frontend-design",
-			"repo": "anthropics/claude-code",
+			"repo": "anthropics/claude-plugins-official",
 			"path": "plugins/frontend-design/skills/frontend-design",
 			"ref": "main"
 		},
 		{
 			"name": "skill-development",
-			"repo": "anthropics/claude-code",
+			"repo": "anthropics/claude-plugins-official",
 			"path": "plugins/plugin-dev/skills/skill-development",
 			"ref": "main"
 		},
