@@ -16,6 +16,8 @@ Multi-dimensional code review with quality gates. Every change gets reviewed bef
 
 **VBR approval gate:** Approval is a VBR gate — all Critical issues resolved AND tests pass AND build passes before reporting LGTM.
 
+**CI parity check:** run `ci:local`, or read the PR's CI result, before reporting LGTM — a local pass alone does not confirm CI parity.
+
 ## When to Use
 
 - Before merging any PR or change

@@ -146,7 +146,7 @@ Live HOT/WARM/COLD state: resolve it with `node tools/resolve-path.js memory rou
 <!-- COMPILED BOOTSTRAP START -->
 <!-- role: router -->
 <!-- skills: agent-foundations -->
-<!-- source-hash: 6ec3a0f44257b972b3088e2ff9c48e5c85a4bade1d63a84931f7b8c73e0e5c97 -->
+<!-- source-hash: 4482d65c177f10aeee41c9b4e101f746506cb1fa0e266ac2b3ea882e7d16a6e3 -->
 
 <!-- BEGIN SKILL: agent-foundations -->
 
@@ -197,6 +197,8 @@ For investigation discipline before proposing a fix, see RBR below.
 If the scoped wider search still returns zero, the absence is confirmed; report only then. This extends to reporting inherited memory state as current: before presenting any pending or in-flight item pulled from HOT memory (a PR "awaiting merge," a task "in progress") to the team lead as current, re-verify its live state (`gh pr view`, `gh issue view`, task-cli `read`) rather than reporting the memory snapshot verbatim.
 
 **Verify before asserting a categorical judgment:** The same discipline extends beyond absence-claims. Before labeling a code-review finding Required or Confirmed, an approach "wrong," a ticket "still current," or any other settled verdict — when the judgment rests on one artifact (a diff, a single file, a subagent's self-report) rather than a directly reproduced failure — check the wider system before it ships: grep the codebase for whether the same pattern already ships elsewhere as an accepted convention, check dated archives for a supersession flag, map a test/branch claim against the actual logical branches. A judgment sourced from a single artifact is not yet verified — verify it against the wider system, or report it at the confidence tier that single-artifact evidence actually supports, before it goes out.
+
+**Search before claiming non-existence or non-decision:** Before saying a thing does not exist or was not decided, search memory and archives as well as code — read the active storage plugin's memory and archive location, not a code-only grep.
 
 ## Root Before Repair (RBR)
 

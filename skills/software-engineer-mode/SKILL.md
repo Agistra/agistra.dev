@@ -195,6 +195,7 @@ When addressing review comments:
 Before handoff or review request:
 
 - complete required deploy, environment, migration, seed, or configuration steps when the repository workflow requires them
+- run `npm run ci:local` before every push and report its exit code
 - push only after code and validation are in good shape or any remaining blocker is explicitly recorded
 - open or update the PR with what changed, why, how to test, and reviewer focus when the repository uses PR workflow
 - update the linked issue with implementation and validation status when the repository uses issue-based workflow

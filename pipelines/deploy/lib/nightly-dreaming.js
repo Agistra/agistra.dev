@@ -388,6 +388,29 @@ export function removeNightlyDreamingTask({
 	}
 }
 
+/** Most individual resolved-key lines the nightly log lists per step, before collapsing the rest into one "... and N more" line. */
+export const MAX_RESOLVED_KEY_LOG_LINES = 50;
+
+/**
+ * Format a capped, one-line-per-key block for the nightly log: every resolved
+ * entry by name, not just the run's summary count, so the team lead can see
+ * (and undo, via `memory add`) exactly what closed. Beyond
+ * `MAX_RESOLVED_KEY_LOG_LINES` the remaining keys collapse into one
+ * "... and N more" line rather than flooding the log.
+ *
+ * @param {string[]} labels  one already-formatted `<agent>/<key>: <reason>` string per entry
+ * @returns {string}  `''` when `labels` is empty, otherwise a leading `\n` plus
+ *   one `  resolved <label>` line per entry (capped)
+ */
+export function formatResolvedKeyLines(labels) {
+	if (!labels || labels.length === 0) return '';
+	const shown = labels.slice(0, MAX_RESOLVED_KEY_LOG_LINES);
+	const lines = shown.map((label) => `  resolved ${label}`);
+	const omitted = labels.length - shown.length;
+	if (omitted > 0) lines.push(`  ... and ${omitted} more`);
+	return '\n' + lines.join('\n');
+}
+
 /**
  * Runs the exact same `cmd.exe /c claude ...` invocation the Scheduled Task used to
  * call directly, but captures real stdout/stderr to a dated log file first. This
@@ -416,6 +439,13 @@ export function removeNightlyDreamingTask({
  * @param {function} [opts.buildVaultIndexFn]  Injectable `buildVaultIndex`-shaped function
  *   for testing. Defaults to a lazy `await import('./vault-index.js')` — see the file
  *   header comment above for why this is never a static top-level import.
+ * @param {function} [opts.verifyFn]  Injectable memory-verify runner, `({ hubRoot, fsMod,
+ *   ghRunner }) => verifyMemory-shaped result` (sync or async). Defaults to
+ *   `runMemoryVerifyAll`, a lazy import of the memory verify for every agent
+ *   (vault-backed tiers only). Runs before the sweep below.
+ * @param {function} [opts.ghRunner]  Forwarded to the default verify runner's
+ *   `gh` call when `verifyFn` is not given — lets a test or a scratch deploy
+ *   supply a fake `gh` without needing the real binary on PATH.
  * @param {function} [opts.sweepFn]  Injectable sweep runner, `({ hubRoot, fsMod }) =>
  *   sweepMemory-shaped result` (sync or async). Defaults to `runForcedMemorySweep`, a lazy
  *   import of the memory sweep (vault-backed tiers only).
@@ -434,6 +464,8 @@ export async function runNightlyDreamingWithLogging({
 	fsMod = fs,
 	now = () => new Date(),
 	buildVaultIndexFn = null,
+	verifyFn = null,
+	ghRunner = undefined,
 	sweepFn = null,
 	verifyEffectFn = verifyDreamingEffect,
 } = {}) {
@@ -475,6 +507,40 @@ export async function runNightlyDreamingWithLogging({
 		append(`[nightly-dreaming-runner] error: ${result.error.message}\n`);
 	}
 
+	// Memory verify, for every agent, in code and before the sweep below. Resolves an
+	// open entry whose `pr:`/`issue:` refs are all merged or closed, so closed work does
+	// not sit open until someone notices it in the stale pile. A failing or offline `gh`
+	// is reported by verifyMemory itself (ghAvailable: false) rather than thrown, and
+	// either way a verify failure is logged and never fails the dreaming run.
+	try {
+		const runVerify = verifyFn ?? runMemoryVerifyAll;
+		const verify = await runVerify({ hubRoot, fsMod, ghRunner });
+		if (verify?.skipped === 'not-vault-tier') {
+			append(`
+memory-verify: skipped (${verify.reason})
+`);
+		} else if (verify?.ok) {
+			const keyLines = formatResolvedKeyLines(
+				(verify.resolved ?? []).map(
+					(r) => `${r.agent}/${r.key}: ${(r.refs ?? []).join(', ')}`,
+				),
+			);
+			append(`
+memory-verify: ${verify.summary}${keyLines}
+`);
+		} else {
+			append(
+				`
+memory-verify: failed — ${verify?.error ?? 'unknown error'}${verify?.summary ? ` (${verify.summary})` : ''}
+`,
+			);
+		}
+	} catch (err) {
+		append(`
+memory-verify: failed — ${err.message}
+`);
+	}
+
 	// Final forced memory sweep, in code. The dreaming skill asks the cold session to run
 	// it as a prose step; that session consolidates first and sweeps while entries it just
 	// resolved are still younger than hotToWarmHours, so nothing ages out. Running it here,
@@ -489,8 +555,13 @@ export async function runNightlyDreamingWithLogging({
 memory-sweep: skipped (${sweep.reason})
 `);
 		} else if (sweep?.ok) {
+			const keyLines = formatResolvedKeyLines(
+				(sweep.expired ?? []).map(
+					(e) => `${e.agent}/${e.key}: valid_until ${e.valid_until} expired`,
+				),
+			);
 			append(`
-memory-sweep: ${sweep.summary}
+memory-sweep: ${sweep.summary}${keyLines}
 `);
 		} else {
 			append(
@@ -594,6 +665,23 @@ async function runForcedMemorySweep({ hubRoot, fsMod }) {
 	const settings = resolveSweepConfig({ hubRoot, fsMod });
 	if (!settings.ok) return settings;
 	return sweepMemory({ paths, config: settings.config, force: true, fsMod });
+}
+
+/**
+ * Run memory verify for every agent, as `memory verify` (no agent argument) does. The
+ * memory modules ship to vault-backed tiers only, so they are imported lazily (see the
+ * header comment). `ghRunner`, when given, is forwarded to `verifyMemory` in place of
+ * the real `gh` binary — a failing or offline `gh` is reported by `verifyMemory` itself
+ * rather than thrown.
+ */
+async function runMemoryVerifyAll({ hubRoot, fsMod, ghRunner }) {
+	const [{ resolveMemoryPaths }, { verifyMemory }] = await Promise.all([
+		import('./memory-paths.js'),
+		import('./memory-verify.js'),
+	]);
+	const paths = resolveMemoryPaths({ hubRoot, fsMod });
+	if (!paths.ok) return { skipped: 'not-vault-tier', reason: paths.error };
+	return verifyMemory({ paths, fsMod, ...(ghRunner ? { ghRunner } : {}) });
 }
 
 function resolveMemoryRootSafe(hubRoot, fsMod) {

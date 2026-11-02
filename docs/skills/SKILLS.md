@@ -26,10 +26,6 @@ Use when drafting a bug or defect ticket, reviewing one someone else wrote, or d
 
 Conducts multi-axis code review. Use before merging any change. Use when reviewing code written by yourself, another agent, or a human. Use when you need to assess code quality across multiple dimensions before it enters the main branch.
 
-## `codebase-design`
-
-_(no description)_
-
 ## `consultant` — Architect
 
 Writing skill for freelancers and independent consultants. Covers project proposals, bids, client emails, and scope summaries. Leads with the client's problem, not the consultant's background.
@@ -57,10 +53,6 @@ Use when: Good night Team, EOD, Wrapping up, or end-of-day consolidation. Archiv
 ## `external-skill-intake` — Architect
 
 Use when: 'intake this repo/skill', 'evaluate external skill', 'should we adopt X', a candidate repo URL plus an adoption question, or any external skill/workflow/tool surfaces as a possible fit for Agistra. Structured front-door evaluation of external skills, workflows, and similar capability artifacts before any install, promotion, or adaptation decision. Ends in exactly one classification: Install candidate, Adapt concept, or Reject. Never install first — intake first.
-
-## `frontend-design`
-
-_(no description)_
 
 ## `grill-with-docs` — Architect
 
@@ -137,10 +129,6 @@ Use when: a general codebase assessment, pre-migration/pre-rewrite review, feasi
 ## `self-improving-agent` — Architect, Builder, Router, Tester
 
 Use when: the agent captures a correction from the team lead, hits an unexpected error, discovers a capability gap, or finds a better practice. Logs to .learnings/ and promotes durable patterns to permanent project memory.
-
-## `skill-development`
-
-_(no description)_
 
 ## `skill-quality-review` — Architect
 

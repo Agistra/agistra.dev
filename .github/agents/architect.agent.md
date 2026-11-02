@@ -113,7 +113,7 @@ Live HOT/WARM/COLD state: resolve it with `node tools/resolve-path.js memory arc
 <!-- COMPILED BOOTSTRAP START -->
 <!-- role: architect -->
 <!-- skills: agent-foundations, token-economics, proactive-agent, pattern-sweep -->
-<!-- source-hash: 1484c6c67bb32b9ff9fc8bd2380b7a6c23ea0306df8c27db6ae827408553ce9e -->
+<!-- source-hash: 338fdbafc5a8017d0557b6c769227e79e3f1fe875d6c9083737094edddf0f424 -->
 
 <!-- BEGIN SKILL: agent-foundations -->
 
@@ -164,6 +164,8 @@ For investigation discipline before proposing a fix, see RBR below.
 If the scoped wider search still returns zero, the absence is confirmed; report only then. This extends to reporting inherited memory state as current: before presenting any pending or in-flight item pulled from HOT memory (a PR "awaiting merge," a task "in progress") to the team lead as current, re-verify its live state (`gh pr view`, `gh issue view`, task-cli `read`) rather than reporting the memory snapshot verbatim.
 
 **Verify before asserting a categorical judgment:** The same discipline extends beyond absence-claims. Before labeling a code-review finding Required or Confirmed, an approach "wrong," a ticket "still current," or any other settled verdict — when the judgment rests on one artifact (a diff, a single file, a subagent's self-report) rather than a directly reproduced failure — check the wider system before it ships: grep the codebase for whether the same pattern already ships elsewhere as an accepted convention, check dated archives for a supersession flag, map a test/branch claim against the actual logical branches. A judgment sourced from a single artifact is not yet verified — verify it against the wider system, or report it at the confidence tier that single-artifact evidence actually supports, before it goes out.
+
+**Search before claiming non-existence or non-decision:** Before saying a thing does not exist or was not decided, search memory and archives as well as code — read the active storage plugin's memory and archive location, not a code-only grep.
 
 ## Root Before Repair (RBR)
 

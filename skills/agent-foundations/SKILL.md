@@ -52,6 +52,8 @@ If the scoped wider search still returns zero, the absence is confirmed; report 
 
 **Verify before asserting a categorical judgment:** The same discipline extends beyond absence-claims. Before labeling a code-review finding Required or Confirmed, an approach "wrong," a ticket "still current," or any other settled verdict — when the judgment rests on one artifact (a diff, a single file, a subagent's self-report) rather than a directly reproduced failure — check the wider system before it ships: grep the codebase for whether the same pattern already ships elsewhere as an accepted convention, check dated archives for a supersession flag, map a test/branch claim against the actual logical branches. A judgment sourced from a single artifact is not yet verified — verify it against the wider system, or report it at the confidence tier that single-artifact evidence actually supports, before it goes out.
 
+**Search before claiming non-existence or non-decision:** Before saying a thing does not exist or was not decided, search memory and archives as well as code — read the active storage plugin's memory and archive location, not a code-only grep.
+
 ## Root Before Repair (RBR)
 
 **The law:** Surface-level fixes waste turns. A patch applied to the wrong layer guarantees a second incident. Never propose a code or config change without first confirming the root cause.
