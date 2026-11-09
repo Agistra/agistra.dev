@@ -48,7 +48,7 @@ export function readAgentManifest(profileDir) {
 }
 
 /**
- * Resolve the setchin-agent-profiles repo root from a `profilesRoot` directory
+ * Resolve the profiles source repository root from a `profilesRoot` directory
  * (`<repoRoot>/agents/profiles` — the shape every deploy target's own `profilesRoot`
  * argument already assumes; see `discoverProfileDirs`). Two levels up from
  * `profilesRoot` lands on the repo root, where `profiles.config.json` lives.

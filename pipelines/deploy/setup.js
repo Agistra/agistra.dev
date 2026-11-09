@@ -26,6 +26,7 @@ import {
 	SETTINGS_SHAPE,
 } from './wizard.js';
 import { mergeRelaySessionStartHook } from './lib/claude-hooks.js';
+import { ensureHubSettings } from './lib/hub-settings.js';
 import {
 	NIGHTLY_DREAMING_TASK_NAME,
 	computeNightlyDreamingTaskName,
@@ -93,7 +94,7 @@ export async function defaultSetupTierPlugin(
 	}
 }
 // Source-repo agents/profiles/ dir, relative to this script's own location (not cliOutputRoot).
-// Present when running `npm run setup` from inside the setchin-agent-profiles repo itself.
+// Present when running `npm run setup` from inside the profiles source repository itself.
 // Absent in a deployed hub (agents/profiles/ is a source-repo-only concept there).
 const SOURCE_PROFILES_ROOT = path.resolve(
 	__dirname,
@@ -734,7 +735,7 @@ export function createRun({
 		// Runs first, before anything else: buildPackageJson() (lib/extras.js)
 		// writes this hub's own package.json unconditionally on every hubType, and
 		// several steps further down (the relay MCP wiring, any tier plugin that
-		// spawns packages/vault/vault-guard.cjs indirectly via a prior-hub
+		// spawns the vault write guard indirectly via a prior-hub
 		// migration) assume node_modules/ is already populated from it. Idempotent —
 		// see lib/hub-root-install.js's own doc comment for the presence-check that
 		// makes a re-run against an already-installed hub a true no-op.
@@ -970,6 +971,9 @@ export function createRun({
 			// failure) exit before reaching that step — this line ensures those paths
 			// never permanently lose a previously-recorded graphify config.
 			...(prev.graphify ? { graphify: prev.graphify } : {}),
+			// Preserve the licence unit id the packaged config was seeded with across
+			// re-runs of setup. Verification of it lives in a paid-tier plugin.
+			...(prev.licenceUnitId ? { licenceUnitId: prev.licenceUnitId } : {}),
 			// Preserve a pre-existing modelProvider config across re-runs of setup
 			// exactly as-is. Defaulting modelProvider on a hub type that has never
 			// configured it is the tier-gated model-provider setup plugin's own
@@ -1051,6 +1055,22 @@ export function createRun({
 					process.stdout.write(`  Relay autostart hook → ${settingsPath}\n`);
 				}
 			}
+		}
+
+		// ── Hub .claude/settings.json (Claude Code) ──────────────────────────────
+		// Creates the file when a clone has none, or adds whatever baseline hook or
+		// key is missing, through the same code deploy uses (lib/hub-settings.js).
+		// The user's own entries are kept; an unusable file is left untouched.
+		if (platforms.claude) {
+			line('Hub settings ');
+			const result = ensureHubSettings({ hubRoot: cliOutputRoot, fsMod });
+			const msg =
+				result.status === 'unusable'
+					? `  WARNING: ${unusableSettingsMessage(result.settingsPath, result.reason, 'The hub hooks and settings were not added.')}`
+					: result.status === 'unchanged'
+						? `  Hub settings already complete → ${result.settingsPath}`
+						: `  Hub settings ${result.status} → ${result.settingsPath}`;
+			process.stdout.write(`${msg}\n`);
 		}
 
 		// ── Task CLI permission rules (Claude Code) ──────────────────────────────

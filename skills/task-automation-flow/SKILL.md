@@ -324,6 +324,16 @@ Note: For `verifier: Architect`, the intermediate state is `state:ready-for-revi
 
 Immediately after any confirmed merge (single-ticket or batch), before moving on to the next ticket or action, the agent whose local checkout tracks the merged branch runs `git fetch origin && git pull` on the default branch. This keeps the local checkout current so the next dispatch, review, or branch cut starts from the merged state rather than a stale one.
 
+### Verified Work Cleanup
+
+After verifying a Builder's (or any subagent's) work, stop that agent and any background work it started, and confirm with the agent list that none is still running.
+
+## Agent Boundaries and Long Commands
+
+- Agents never remove worktrees and never redeploy the team lead's hub. The team lead does both.
+- A Builder runs lint and the tests for the area it changed, not the full coverage suite, unless the ticket asks for it; the CI run on the pull request covers the rest. The rule and its exceptions are in `software-engineer-mode` (Step 4, Local test scope).
+- No background polling loops (`until`, `sleep`) and no polling on git state such as `git stash list`, which every worktree shares. Run a long command once in the background and wait for its completion notice.
+
 ## Resuming an Interrupted Run
 
 After a rate limit, usage limit, or harness kill, resume from the first unfinished state. The lifecycle state is the phase marker and the Automation Checkpoint (format owned by the Batch Checkpoint Rule in `proactive-agent`) is the persistence record. Both are hints: before acting, re-read the live facts below with `gh` and the task file, never memory alone. If a live fact disagrees with the checkpoint, trust the live fact and rewrite the checkpoint. Take the single resume action only when its guard passes; otherwise skip it and advance to the next state.
@@ -339,6 +349,21 @@ After a rate limit, usage limit, or harness kill, resume from the first unfinish
 | merged (out-of-band)             | `gh pr view` merged state; `git rev-parse HEAD` against `git rev-parse origin/<default>` on the base branch | run the Post-Merge Hygiene pull                                           | If the local default branch already contains the merge commit, skip the pull; never repeat the final report         |
 
 A transition that did not report `ok: true` is not complete: re-check the task file and tracker label, then re-run `transition` (it is safe to repeat). Write a fresh Automation Checkpoint after each resumed step.
+
+## Merge and Release Rules
+
+This is the one place these rules live; other skills and the Architect profile refer here.
+
+**Merging into `develop`.** Architect verifies the PR (head SHA checked, CI green) and hands it to the team lead with the verification summary. The team lead merges.
+
+- Builders never merge.
+- A release bump PR (head branch `release/v*`) also needs the Windows check green before the merge.
+- Merging to `main`/production and deploying stay with the team lead.
+- Tickets close when their PR merges into `develop`. There is no `state:released` (see `ticket-lifecycle-mode`).
+
+**Deciding to release.** The team lead decides when to release. Architect may propose a release (for example when a batch is merged), but never starts the version bump without the team lead's word or explicit agreement.
+
+**Release ticket and brief.** Each release has one release ticket holding the batch, the steps and the release record. Write the release brief from the template in `docs/runbooks/release-bump-and-tag-runbook.md` ("Release brief template"). Put the brief in the bump PR description and in the vault reports folder.
 
 ## Batch Mode (Sequential Pair)
 

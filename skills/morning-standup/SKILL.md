@@ -30,6 +30,8 @@ Read your agent identity and follow the section below that matches.
 - Bullet points only. The team lead will ask for detail if needed.
 - Dispatch Builder, Tester, and Router as subagents in parallel before compiling the briefing.
 - Do not scan all historical archive files by default.
+- Where the `memory` command exists, run `npm run memory -- usage --read-only` once for every agent. It lists any agent whose HOT is above 75% of its line or byte limit, naming the agent and both numbers. Put each warning in "Needs team lead today" so the memory is tidied before a write is refused.
+- List open `decision:team-lead` items (see `ticket-lifecycle-mode`): `gh issue list --label decision:team-lead --state open`, or the tasks whose frontmatter has `decision: team-lead` when no tracker is configured. Check them live; do not rely on memory. Include them in "Needs team lead today".
 
 ### Protocol
 
@@ -52,6 +54,7 @@ Good morning. Team brief for [DATE].
 - [HOT item 2 — one line status]
 - Today's focus: [from architect.md or latest archive Carry-Forward section]
 - Decisions needed: [any team lead decision or approval needed, or "None"]
+- Open `decision:team-lead` items: [one line each with the ticket and its question, or "None"]
 
 **Builder**
 [paste Builder's bullets verbatim]

@@ -6,13 +6,13 @@
  * Single source of truth for the high-confidence secret-prefix pattern list
  * used at all three enforcement points this scanner backs:
  *
- *   1. packages/vault/vault-guard.cjs        — proxied MCP `tools/call` writes
+ *   1. the vault write guard        — proxied MCP `tools/call` writes
  *   2. pipelines/deploy/lib/task-cli.js       — direct `fs.writeFileSync` writes
  *   3. pipelines/deploy/lib/secret-scan-gate.js — PreToolUse `Edit`/`Write` gate
  *
  * Ships unconditionally to every hub tier (dev, dev:graph, dev:sub, ops) —
  * see extras.js's copy list — because task-cli.js and secret-scan-gate.js
- * both ship to every tier, and vault-guard.cjs ships to dev:sub/ops.
+ * both ship to every tier, and the vault write guard ships to dev:sub/ops.
  *
  * Pattern set: high-confidence secret-prefix patterns only (adapted from the
  * shape of gitleaks' MIT-licensed ruleset, not vendored) — deliberately no
@@ -21,7 +21,7 @@
  * Deliberately has ZERO dependencies (no fs/path/etc.) — it is a pure string
  * scanner so it can be imported unchanged from an ESM caller (task-cli.js,
  * secret-scan-gate.js) or dynamically imported from a CommonJS caller
- * (vault-guard.cjs, which cannot `require()` this file directly because
+ * (the vault write guard, which cannot `require()` this file directly because
  * package.json declares "type": "module").
  */
 
@@ -62,7 +62,7 @@ export const SECRET_PATTERNS = [
  * name and the 1-based line number it occurred on. This is load-bearing: the
  * required behavior on a match is to name which pattern category matched and
  * where, without echoing the matched secret back — every call site
- * (vault-guard.cjs, task-cli.js, secret-scan-gate.js) relies on this function
+ * (the vault write guard, task-cli.js, secret-scan-gate.js) relies on this function
  * never leaking the secret text into an error message, log line, or hook
  * output.
  *
@@ -96,12 +96,12 @@ export function scanForSecrets(content) {
 /**
  * Build a consistent, non-echoing block-error message from a
  * `scanForSecrets()` match. Centralized here so every enforcement point
- * (vault-guard.cjs, task-cli.js, secret-scan-gate.js) reports the same shape
+ * (the vault write guard, task-cli.js, secret-scan-gate.js) reports the same shape
  * without duplicating the message string three times.
  *
  * @param {{ category: string, line: number }} match
  * @param {string} [locationOverride]  Custom location description (e.g.
- *   `field "content", line 3` — see vault-guard.cjs, which scans multiple
+ *   `field "content", line 3` — see the vault write guard, which scans multiple
  *   named argument fields and needs to name which one matched). Defaults to
  *   `line <n>` when omitted, matching the plain single-content-string case
  *   (task-cli.js, secret-scan-gate.js).

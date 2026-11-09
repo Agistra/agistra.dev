@@ -41,6 +41,15 @@ The following fields define the authoritative state and configuration for every 
 | `depends_on`               | list of task ids (e.g. `task_<id>`, `<id>`)                                                                                                                       | `Technical Lead` at ticket creation        | **Optional.** Declares a hard ordering constraint: this ticket must not start until every listed id has landed. Backward compatible — absent on existing task files, which continue to parse normally. Consumed by `npm run task -- waves <project>` to exclude conflicting pairs from the same wave and to detect dependency cycles. |
 | `touches`                  | list of glob patterns (e.g. `pipelines/deploy/lib/*.js`)                                                                                                        | `Technical Lead` at ticket creation        | **Optional.** Declares the files/paths this ticket is expected to modify. Backward compatible — absent means no glob-overlap constraint is inferred for this ticket. Consumed by `npm run task -- waves <project>` to exclude tickets with overlapping `touches` from the same wave. |
 
+## Team Lead Decision Convention
+
+A ticket that needs a discussion with the team lead (options, trade-offs, brainstorming, not a plain yes/no approval) carries both of these:
+
+- the tracker label `decision:team-lead`, and `decision: team-lead` in the task frontmatter;
+- a "Decision needed" section in the task with the question, the options and the agent's recommendation.
+
+Remove the label and the frontmatter field once the team lead has decided, and record the decision per the Records Rule in `agent-foundations`. A hub whose GitHub repo lacks the label creates it once: `gh label create decision:team-lead --description "Needs a discussion with the team lead" --color D93F0B`. The morning standup lists open items that carry it.
+
 Agents update these fields on every lifecycle transition. Whether the filename infix is also kept in sync with `status:` is tier-dependent — see the `transition` operation description under State Transition CLI below.
 
 ## State Transition CLI
@@ -170,6 +179,8 @@ Every ticket must include the following required field before it may be dispatch
 | `state:qa-passed`                | QA passed and the work is waiting for team lead approval, merge, close, or next direction | `QA`                                 |
 
 After `state:qa-passed`, the `Team Lead` decides whether the work is closed or moved to another workflow state outside this shared baseline.
+
+A ticket closes when its PR merges into `develop`. There is no `state:released`: do not add a state for "shipped in a release". The release ticket and its brief record what shipped (see `task-automation-flow`, Merge and Release Rules).
 
 ## QA Fail Counter
 

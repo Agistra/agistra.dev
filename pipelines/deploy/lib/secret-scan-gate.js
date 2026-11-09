@@ -6,7 +6,7 @@
  * doc comment for why Cursor/Codex/Copilot have no equivalent wiring today).
  *
  * This is the third of three enforcement points using the shared scanner —
- * packages/vault/vault-guard.cjs and pipelines/deploy/lib/task-cli.js cover
+ * the vault write guard and pipelines/deploy/lib/task-cli.js cover
  * the other two application-layer write paths. This hook exists specifically
  * to cover (a) free-tier (dev/dev:graph) direct `Edit`/`Write` calls against
  * memory/task/doc files, which have no application-layer guard in front of

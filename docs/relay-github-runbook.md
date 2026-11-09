@@ -92,7 +92,7 @@ Once Copilot repo MCP points at `pipelines/deploy/relay/mcp/server.js --hub <hub
 
 **Cleanup guidance (future):**
 
-- Once Copilot MCP is verified on your hub, you may **skip installing** `.github/workflows/relay-notify.yml` — no requirement to delete the template from `setchin-agent-profiles`.
+- Once Copilot MCP is verified on your hub, you may **skip installing** `.github/workflows/relay-notify.yml` — no requirement to delete the template from the profiles source repository.
 - Remove the installed workflow from a hub repo only if you confirm nobody uses label-triggered outbound and you rely entirely on MCP + daemon.
 - Do **not** remove `github.js` tracking-issue inbound until `relay_inbox_peek` fully replaces that path for GitHub-primary hubs.
 

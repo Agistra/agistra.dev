@@ -64,7 +64,7 @@ export function buildPortablePrompt(profileDir, skillsRoot, declaredSkills) {
 		const skillLines = normalizedSkills.map(({ name }) => `- ${name}`);
 		sections.push(
 			[
-				'Behavioral disciplines you follow (source: setchin-agent-profiles skills):',
+				'Behavioral disciplines you follow (source: the profiles source repository skills):',
 				...skillLines,
 			].join('\n'),
 		);

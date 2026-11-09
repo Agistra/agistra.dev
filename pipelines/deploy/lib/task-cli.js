@@ -81,11 +81,12 @@ import { parseGithubIssueRef, fetchIssueState } from './ticket-drift.js';
 import { resolveTasksRoot, isVaultBackedHubType } from './memory-root.js';
 import { projectTaskDir } from './vault-layout.js';
 import { readJsonSafe } from '../wizard.js';
+import { loadCliPlugins } from './cli-plugins.js';
 import { scanForSecrets, formatSecretScanError } from './secret-scan.js';
 
 export const DEFAULT_PROJECTS_ROOT = 'projects';
 
-// Skills live in this repo (setchin-agent-profiles), regardless of which
+// Skills live in this repo, regardless of which
 // project repo `--projects-root` points at — so the default is resolved
 // relative to this module's own location, not the CLI process cwd.
 const __taskCliDir = path.dirname(fileURLToPath(import.meta.url));
@@ -1712,14 +1713,53 @@ const isMain =
 	path.resolve(process.argv[1]) ===
 		path.resolve(fileURLToPath(import.meta.url));
 
+/**
+ * After a successful `task create` in a hub, run each CLI plugin's
+ * `afterTaskCreate` hook (see lib/cli-plugins.js). A hook that throws is
+ * reported on stderr and otherwise ignored: a hook must never fail task
+ * creation, and stdout stays the command's JSON.
+ *
+ * The hub is resolved the same way runCli resolves it for `create`:
+ * `--hub-root`, or the current directory when it holds a
+ * workspace.config.json. `--projects-root` means no hub, so no hooks run.
+ *
+ * @param {string[]} argv  the CLI arguments given to runCli
+ * @param {{ok?: boolean}} output  runCli's result
+ * @param {object} [opts]
+ * @param {object[]} [opts.plugins]  CLI plugins; discovered when omitted
+ * @returns {Promise<void>}
+ */
+export async function runAfterTaskCreate(
+	argv,
+	output,
+	{ fsMod = fs, cwd = process.cwd(), plugins } = {},
+) {
+	if (argv[0] !== 'create' || !output?.ok) return;
+	const { hubRoot: flagHubRoot, rest } = extractHubRootFlag(argv);
+	if (extractProjectsRootFlag(rest).present) return;
+	const hubRoot =
+		flagHubRoot ??
+		(fsMod.existsSync(path.join(cwd, 'workspace.config.json')) ? cwd : null);
+	if (!hubRoot) return;
+	for (const plugin of plugins ?? (await loadCliPlugins())) {
+		if (typeof plugin.afterTaskCreate !== 'function') continue;
+		try {
+			await plugin.afterTaskCreate({ hubRoot, output, fsMod });
+		} catch (err) {
+			process.stderr.write(`[task] after-create hook failed: ${err.message}\n`);
+		}
+	}
+}
+
 if (isMain) {
 	let output;
+	const argv = process.argv.slice(2);
 	try {
-		const argv = process.argv.slice(2);
 		output = runCli(argv);
 	} catch (err) {
 		output = { ok: false, error: err.message };
 	}
+	await runAfterTaskCreate(argv, output);
 	process.stdout.write(JSON.stringify(output, null, 2) + '\n');
 	process.exit(output.ok ? 0 : 1);
 }

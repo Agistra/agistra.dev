@@ -16,6 +16,11 @@
  * exit 0 with no output on clean. The reminder text
  * comes from memory-check-message.js (tier-aware memory root). Work evidence
  * comes from memory-check-evidence.js (Stop-hook stdin + transcript).
+ *
+ * Quiet by default (memory-check-claude-throttle.js, Claude Code only): no
+ * reminder when a memory file was written within the last 10 minutes, and at
+ * most one reminder per session_id per work period (60 minutes). The shared
+ * core and the Cursor, Copilot and Codex adapters do not use these gates.
  */
 import { checkMemoryStatus, markReminded } from './memory-check-core.js';
 import {
@@ -23,6 +28,12 @@ import {
 	neutralizeFirstLine,
 } from './memory-check-message.js';
 import { readStdin, sessionWorkEvidence } from './memory-check-evidence.js';
+import {
+	hasRecentMemoryWrite,
+	isClaudeReminderThrottled,
+	markClaudeReminded,
+	sessionIdFromStdin,
+} from './memory-check-claude-throttle.js';
 
 // Evidence gating: the Stop hook runs at the end of every turn, so a greeting
 // or a quick question must not be nagged. When the hook payload and transcript
@@ -30,7 +41,8 @@ import { readStdin, sessionWorkEvidence } from './memory-check-evidence.js';
 // shell (Bash/PowerShell) call that is not provably read-only since the
 // session-start marker, exit quietly. Otherwise (evidence unknown) fall
 // back to marker-only behaviour.
-const evidence = sessionWorkEvidence(await readStdin());
+const stdinText = await readStdin();
+const evidence = sessionWorkEvidence(stdinText);
 if (evidence === false) {
 	process.exit(0);
 }
@@ -41,11 +53,23 @@ if (status !== 'dirty') {
 	process.exit(0);
 }
 
+// A memory write inside the window means memory is being kept: stay silent.
+if (await hasRecentMemoryWrite()) {
+	process.exit(0);
+}
+
+// At most one reminder per session per work period.
+const sessionId = sessionIdFromStdin(stdinText);
+if (isClaudeReminderThrottled({ sessionId })) {
+	process.exit(0);
+}
+
 const [firstRaw, ...rest] = await renderReminderLines();
 // Without transcript evidence we cannot claim files were changed.
 const first = evidence === true ? firstRaw : neutralizeFirstLine(firstRaw);
 // Once per stop: stamp so the same work is not reminded a second time.
 markReminded();
+markClaudeReminded({ sessionId });
 // Reminder delivered as Stop-hook `additionalContext` on stdout with exit 0:
 // Claude receives it and the turn continues, but the UI labels it "Stop hook
 // feedback" instead of "Stop hook error". Exit 2 / decision:"block" both

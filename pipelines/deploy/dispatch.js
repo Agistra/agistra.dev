@@ -7,6 +7,7 @@ import {
 	changeTaskStatus,
 	projectDirFromTaskPath,
 	buildDispatchPrompt,
+	acceptedStatusValues,
 } from './lib/tasks.js';
 import { projectTaskDir } from './lib/vault-layout.js';
 
@@ -43,6 +44,7 @@ export function dispatch({
 		}
 		console.log('\nProject Queue\n');
 		let anyPending = false;
+		let anyUnrecognized = false;
 		for (const { project: name, todos, inFlight, dones, unrecognized } of all) {
 			const pending = todos.length + inFlight.length;
 			const done = dones.length;
@@ -54,10 +56,21 @@ export function dispatch({
 			for (const { file, state } of inFlight) {
 				console.log(`    → ${file.replace(`_${state}_`, ` [${state}] `)}`);
 			}
-			for (const { file, status: s } of unrecognized) {
-				console.log(`    ⚠ ${file} [unrecognized status: ${s}]`);
+			for (const { file, status: s, inDone } of unrecognized) {
+				const why = inDone
+					? `in done/ but status: ${s}`
+					: s === undefined
+						? 'no status'
+						: `unrecognized status: ${s}`;
+				console.log(`    ⚠ ${file} [${why}]`);
 			}
+			if (unrecognized.length > 0) anyUnrecognized = true;
 			if (pending > 0) anyPending = true;
+		}
+		if (anyUnrecognized) {
+			console.log(
+				`\n  Accepted status values: ${acceptedStatusValues().join(', ')}`,
+			);
 		}
 		if (!anyPending) console.log('\n  All projects complete.');
 		console.log('');

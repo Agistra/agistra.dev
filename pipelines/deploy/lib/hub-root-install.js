@@ -8,11 +8,11 @@ import { execFileSync } from 'node:child_process';
  * buildPackageJson() (lib/extras.js) writes outputRoot/package.json
  * unconditionally on every hub tier (it declares @modelcontextprotocol/sdk,
  * the runtime dependency pipelines/deploy/relay/mcp/server.js and a
- * vault-backed tier's stdio MCP proxy script (packages/vault/vault-guard.cjs)
+ * vault-backed tier's stdio MCP proxy script (the vault write guard)
  * both need), and a package-lock.json ships alongside it in the packaged
  * archive — but nothing in the deploy pipeline ever ran `npm ci`/`npm
  * install` at the hub root to materialise node_modules/ from that lockfile.
- * Confirmed on a real hub: vault-guard.cjs crashed with MODULE_NOT_FOUND
+ * Confirmed on a real hub: the vault write guard crashed with MODULE_NOT_FOUND
  * ("Cannot find module '@modelcontextprotocol/sdk/server/stdio.js'") until
  * node_modules/ was installed by hand — its MCP server connected immediately
  * afterward.

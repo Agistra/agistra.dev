@@ -171,6 +171,8 @@ Use this order:
 3. narrow build, lint, or typecheck for the touched slice
 4. broader repository validation required by local policy
 
+**Local test scope.** Run lint and the tests for the area you changed. Do not run the full coverage suite (or a local CI-mirror command that includes it) locally by default: the Linux CI job runs it on the pull request in a few minutes, and on a slow local machine it can take 30 to 40 minutes. Run the full suite locally only when the ticket asks for it, or when the change touches test infrastructure or shared deploy or packaging code. The Windows suite runs only on release bump pull requests and on manual dispatch, so do not run it locally unless the ticket asks.
+
 Validation should confirm the expected observable signal, not only command success. If the observed signal is ambiguous, do one nearby disambiguating read or check before expanding scope.
 
 ### Step 5 - Closeout
@@ -195,7 +197,7 @@ When addressing review comments:
 Before handoff or review request:
 
 - complete required deploy, environment, migration, seed, or configuration steps when the repository workflow requires them
-- run `npm run ci:local` before every push and report its exit code
+- run the checks chosen under Local test scope before every push and report each command's exit code; a full local CI mirror applies only in the cases that rule names
 - push only after code and validation are in good shape or any remaining blocker is explicitly recorded
 - open or update the PR with what changed, why, how to test, and reviewer focus when the repository uses PR workflow
 - update the linked issue with implementation and validation status when the repository uses issue-based workflow

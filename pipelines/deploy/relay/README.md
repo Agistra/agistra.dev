@@ -27,7 +27,7 @@ Future channels (e.g. Slack) add `pipelines/deploy/relay/slack-relay/` implement
 
 | Command | Where | Purpose |
 | ------- | ----- | ------- |
-| `npm.cmd run relay -- --hub <hub>` | setchin-agent-profiles | Start telegram-relay daemon |
+| `npm.cmd run relay -- --hub <hub>` | profiles source repository | Start telegram-relay daemon |
 | `npm run relay` | deployed hub | Start daemon (`--hub .`) |
 | `npm run relay:status` | either | GET `/health` on daemon port |
 | `npm run doctor` | hub | Config checks including relay MCP |

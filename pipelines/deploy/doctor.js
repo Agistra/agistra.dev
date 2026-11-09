@@ -55,11 +55,14 @@ import {
 } from './lib/langgraph-paths.js';
 import { checkHubRootDepsCurrent } from './lib/hub-root-install.js';
 import { buildTipFooter } from './lib/tips.js';
+import { missingHubSettings } from './lib/hub-settings.js';
 import {
+	hasClaudeAdapter,
 	readTaskPermissionState,
 	TASK_PERMISSION_STATES,
 	detectPartialTaskCliRules,
 } from './lib/task-permission.js';
+import { hasCodexMemoryReminderHook } from './lib/codex-hooks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1122,7 +1125,7 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 			21,
 			'langgraph compile target',
 			'could not read agents/profiles/ to determine eligible profiles',
-			'run from a setchin-agent-profiles checkout, or pass --profiles-root explicitly',
+			'run from a checkout of the profiles source repository, or pass --profiles-root explicitly',
 		);
 	}
 
@@ -1209,7 +1212,7 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
  * shipped (lib/hub-root-install.js), or one where that step's `npm ci`/`npm
  * install` call failed silently, can still be missing node_modules/ entirely.
  * That gap surfaced for real: a vault-backed tier's stdio MCP proxy script
- * (packages/vault/vault-guard.cjs) requires
+ * (the vault write guard) requires
  * '@modelcontextprotocol/sdk/server/stdio.js' at spawn time and crashed with
  * MODULE_NOT_FOUND on a hub whose node_modules/ simply did not exist, while
  * doctor previously had no signal for it at all.
@@ -1326,6 +1329,118 @@ function checkTaskPermission({ hubRoot, fsMod }) {
 			);
 		}
 	}
+}
+
+/**
+ * Check 27: the hub's .claude/settings.json carries the baseline hooks.
+ *
+ * Warns (never fails) when the file is missing or lacks a baseline hook; the
+ * fix is `npm run setup`, which restores them. Doctor never writes the file.
+ * The expected set comes from lib/hub-settings.js, the code deploy and setup use.
+ */
+function checkHubSettings({ hubRoot, fsMod }) {
+	if (!hasClaudeAdapter(hubRoot, fsMod)) {
+		return skip(
+			27,
+			'hub settings',
+			'not applicable — no Claude Code adapter deployed',
+		);
+	}
+	const settingsPath = path.join(hubRoot, '.claude', 'settings.json');
+	const read = readSettingsForMerge(settingsPath, { fsMod });
+	const hint = 'run `npm run setup` to restore them';
+	if (read.status === 'unusable') {
+		return warn(
+			27,
+			'hub settings',
+			`.claude/settings.json cannot be read (${read.reason}); hub hooks cannot be checked`,
+			'repair the file by hand; setup will not overwrite it',
+		);
+	}
+	if (read.status === 'absent') {
+		return warn(
+			27,
+			'hub settings',
+			'.claude/settings.json is missing — the hub hooks (secret-scan gate, memory hooks, relay start) are not active',
+			hint,
+		);
+	}
+	const missing = missingHubSettings(read.settings);
+	if (missing.length > 0) {
+		return warn(
+			27,
+			'hub settings',
+			`.claude/settings.json is missing: ${missing.join(', ')}`,
+			hint,
+		);
+	}
+	return pass(
+		26,
+		'hub settings',
+		'.claude/settings.json has all hub hooks and settings',
+	);
+}
+
+/**
+ * Check 25: Codex memory-reminder Stop hook opt-out state.
+ *
+ * id 25, not 24: a tier-specific "*.doctor-plugin.js" file already claims id
+ * 24 (a tier-plugin check, discovered dynamically — see
+ * checkOptionalTierReadiness below — so this core check must not reuse any id
+ * a plugin file already claims; this core file never names which plugin or
+ * paid-tier feature, per the same no-disclosure rule checkOptionalTierReadiness
+ * documents for a free "dev" hub). 25 is the first free id past every id
+ * currently in use across doctor.js and lib/*.doctor-plugin.js.
+ *
+ * `codexMemoryReminder.enabled` in workspace.config.json follows the same
+ * `{ enabled }` convention check 18 already reads for `nightlyDreaming`:
+ * absent/true means on (today's default — unlike nightlyDreaming, this
+ * feature is opt-out, not opt-in), explicit `enabled: false` means the
+ * operator turned it off via targets/codex.js's mergeCodexMemoryHooks(). A
+ * declined/disabled reminder is never a defect (AC3) — only a drift between
+ * the config and what's actually in .codex/hooks.json (cross-checked the same
+ * way check 18 cross-checks the registered Scheduled Task) warns.
+ */
+function checkCodexMemoryReminder({ hubRoot, fsMod }) {
+	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
+	if (skipReason) return skip(25, 'codex memory reminder', skipReason);
+
+	const hooksFile = readJsonSafe(
+		path.join(hubRoot, '.codex', 'hooks.json'),
+		fsMod,
+	);
+	if (hooksFile === null) {
+		return skip(
+			25,
+			'codex memory reminder',
+			'.codex/hooks.json not found — nothing to check',
+		);
+	}
+	const enabled = config?.codexMemoryReminder?.enabled !== false;
+	const hookPresent = hasCodexMemoryReminderHook(hooksFile);
+
+	if (!enabled) {
+		return skip(
+			25,
+			'codex memory reminder',
+			hookPresent
+				? 'disabled by choice (codexMemoryReminder.enabled: false) — redeploy to remove the existing Stop hook'
+				: 'disabled by choice',
+		);
+	}
+	if (hookPresent) {
+		return pass(
+			25,
+			'codex memory reminder',
+			'enabled — Stop hook present in .codex/hooks.json',
+		);
+	}
+	return warn(
+		25,
+		'codex memory reminder',
+		'enabled in workspace.config.json but no memory-check-codex.js Stop hook found in .codex/hooks.json',
+		'rerun the tier-specific deploy command (redeploy to add the Codex memory reminder Stop hook)',
+	);
 }
 
 /**
@@ -1481,6 +1596,8 @@ export async function runChecks({
 		}),
 		checkHubRootDependencies({ hubRoot, fsMod }),
 		checkTaskPermission({ hubRoot, fsMod }),
+		checkCodexMemoryReminder({ hubRoot, fsMod }),
+		checkHubSettings({ hubRoot, fsMod }),
 		checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }),
 		...(await checkOptionalTierReadiness({
 			hubRoot,

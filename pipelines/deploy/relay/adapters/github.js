@@ -15,7 +15,7 @@ export function parseTrackingIssue(ref) {
 	const match = trimmed.match(TRACKING_ISSUE_RE);
 	if (!match) {
 		throw new Error(
-			'tracking issue must be owner/repo#N (e.g. Agistra/setchin-agent-profiles#60)',
+			'tracking issue must be owner/repo#N (e.g. my-org/my-repo#60)',
 		);
 	}
 	return {

@@ -25,7 +25,7 @@ const ROUTER_MANIFEST_REL = path.join(
  * Fails loudly (throws) only when both the manifest and the fallback profile are
  * missing or yield no model.
  *
- * @param {string} profilesRoot  Absolute path to the setchin-agent-profiles repo root.
+ * @param {string} profilesRoot  Absolute path to the profiles source repository root.
  * @param {typeof fs} [fsMod]    Injectable fs module for testing.
  * @param {string} [hubRoot]     Absolute hub root — used as fallback profile location.
  * @returns {string}  The model id, e.g. 'claude-haiku-4-5-20251001'.
@@ -45,7 +45,7 @@ export function resolveRouterModel(profilesRoot, fsMod = fs, hubRoot) {
 		}
 		throw new Error(
 			`Router manifest not found: ${manifestPath}\n` +
-				'Run from the setchin-agent-profiles repo root.',
+				'Run from the profiles source repository root.',
 		);
 	}
 

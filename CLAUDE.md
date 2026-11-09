@@ -44,7 +44,7 @@ On the first message of each session, run the update checker silently:
 node pipelines/deploy/lib/version-check.js
 ```
 
-- `{"status": "update-available", "local": "...", "remote": "..."}` → inform the user once, briefly: "Hub release {remote} is available; you're on {local}. Run `npm run version:check` for details."
+- `{"status": "update-available", "local": "...", "remote": "..."}` → inform the user once, briefly: "Hub release {remote} is available; you're on {local}. Run `npm run version:check` for details. After updating, run `npm run doctor`."
 - `{"status": "up-to-date"}` → say nothing
 - `{"status": "offline"}` or `{"status": "no-remote-version"}` → say nothing (silent non-failure)
 - Any error or missing file → say nothing

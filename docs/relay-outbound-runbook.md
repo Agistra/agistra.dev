@@ -8,7 +8,7 @@ Manual E2E verification for Router → relay daemon → Telegram group.
 
 - `workspace.config.json` has `remoteTeam.enabled`, `telegram.enabled`, `bot_token`, and `relay_group_id`
 - Relay MCP wired in `~/.claude/settings.json` or `.cursor/mcp.json` (run `npm run setup` from hub, or see `docs/relay-setup.md`)
-- Relay daemon code available (`setchin-agent-profiles` repo; the deploy pipeline copies it to `pipelines/deploy/relay/` on every hub)
+- Relay daemon code available (profiles source repository; the deploy pipeline copies it to `pipelines/deploy/relay/` on every hub)
 
 ---
 
@@ -19,8 +19,8 @@ Manual E2E verification for Router → relay daemon → Telegram group.
 From the profiles repo (reads config from the hub):
 
 ```powershell
-cd D:\dev\setchin-agent-profiles
-npm.cmd run relay -- --hub D:/dev/agistra.dev
+cd <path-to-profiles-source>
+npm.cmd run relay -- --hub <path-to-your-hub>
 ```
 
 Verify health:

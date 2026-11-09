@@ -144,7 +144,7 @@ Live HOT/WARM/COLD state: resolve it with `node tools/resolve-path.js memory bui
 <!-- COMPILED BOOTSTRAP START -->
 <!-- role: builder -->
 <!-- skills: agent-foundations, token-economics, proactive-agent -->
-<!-- source-hash: 5ddd127646807bd9da9d731454784faab2bce8acb1ecb2f180dbccb6fac62733 -->
+<!-- source-hash: b2c308736909c7c0e3f894eb078a69005694db3a640a96c4c7fb46b1a0ea56c9 -->
 
 <!-- BEGIN SKILL: agent-foundations -->
 
@@ -227,7 +227,7 @@ Scan every incoming message for:
 Protocol:
 
 1. STOP — do not start composing the response.
-2. WRITE — record it in your own memory, tier HOT, as Find and Write Your Memory says for your memory's shape. A write that returns `ok: false` is not a WAL write.
+2. WRITE — record it where Records Rule below says. Work in flight and context recorded nowhere else go in your own memory, tier HOT, as Find and Write Your Memory says for your memory's shape. A write that returns `ok: false` is not a WAL write.
 3. THEN — respond.
 
 The urge to respond is the enemy. Context vanishes. Write first.
@@ -243,9 +243,9 @@ Lesson: lessons/deferred-memory-write.md
 Concrete triggers that require an immediate write:
 - A new contact, company, role, or proper noun appears
 - A status changes (applied, sent, rejected, received reply)
-- A decision is made ("I'll go with X", "skip that", "send it")
+- A decision is made ("I'll go with X", "skip that", "send it"): write it to its ticket or ADR; HOT gets at most a pointer to it
 - A preference is stated ("I don't want to mention X", "use Y not Z")
-- A correction is given ("that's wrong", "actually it's X")
+- A correction is given ("that's wrong", "actually it's X"): a standing rule goes into the skill or profile it belongs to; HOT holds it only until then
 - **Before starting work** on a ticket or dispatch — record scope, branch, and intent as a recovery anchor if context compacts mid-task
 - **After a full ticket automation flow completes** (qa-passed + merged, or parked) — close out the ticket's state before moving to the next item
 - **After a repo/workspace review or discovery pass** (install attempts, scan results, health checks, "what is this project") that surfaces a fact not already in memory — e.g. stack, blockers, sibling-project layout, next lanes of work
@@ -262,6 +262,17 @@ Turns that do NOT require a write: routine confirmations ("yes", "looks good", "
 **Write target preference:** Always write to the agent's own memory first (Find and Write Your Memory). Auto-memory (the system-level `MEMORY.md` index and its files) is for user-level preferences and feedback that must survive across projects — not for agent session state. If in doubt: agent state → the active storage plugin's memory store; durable cross-project feedback → auto-memory.
 
 **Evidence block (source citation):** A fresh live-state claim (ticket ready, PR open or merged, QA passed or failed, report landed, step complete) is invalid without an evidence block naming the live source checked. Memory or a prior subagent's prose summary alone is insufficient. The block has three fields: `claim` (what is asserted), `source` (the concrete live check: a command such as `` `gh api ...` ``, a file and line, an observed exit code, a URL, a direct quote from the team lead), `observed` (what that source returned). State it in the same step as the claim, never deferred. Narrative may follow the block. `task qa-report --evidence <file.json>` (an array of these entries) posts the block in QA reports and adds a report-landed entry from its own re-fetch; elsewhere this is convention, not a mechanized check.
+
+## Records Rule
+
+Every agent records each kind of thing in one place. Memory is for work in flight, not for the record.
+
+- **Task** (the ticket and its tracker issue): any piece of work, and anything waiting on the team lead.
+- **ADR or project doc:** decisions with their reasons, and designs.
+- **Skill or agent profile:** standing rules about how agents work. A team lead correction is promoted into the right skill; memory holds it only until then.
+- **HOT memory:** pointers to work in flight, each with its ticket or PR as `--ref` so the sweep can close it, plus short-lived context recorded nowhere else yet. Aim for about a dozen entries.
+- **WARM and COLD memory:** history.
+- **No copies:** once something is recorded in a ticket or ADR, memory keeps no copy of it in HOT.
 
 ## Skill Selection
 
@@ -454,8 +465,10 @@ This applies to all agents (Architect, Builder, Tester, and Router) on every tie
 - Read-only subagent (morning-standup contribution, dreaming status phase): read only. Never `ensure`, never edit the note.
 - `BOOTSTRAP SELF-CHECK` subagent: persist its report with the same write. `npm run self-check -- <agent>` shows your path, shape, a HOT read and a write round trip run on a temp copy; `blocked` means fix it before real work.
 
+**Housekeeping is silent.** Retrying a write, shortening an entry and making room are not news. Do them without telling the team lead; mention memory only when a decision or fact could not be saved.
+
 **Which operation, where** (the note; `ensure` only creates it)
-- WAL entry, dispatch-return entry, automation checkpoint, `failed-outbound` record, commercial-decision row, grill-with-docs decision, bootstrap report: a new entry at the top of the HOT section. The working buffer is not an entry: it is `working-buffer.md` in `memory/`, edited directly, with Bash `>>` where you have no Edit.
+- WAL entry, dispatch-return entry, automation checkpoint, `failed-outbound` record, bootstrap report: a new entry at the top of the HOT section. The working buffer is not an entry: it is `working-buffer.md` in `memory/`, edited directly, with Bash `>>` where you have no Edit.
 - Promotion to COLD (`self-improving-agent`, dreaming): move the entry to the COLD section. Demote to WARM: the WARM section.
 - Finished work: mark the entry done in place.
 - Dreaming: snapshot the note to `memory/archive/<agent>-YYYY-MM-DD.md` before compacting.

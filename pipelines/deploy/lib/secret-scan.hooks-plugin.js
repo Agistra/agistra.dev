@@ -2,7 +2,7 @@
  * secret-scan.hooks-plugin.js — PreToolUse hook wiring for the shared
  * secret-scanner gate on direct `Edit`/`Write` tool calls (the third of
  * three enforcement points using the shared scanner — packages/vault/
- * vault-guard.cjs and pipelines/deploy/lib/task-cli.js cover the other two
+ * the vault write guard and pipelines/deploy/lib/task-cli.js cover the other two
  * application-layer write paths).
  *
  * Ships to EVERY hub tier (dev, dev:graph, dev:sub, ops), unlike

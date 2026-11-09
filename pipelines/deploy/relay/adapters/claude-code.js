@@ -106,7 +106,7 @@ export function acquireDispatchLock({ hubRoot, fsMod = fs }) {
  * @param {InboundJob} options.job
  * @param {RelayConfig} options.config
  * @param {string} options.hubRoot       Absolute hub root — cwd for claude invocation.
- * @param {string} options.profilesRoot  Absolute path to setchin-agent-profiles repo root.
+ * @param {string} options.profilesRoot  Absolute path to the profiles source repository root.
  * @param {typeof nodeSpawn} [options.spawnFn]   Injectable for testing.
  * @param {typeof fs} [options.fsMod]             Injectable for testing.
  * @param {() => Date} [options.nowFn]            Injectable clock for logger (testing).

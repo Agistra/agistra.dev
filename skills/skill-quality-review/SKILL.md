@@ -164,6 +164,10 @@ agent validates input by default, so deleting the sentence changes nothing; dele
 "Validate input against the schema in `references/schema.md` before parsing" survives — it names a
 concrete source the agent would not otherwise consult.
 
+### 8. Tier Assignment
+
+Each new skill's tier (`hubType` in its manifest entry) is decided case by case with the team lead. There is no blanket default: do not infer it from the skill's topic or leave it unset by habit.
+
 ## Third-Party Skill Intake
 
 Third-party skills are optional by default.

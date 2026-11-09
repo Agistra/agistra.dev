@@ -45,7 +45,7 @@ function sha256(buf) {
 async function listFilesRecursive({ repo, subPath, ref, fetchFn }) {
 	const url = `https://api.github.com/repos/${repo}/contents/${subPath}?ref=${encodeURIComponent(ref)}`;
 	const headers = {
-		'User-Agent': 'setchin-agent-profiles-install-skill',
+		'User-Agent': 'agistra-install-skill',
 		Accept: 'application/vnd.github+json',
 	};
 	if (process.env.GITHUB_TOKEN)
@@ -80,7 +80,7 @@ async function listFilesRecursive({ repo, subPath, ref, fetchFn }) {
  * comparing content hashes to determine whether the result is added/updated/unchanged.
  *
  * Caller controls destRoot entirely — this function never assumes or defaults
- * to setchin-agent-profiles' own skills/ directory.
+ * to the source repository's own skills/ directory.
  *
  * @param {object} options
  * @param {{ name: string, repo: string, path: string, ref: string }} options.entry
@@ -126,7 +126,7 @@ export async function installSkillFromCatalog({
 			const destPath = path.join(destSkillDir, relPath);
 
 			const fileRes = await fetchFn(file.download_url, {
-				headers: { 'User-Agent': 'setchin-agent-profiles-install-skill' },
+				headers: { 'User-Agent': 'agistra-install-skill' },
 			});
 			if (!fileRes.ok) {
 				throw new Error(

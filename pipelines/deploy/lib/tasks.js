@@ -98,14 +98,37 @@ function stripLegacyStateLine(body) {
 }
 
 /**
- * Find the lowest-numbered _todo task file in a project directory.
+ * Whether a task file in `dir` is in the todo state, decided per file the
+ * same way `listAllTasks` classifies it: a repo-files-shaped file (state-token
+ * filename infix) is todo when that infix is `todo`; a vault-shaped file (no
+ * infix) is todo when its `status:` frontmatter maps to `todo`. A file whose
+ * status is missing or unrecognized is not todo.
+ */
+function isTodoTask(dir, file) {
+	// A file under done/ is finished work whatever its status says.
+	if (path.basename(dir) === 'done') return false;
+	if (hasStateTokenInfix(file)) return filenameInfix(file) === 'todo';
+	if (!/^task_\d+_.+\.md$/.test(file)) return false;
+	try {
+		const { meta } = parseFrontmatter(
+			fs.readFileSync(path.join(dir, file), 'utf-8'),
+		);
+		return readStatusToken(meta.status) === 'todo';
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Find the lowest-numbered todo task file in a project directory, for either
+ * task shape (state-token infix, or `status:` frontmatter).
  * Returns the absolute file path, or null if none found.
  */
 export function findCurrentTask(projectDir) {
 	if (!fs.existsSync(projectDir)) return null;
 	const files = fs
 		.readdirSync(projectDir)
-		.filter((f) => f.match(/^task_\d+_todo_/))
+		.filter((f) => isTodoTask(projectDir, f))
 		.sort((a, b) => taskNum(a) - taskNum(b));
 	return files.length > 0 ? path.join(projectDir, files[0]) : null;
 }
@@ -157,8 +180,15 @@ export function listAllTasks(projectsRoot) {
 					try {
 						const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
 						const { meta } = parseFrontmatter(raw);
-						token = stateToToken(meta.status);
+						token = readStatusToken(meta.status);
 					} catch {
+						// A ticket filed under done/ with a missing or unrecognized
+						// status is finished work with sloppy frontmatter, not drift.
+						if (dir === doneDir) {
+							token = 'done';
+						}
+					}
+					if (!token) {
 						// stateToToken threw Unknown lifecycle state; track this file
 						// so the caller can report it instead of silently dropping it.
 						try {
@@ -171,6 +201,12 @@ export function listAllTasks(projectsRoot) {
 						}
 						return;
 					}
+				}
+				if (dir === doneDir && token !== 'done' && token !== 'dropped') {
+					// Filed as finished but still carries a live status: report the
+					// drift, never offer it for dispatch.
+					unrecognized.push({ file, status: token, inDone: true });
+					return;
 				}
 				if (token === 'todo') {
 					todos.push(file);
@@ -237,6 +273,34 @@ export function loadSkillContent(skillsRoot, skillName) {
 	return fs.readFileSync(skillPath, 'utf-8');
 }
 
+const STATE_TOKEN_MAP = {
+	'state:ready-for-implementation': 'todo',
+	'state:todo': 'todo',
+	todo: 'todo',
+	'state:in-progress': 'in-progress',
+	'state:ready-for-review': 'ready-for-review',
+	'state:ready-for-qa': 'ready-for-qa',
+	'state:changes-requested': 'changes-requested',
+	'state:qa-passed': 'qa-passed',
+	closed: 'done',
+	dropped: 'dropped',
+};
+
+/**
+ * Status values the read path (`listAllTasks`, `isTodoTask`) accepts: every
+ * key `stateToToken` accepts, plus `done`, which vault tickets use in
+ * practice. `done` is read-only: it is not in `STATE_TOKEN_MAP`, so the write
+ * path keeps writing the canonical `closed`.
+ */
+export function acceptedStatusValues() {
+	return [...Object.keys(STATE_TOKEN_MAP), 'done'];
+}
+
+/** Read-path twin of `stateToToken`: also reads `status: done` as the done bucket. */
+function readStatusToken(status) {
+	return status === 'done' ? 'done' : stateToToken(status);
+}
+
 /**
  * Map lifecycle state to filename token.
  * Per the ticket-lifecycle-mode state vocabulary.
@@ -258,18 +322,7 @@ export function loadSkillContent(skillsRoot, skillName) {
  *     agree.
  */
 export function stateToToken(state) {
-	const map = {
-		'state:ready-for-implementation': 'todo',
-		'state:todo': 'todo',
-		todo: 'todo',
-		'state:in-progress': 'in-progress',
-		'state:ready-for-review': 'ready-for-review',
-		'state:ready-for-qa': 'ready-for-qa',
-		'state:changes-requested': 'changes-requested',
-		'state:qa-passed': 'qa-passed',
-		closed: 'done',
-		dropped: 'dropped',
-	};
+	const map = STATE_TOKEN_MAP;
 	if (!map[state]) {
 		throw new Error(
 			`Unknown lifecycle state: ${state}. Valid states: ${Object.keys(map).join(', ')}`,

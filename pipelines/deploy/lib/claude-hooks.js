@@ -124,6 +124,39 @@ export function mergeMemoryCheckStopHook(settings = {}) {
 	);
 }
 
+/**
+ * Remove every pipeline-owned hook from settings.hooks[event]. The inverse of
+ * upsertOwnedHook(): an existing hook is "ours" when isOwned(hook) is true.
+ * Behaviour:
+ *  - entry contains only owned hook(s): the whole entry is dropped;
+ *  - entry mixes an owned hook with user hooks: only the owned hook(s) are
+ *    removed, the entry (and the user hooks' original matcher) is kept;
+ *  - no owned hook present anywhere: settings are returned unchanged (aside
+ *    from the generic clone upsertOwnedHook also performs).
+ * Hooks not owned by the pipeline are never touched. Pure: returns new settings.
+ *
+ * @param {object} settings
+ * @param {string} event  hook event name, e.g. 'Stop'
+ * @param {(hook: object) => boolean} isOwned
+ * @returns {object}
+ */
+export function removeOwnedHook(settings, event, isOwned) {
+	const next = { ...settings, hooks: { ...(settings.hooks ?? {}) } };
+	const existingEntries = next.hooks[event];
+	// Nothing to remove: leave the event key exactly as-is (absent stays
+	// absent — never introduces a spurious empty array for an event the
+	// hooks file never had).
+	if (!Array.isArray(existingEntries)) return next;
+	const out = [];
+	for (const existing of existingEntries) {
+		const hooks = Array.isArray(existing?.hooks) ? existing.hooks : [];
+		const others = hooks.filter((h) => !isOwned(h));
+		if (others.length > 0) out.push({ ...existing, hooks: others });
+	}
+	next.hooks[event] = out;
+	return next;
+}
+
 // Tier-specific runtime hooks live in their own "*.hooks-plugin.js" file
 // under lib/, rather than here. This file ships to every hub tier
 // unconditionally (it also owns the relay daemon hook above), so it must stay

@@ -9,7 +9,7 @@ Unified inter-team relay: Telegram group I/O via a local daemon, agent tools via
 - Telegram bot from [@BotFather](https://t.me/BotFather) (token + handle)
 - Bot added as **admin** to your relay group
 - Node.js 20+ (same as hub)
-- `setchin-agent-profiles` repo cloned (daemon runs from profiles; hub holds config + inbox queue)
+- The profiles source repository cloned (daemon runs from profiles; hub holds config + inbox queue)
 
 ---
 
@@ -135,7 +135,7 @@ When `remoteTeam.enabled`, doctor checks:
 | Inbound (Telegram → inbox → Router) | [relay-inbound-runbook.md](./relay-inbound-runbook.md) |
 | GitHub adapter | [relay-github-runbook.md](./relay-github-runbook.md) |
 
-Module reference: `pipelines/deploy/relay/README.md` in setchin-agent-profiles.
+Module reference: `pipelines/deploy/relay/README.md` in the profiles source repository.
 
 ---
 

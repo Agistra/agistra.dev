@@ -18,8 +18,8 @@ Manual E2E verification for Telegram → daemon inbox → Router dispatch.
 ### 1. Start the daemon
 
 ```powershell
-cd D:\dev\setchin-agent-profiles
-npm.cmd run relay -- --hub D:/dev/agistra.dev
+cd <path-to-profiles-source>
+npm.cmd run relay -- --hub <path-to-your-hub>
 ```
 
 ### 2. Send a structured message in the relay group
