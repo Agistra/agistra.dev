@@ -81,6 +81,7 @@ import { parseGithubIssueRef, fetchIssueState } from './ticket-drift.js';
 import { resolveTasksRoot, isVaultBackedHubType } from './memory-root.js';
 import { projectTaskDir } from './vault-layout.js';
 import { readJsonSafe } from '../wizard.js';
+import { effectiveHubType, isHubRoot } from './hub-type.js';
 import { loadCliPlugins } from './cli-plugins.js';
 import { scanForSecrets, formatSecretScanError } from './secret-scan.js';
 
@@ -1578,11 +1579,7 @@ export function runCli(
 	// `--projects-root` flag always wins over this default.
 	let effectiveHubRootPresent = hubRootPresent;
 	let hubRoot = hubRootFlagValue;
-	if (
-		!present &&
-		!hubRootPresent &&
-		fsMod.existsSync(path.join(cwd, 'workspace.config.json'))
-	) {
+	if (!present && !hubRootPresent && isHubRoot(cwd, fsMod)) {
 		effectiveHubRootPresent = true;
 		hubRoot = cwd;
 	}
@@ -1606,14 +1603,14 @@ export function runCli(
 			};
 		}
 		const hubConfigPath = path.join(hubRoot, 'workspace.config.json');
-		if (!fsMod.existsSync(hubConfigPath)) {
+		if (!isHubRoot(hubRoot, fsMod)) {
 			return {
 				ok: false,
 				error: `--hub-root given but no workspace.config.json found under it: ${hubConfigPath}`,
 			};
 		}
 		const hubConfig = readJsonSafe(hubConfigPath, fsMod);
-		hubType = hubConfig?.hubType;
+		hubType = effectiveHubType(hubRoot, hubConfig, fsMod);
 		rootOpts = { projectsRoot: resolveTasksRoot(hubRoot, hubType) };
 	}
 
@@ -1737,9 +1734,7 @@ export async function runAfterTaskCreate(
 	if (argv[0] !== 'create' || !output?.ok) return;
 	const { hubRoot: flagHubRoot, rest } = extractHubRootFlag(argv);
 	if (extractProjectsRootFlag(rest).present) return;
-	const hubRoot =
-		flagHubRoot ??
-		(fsMod.existsSync(path.join(cwd, 'workspace.config.json')) ? cwd : null);
+	const hubRoot = flagHubRoot ?? (isHubRoot(cwd, fsMod) ? cwd : null);
 	if (!hubRoot) return;
 	for (const plugin of plugins ?? (await loadCliPlugins())) {
 		if (typeof plugin.afterTaskCreate !== 'function') continue;

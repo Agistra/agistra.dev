@@ -34,6 +34,7 @@ import {
 	resolveTasksRootSegment,
 } from './lib/memory-root.js';
 import { legacyVaultFolders } from './lib/vault-layout.js';
+import { withHubType } from './lib/hub-type.js';
 import {
 	isNightlyDreamingTaskRegistered,
 	NIGHTLY_DREAMING_TASK_NAME,
@@ -382,8 +383,8 @@ function checkMcpJson({ hubRoot, fsMod }) {
 		return fail(
 			5,
 			'.mcp.json',
-			'.mcp.json not found',
-			'rerun the tier-specific deploy command',
+			'.mcp.json not found — the hub MCP servers are not configured',
+			'run `npm run setup` to create it from the shipped template',
 		);
 	}
 	let data;
@@ -408,17 +409,29 @@ function checkMcpJson({ hubRoot, fsMod }) {
 	);
 }
 
+/**
+ * Read workspace.config.json. hubType is filled from the packaged tier sentinel
+ * (pipelines/deploy/.hub-config.json) when the file does not set one, so every
+ * check and doctor plugin that reads `config.hubType` works on a hub that has
+ * not been through setup. With the file absent, `config` is then just
+ * `{ hubType }` and `skipReason` still says the file is missing; checks that
+ * only need the tier use `config`, the rest skip on `skipReason` as before.
+ */
 export function readHubConfig(hubRoot, fsMod) {
 	const configPath = path.join(hubRoot, 'workspace.config.json');
 	if (!fsMod.existsSync(configPath)) {
 		return {
-			config: null,
+			config: withHubType(hubRoot, null, fsMod),
 			skipReason: 'workspace.config.json absent — skipping relay check',
 		};
 	}
 	try {
 		return {
-			config: JSON.parse(fsMod.readFileSync(configPath, 'utf-8')),
+			config: withHubType(
+				hubRoot,
+				JSON.parse(fsMod.readFileSync(configPath, 'utf-8')),
+				fsMod,
+			),
 			skipReason: null,
 		};
 	} catch {
@@ -809,7 +822,8 @@ function unexpectedProfiles(agentSet) {
  */
 function checkHubType({ hubRoot, fsMod }) {
 	const { config, skipReason } = readHubConfig(hubRoot, fsMod);
-	if (skipReason) return skip(15, 'hub type', skipReason);
+	// Absent config with the packaged sentinel still has a tier to verify.
+	if (skipReason && !config?.hubType) return skip(15, 'hub type', skipReason);
 
 	const hubType = config?.hubType;
 	const agentIds = discoverDeployedAgentIds({ hubRoot, fsMod });

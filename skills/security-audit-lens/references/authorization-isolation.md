@@ -37,5 +37,5 @@ or service-level API keys. The Evidence Discipline and Output Format in `SKILL.m
 A finding needs a location and quoted evidence. A missing second layer, such as an app-level check
 absent where a restrictive policy already blocks the access, is a hardening note, not a
 vulnerability. If the outcome turns on a fact you cannot read, such as the live policy set in a
-deployed database, list it under Needs validation with a read-only way to settle it. Do not query a
+deployed database, give it the needs-validation verdict with a read-only way to settle it. Do not query a
 live database to settle it.

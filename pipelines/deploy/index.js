@@ -12,6 +12,7 @@ import { extraBooleanFlags, loadCliPlugins, scanHelp } from './lib/cli-plugins.j
 import { readJsonSafe } from './wizard.js';
 import { resolveTasksRootSegment } from './lib/memory-root.js';
 import { projectTaskDir } from './lib/vault-layout.js';
+import { effectiveHubType } from './lib/hub-type.js';
 import { findSkillCatalogEntry, installSkillFromCatalog } from './lib/skill-sources.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -64,7 +65,7 @@ const project = typeof args.project === 'string' ? args.project : args._project;
 const hubConfig = readJsonSafe(path.join(consultingRoot, 'workspace.config.json'));
 const projectsRoot = path.resolve(
 	consultingRoot,
-	args['projects-root'] ?? resolveTasksRootSegment(hubConfig?.hubType),
+	args['projects-root'] ?? resolveTasksRootSegment(effectiveHubType(consultingRoot, hubConfig)),
 );
 const skillsRoot   = path.resolve(consultingRoot, args['skills-root']   ?? 'skills');
 const projectsDir  = project ? path.join(projectsRoot, project) : null;

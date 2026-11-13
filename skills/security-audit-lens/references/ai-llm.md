@@ -35,5 +35,5 @@ handling for an agent. The Evidence Discipline and Output Format in `SKILL.md` a
 
 A finding needs a location and quoted evidence. A missing second layer (for example no output filter
 when the tool already runs with least privilege) is a hardening note, not a vulnerability. If the
-outcome turns on a fact you cannot read, such as which tools a deployed agent is granted, list it
-under Needs validation with a read-only way to settle it.
+outcome turns on a fact you cannot read, such as which tools a deployed agent is granted, give it
+the needs-validation verdict with a read-only way to settle it.

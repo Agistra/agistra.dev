@@ -1,8 +1,8 @@
 /**
  * Model resolution helpers — read agent manifests to get the correct model for each agent.
  *
- * Router always uses the economy-tier model (Haiku) regardless of platform defaults.
- * Architect, Builder, and Tester use Sonnet (the default Claude model).
+ * Agent models are levels (`haiku` | `sonnet` | `opus`), never model ids.
+ * Router uses `haiku`; Builder and Tester use `sonnet`; Architect uses `opus`.
  * This module provides the authoritative model lookup so auto-dispatch and doctor
  * always agree on the expected model rather than each maintaining its own constant.
  */
@@ -28,7 +28,7 @@ const ROUTER_MANIFEST_REL = path.join(
  * @param {string} profilesRoot  Absolute path to the profiles source repository root.
  * @param {typeof fs} [fsMod]    Injectable fs module for testing.
  * @param {string} [hubRoot]     Absolute hub root — used as fallback profile location.
- * @returns {string}  The model id, e.g. 'claude-haiku-4-5-20251001'.
+ * @returns {string}  The model id, e.g. 'haiku'.
  */
 export function resolveRouterModel(profilesRoot, fsMod = fs, hubRoot) {
 	const manifestPath = path.join(profilesRoot, ROUTER_MANIFEST_REL);
@@ -60,7 +60,7 @@ export function resolveRouterModel(profilesRoot, fsMod = fs, hubRoot) {
 	if (!model) {
 		throw new Error(
 			`claude.model missing in router manifest: ${manifestPath}\n` +
-				'Add "claude": { "model": "claude-haiku-..." } to the manifest.',
+				'Add "claude": { "model": "haiku" } to the manifest.',
 		);
 	}
 
@@ -90,6 +90,8 @@ export function parseProfileModel(content) {
  *
  * `fast` = an economy-tier / low-latency model for simple, low-risk dispatch work.
  * `capable` = a fuller-reasoning model for complex, multi-file, or high-ambiguity work.
+ * `critical` = the strongest model, for security judgment and work where a wrong
+ * answer reaches a client.
  *
  * `null` means "no confirmed adapter-native identifier" — callers fall back to
  * adapter-neutral prose (see `resolveDispatchModelText`) describing the capability
@@ -99,15 +101,17 @@ export function parseProfileModel(content) {
  * these same short aliases.
  */
 export const ADAPTER_DISPATCH_MODELS = {
-	claude: { fast: 'haiku', capable: 'sonnet' },
-	cursor: { fast: null, capable: null },
-	codex: { fast: null, capable: null },
-	copilot: { fast: null, capable: null },
+	claude: { fast: 'haiku', capable: 'sonnet', critical: 'opus' },
+	cursor: { fast: null, capable: null, critical: null },
+	codex: { fast: null, capable: null, critical: null },
+	copilot: { fast: null, capable: null, critical: null },
 };
 
 const DISPATCH_MODEL_FALLBACK_TEXT = {
 	fast: "your runtime's fastest/economy-tier model",
 	capable: "your runtime's most capable reasoning model",
+	critical:
+		"your runtime's strongest reasoning model, reserved for critical work",
 };
 
 /**
@@ -119,7 +123,7 @@ const DISPATCH_MODEL_FALLBACK_TEXT = {
  * doesn't recognise.
  *
  * @param {string} adapter  One of 'claude' | 'cursor' | 'codex' | 'copilot'.
- * @param {'fast'|'capable'} tier
+ * @param {'fast'|'capable'|'critical'} tier
  * @returns {string}
  */
 export function resolveDispatchModelText(adapter, tier) {
@@ -128,7 +132,7 @@ export function resolveDispatchModelText(adapter, tier) {
 }
 
 /**
- * Substitute `{{DISPATCH_MODEL_FAST}}` / `{{DISPATCH_MODEL_CAPABLE}}` placeholder
+ * Substitute `{{DISPATCH_MODEL_FAST}}` / `{{DISPATCH_MODEL_CAPABLE}}` / `{{DISPATCH_MODEL_CRITICAL}}` placeholder
  * tokens in profile source content (e.g. ROUTING.md) with adapter-appropriate text.
  * A no-op when the content contains neither token.
  *
@@ -150,5 +154,9 @@ export function substituteDispatchModelTokens(content, adapter) {
 		.replace(
 			/\{\{DISPATCH_MODEL_CAPABLE\}\}/g,
 			resolveDispatchModelText(adapter, 'capable'),
+		)
+		.replace(
+			/\{\{DISPATCH_MODEL_CRITICAL\}\}/g,
+			resolveDispatchModelText(adapter, 'critical'),
 		);
 }

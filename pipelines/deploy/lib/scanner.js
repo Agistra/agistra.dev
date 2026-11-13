@@ -201,7 +201,7 @@ function buildTaskContent(finding, projectName) {
 	return `---
 agent: ${finding.agent}
 mode: ${finding.mode}
-model: claude-sonnet-4-6
+model: sonnet
 finding-id: ${finding.id}
 skills:
   - ${finding.skill}

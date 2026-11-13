@@ -51,6 +51,7 @@ import {
 } from './tasks.js';
 import { resolveTasksRoot } from './memory-root.js';
 import { readJsonSafe } from '../wizard.js';
+import { effectiveHubType, isHubRoot } from './hub-type.js';
 
 /**
  * Local `status:` values that represent the pre-dispatch state — i.e. no
@@ -479,13 +480,13 @@ export function resolveTasksRootPath({
 			throw new Error(`--hub-root not found: ${hubRootFlag}`);
 		}
 		const hubConfigPath = path.join(hubRootFlag, 'workspace.config.json');
-		if (!fsMod.existsSync(hubConfigPath)) {
+		if (!isHubRoot(hubRootFlag, fsMod)) {
 			throw new Error(
 				`--hub-root given but no workspace.config.json found under it: ${hubConfigPath}`,
 			);
 		}
 		const hubConfig = readJsonSafe(hubConfigPath, fsMod);
-		const hubType = hubConfig?.hubType;
+		const hubType = effectiveHubType(hubRootFlag, hubConfig, fsMod);
 		const tasksDir = resolveTasksRoot(hubRootFlag, hubType);
 		return { tasksDir, hubRoot: hubRootFlag, hubType };
 	}

@@ -255,7 +255,7 @@ This fetches the named skill directly from its declared source into this hub's o
 
 On Windows, `npm run setup` asks whether to enable nightly automated end-of-day memory
 consolidation — a Windows Scheduled Task that runs headless Claude Code (`claude -p "..."
---model claude-haiku-4-5-20251001 --permission-mode bypassPermissions`) once a day (off-peak,
+--model sonnet --permission-mode bypassPermissions`) once a day (off-peak,
 local time), with its working directory pinned to this hub root. The prompt addresses
 Architect by name and directs it to run the `dreaming` skill's end-of-day consolidation —
 a bare, unaddressed `"Good night Team"` does not reliably trigger the skill in a cold,

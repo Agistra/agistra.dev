@@ -2,6 +2,6 @@
 command = "npx"
 args = [
     "-y",
-    "agent-browser@0.38.1",
+    "agent-browser@0.41.2",
     "mcp",
 ]

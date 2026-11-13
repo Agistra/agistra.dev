@@ -922,7 +922,7 @@ export function buildDispatchPrompt(taskPath, skillsRoot) {
 	}
 
 	const agentLabel = [meta.agent, meta.mode].filter(Boolean).join(' / ');
-	const model = meta.model ?? 'claude-sonnet-4-6';
+	const model = meta.model ?? 'sonnet';
 	const githubLine = meta.github ? `\n**GitHub:** \`${meta.github}\`` : '';
 	const taskName = path.basename(taskPath);
 	const skillsSummary = skills.length > 0 ? skills.join(', ') : 'none';

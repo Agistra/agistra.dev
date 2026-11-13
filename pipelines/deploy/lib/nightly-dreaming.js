@@ -5,7 +5,7 @@
  * with a directive prompt that triggers the `dreaming` skill's end-of-day memory
  * consolidation, reusing the exact invocation pattern already proven by the Telegram
  * relay daemon's Router auto-dispatch (see relay/adapters/claude-code.js's
- * dispatchRouter(), which spawns `claude -p "<prompt>" --model claude-haiku-4-5-20251001`
+ * dispatchRouter(), which spawns `claude -p "<prompt>" --model haiku`
  * with `cwd: hubRoot`).
  *
  * Windows-only for v1 — Mac/Linux (cron/launchd) deferred.
@@ -13,7 +13,7 @@
  * **Prompt wording:** the original v1 prompt was a bare
  * `"Good night Team"`, which reliably fails in a cold, non-interactive session — reproduced
  * directly (not guessed): `cmd.exe /c claude -p "Good night Team" --model
- * claude-haiku-4-5-20251001` returns a generic "Good night! Rest well." with zero tool
+ * haiku` returns a generic "Good night! Rest well." with zero tool
  * calls and zero file reads. The bare phrase only works interactively because the user has
  * usually already addressed an agent by name first, which pulls CLAUDE.md's Startup Rule
  * (and from there the `dreaming` skill's trigger-phrase catalogue) into active play. A cold

@@ -36,5 +36,5 @@ unchanged.
 A finding needs a location and quoted evidence. A missing second layer, such as no pin on a step
 whose job already holds read-only permissions and no secrets, is a hardening note, not a
 vulnerability. If the outcome turns on a fact you cannot read, such as repository-level secret or
-branch-protection settings, list it under Needs validation with a read-only way to settle it. Do not
+branch-protection settings, give it the needs-validation verdict with a read-only way to settle it. Do not
 run installs or call a registry to settle it.

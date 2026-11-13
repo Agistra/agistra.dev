@@ -31,6 +31,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonSafe } from '../wizard.js';
+import { effectiveHubType } from './hub-type.js';
 import {
 	VAULT_BACKED_HUB_TYPES,
 	isVaultBackedHubType,
@@ -86,7 +87,7 @@ export function resolveMemoryRootForHub(hubRoot, { fsMod = fs } = {}) {
 		path.join(hubRoot, 'workspace.config.json'),
 		fsMod,
 	);
-	return resolveMemoryRoot(hubRoot, config?.hubType);
+	return resolveMemoryRoot(hubRoot, effectiveHubType(hubRoot, config, fsMod));
 }
 
 /**

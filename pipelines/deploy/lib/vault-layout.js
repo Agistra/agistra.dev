@@ -27,6 +27,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { effectiveHubType } from './hub-type.js';
 
 /** Hub tiers whose canonical memory record lives in the vault, not plain repo files. */
 export const VAULT_BACKED_HUB_TYPES = ['dev:sub', 'ops'];
@@ -101,7 +102,9 @@ export function resolveVaultLayout(hubType) {
 
 /**
  * Read a hub's workspace.config.json and resolve its layout. A missing or
- * unreadable config resolves like a hub with no hubType (layout `none`).
+ * unreadable config falls back to the packaged tier sentinel
+ * (pipelines/deploy/.hub-config.json); with neither, it resolves like a hub with
+ * no hubType (layout `none`).
  *
  * @param {string} hubRoot
  * @param {object} [opts]
@@ -117,7 +120,7 @@ export function resolveVaultLayoutForHub(hubRoot, { fsMod = fs } = {}) {
 	} catch {
 		config = null;
 	}
-	return resolveVaultLayout(config?.hubType);
+	return resolveVaultLayout(effectiveHubType(hubRoot, config, fsMod));
 }
 
 /**

@@ -27,6 +27,9 @@ import {
 } from './wizard.js';
 import { mergeRelaySessionStartHook } from './lib/claude-hooks.js';
 import { ensureHubSettings } from './lib/hub-settings.js';
+import { ensureHubMcpJson } from './lib/hub-mcp.js';
+import { ensureVaultPluginConfig } from './lib/vault-plugin-config.js';
+import { resolveTasksRootSegment } from './lib/memory-root.js';
 import {
 	NIGHTLY_DREAMING_TASK_NAME,
 	computeNightlyDreamingTaskName,
@@ -339,6 +342,21 @@ export async function maybeInstallStatusline({
 		`  Statusline ${alreadyInstalledByThisMechanism ? 'refreshed' : 'installed'} → ${scriptTargetPath}\n`,
 	);
 	return { installed: true, refreshed: alreadyInstalledByThisMechanism };
+}
+
+/**
+ * Create <hubRoot>/projects when it is missing.
+ *
+ * @param {object} opts
+ * @param {string} opts.hubRoot
+ * @param {object} [opts.fsMod]
+ * @returns {string} one-line outcome for the setup log
+ */
+export function ensureProjectsDir({ hubRoot, fsMod = fs }) {
+	const dir = path.join(hubRoot, 'projects');
+	if (fsMod.existsSync(dir)) return `projects/ already present → ${dir}`;
+	fsMod.mkdirSync(dir, { recursive: true });
+	return `projects/ created → ${dir}`;
 }
 
 /**
@@ -1071,6 +1089,58 @@ export function createRun({
 						? `  Hub settings already complete → ${result.settingsPath}`
 						: `  Hub settings ${result.status} → ${result.settingsPath}`;
 			process.stdout.write(`${msg}\n`);
+		}
+
+		// ── Hub .mcp.json ───────────────────────────────────────────────────────
+		// Ignored in release tier branches, so a clone has none. Created from the
+		// shipped template, or the template's servers are synced into an existing
+		// file (operator-added servers stay). Runs on every tier.
+		line('Hub MCP config ');
+		{
+			const result = ensureHubMcpJson({
+				hubRoot: cliOutputRoot,
+				fsMod,
+				log: (m) =>
+					process.stdout.write(`  ${m}
+`),
+			});
+			const msg =
+				result.status === 'unusable'
+					? `  WARNING: ${result.mcpPath} cannot be used (${result.reason}); the hub MCP servers were not added.`
+					: result.status === 'no-template'
+						? `  No MCP template shipped; ${result.mcpPath} left as is`
+						: `  Hub MCP config ${result.status} → ${result.mcpPath}`;
+			process.stdout.write(`${msg}
+`);
+		}
+
+		// ── Vault plugin config ─────────────────────────────────────────────────
+		// Release tier branches do not track the vault's two plugin config files;
+		// they ship as templates. Created when missing, otherwise the shipped
+		// plugins are added and the user's own entries stay. No vault, no step.
+		{
+			const results = ensureVaultPluginConfig({
+				hubRoot: cliOutputRoot,
+				fsMod,
+			});
+			if (results.some((r) => r.status !== 'no-vault')) {
+				line('Vault plugin config ');
+				for (const r of results) {
+					process.stdout.write(`  ${r.file} ${r.status}\n`);
+				}
+			}
+		}
+
+		// ── Projects folder ─────────────────────────────────────────────────────
+		// Release tier branches do not track projects/ (the hub .gitignore lists
+		// it), so a fresh clone has none. Only the repo-files tasks root is made
+		// here; a vault-backed tier ships its own vault/Projects.
+		if (resolveTasksRootSegment(config.hubType) === 'projects') {
+			line('Projects folder ');
+			process.stdout.write(
+				`  ${ensureProjectsDir({ hubRoot: cliOutputRoot, fsMod })}
+`,
+			);
 		}
 
 		// ── Task CLI permission rules (Claude Code) ──────────────────────────────

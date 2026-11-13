@@ -57,12 +57,12 @@ same evidence discipline as VBR:
   secret somewhere in config" without having found one), do not report it as a finding. Either keep
   looking or report it as an open question in the audit summary (see the split below).
 - Prefer under-reporting with an explicit "not fully covered" note over over-reporting with
-  low-confidence guesses.
-- The Confidence column reuses two tiers from `code-review-and-quality`: **Confirmed** (the exact
-  string or pattern was read directly) and **Likely** (a known-bad shape observed with a specific
-  counter-example, but not exercised). A lead inferred without a direct quote is never a finding at
-  any severity. If it has a location and a named unresolved fact that a safe read-only step can
-  settle, list it as Needs validation (see Output Format); with no location yet, it is an open question.
+  unsupported guesses.
+- Every candidate ends as exactly one verdict:
+  - **confirmed**: evidence proves it (a quoted code reference, tool output, or a reproduction). It gets a severity.
+  - **needs-validation**: it has a location and quoted evidence, but one named fact is unresolved and a safe read-only step can settle it. It gets no severity until that fact is settled.
+  - **rejected**: a false positive, kept with the reason.
+- A lead inferred without a direct quote is never a finding. With no location yet, it is an open question in the Audit Summary.
 
 ## Checklist Categories
 
@@ -133,37 +133,31 @@ Load the matching file from `references/` only when the target contains the area
 - agent prompts or tool wiring: `references/ai-llm.md`
 - CI workflows or dependency manifests: `references/supply-chain-ci.md`
 - a database, RLS policies, or per-user data: `references/authorization-isolation.md`
+- writing the findings file (every audit): `references/findings-file.md`
 
 ## Output Format
 
 Findings are structured records, not free prose. Reuse the Critical/Required/Nit/Optional/FYI
 severity vocabulary from `code-review-and-quality` so findings from this skill sit consistently
-alongside code review output. Every candidate ends with one of three verdicts, each in its own table.
+alongside code review output. One table lists every candidate; the Verdict column decides what the
+last column holds.
 
 ```markdown
 ## Security Audit Findings
 
-| # | Category | Location | Description | Severity | Confidence | Remediation direction |
+| # | Category | Location | Description | Verdict | Severity | Remediation, unresolved fact, or reason |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | [hardcoded-credentials / injection / auth-backdoor / insecure-config-default / weak-credential-storage / ai-llm / supply-chain-ci / authz-isolation] | [file:line] | [what was observed, quoted] | [Critical/Required/Nit/Optional/FYI] | [Confirmed/Likely] | [what direction fixes it, not a full patch] |
-| 2 | injection | src/users:42 | `run("SELECT ... " + id)` builds a query from a request value | Critical | Confirmed | Bind the value as a parameter |
-
-## Needs Validation
-
-No severity. Name the exact unresolved fact and a safe, read-only way to settle it.
-
-| # | Category | Location | Unresolved fact | Safe way to settle it |
-| --- | --- | --- | --- | --- |
-| 3 | auth-backdoor | server/login:88 | Whether the `DEBUG_LOGIN` flag is set in any deployed environment | Read the deployment config for that key; call no live endpoint |
-
-## Rejected
-
-Disproved candidates, kept so a later pass does not raise them again.
-
-| # | Category | Location | Reason |
-| --- | --- | --- | --- |
-| 4 | insecure-config-default | cfg/dev:5 | Wildcard CORS applies to dev only; cfg/prod:9 overrides it |
+| 1 | injection | src/users:42 | `run("SELECT ... " + id)` builds a query from a request value | confirmed | Critical | Bind the value as a parameter |
+| 2 | auth-backdoor | server/login:88 | `DEBUG_LOGIN` flag grants access when set | needs-validation | none | Is it set in any deployed environment? Read the deployment config; call no live endpoint |
+| 3 | insecure-config-default | cfg/dev:5 | Wildcard CORS in the dev config | rejected | none | Dev only; cfg/prod:9 overrides it |
 ```
+
+Category slugs: hardcoded-credentials, injection, auth-backdoor, insecure-config-default,
+weak-credential-storage, ai-llm, supply-chain-ci, authz-isolation. Severity is `none` unless the
+verdict is confirmed.
+
+Alongside the report, write `findings.json` with one record per candidate. The record fields and a
+worked example are in `references/findings-file.md`.
 
 ## Independent Disproof (Critical and Required)
 
@@ -172,9 +166,9 @@ works in a fresh context (a subagent where the platform has them, otherwise a se
 receives only the claim, the location, and the cited code. It tries to refute the claim from source
 and returns one outcome:
 
-- **Upheld**: the code supports the claim; the finding stays Confirmed or Likely.
-- **Refuted**: the code contradicts the claim; move it to Rejected with a one-line reason.
-- **Cannot decide**: move it to Needs validation.
+- **Upheld**: the code supports the claim; the finding stays confirmed.
+- **Refuted**: the code contradicts the claim; its verdict becomes rejected, with a one-line reason.
+- **Cannot decide**: its verdict becomes needs-validation, and it loses its severity.
 
 The finder never verifies its own finding. The verifier reads source only and does not run target
 code. Nit, Optional, and FYI skip this step. Run it before `pattern-sweep`, then run each upheld
@@ -204,7 +198,7 @@ Close every audit pass with a short summary block, even when findings are zero:
 
 - Scope: [what was actually reviewed — paths, modules, or "full repository"]
 - Coverage: [full-codebase pass: the table below; diff-scoped pass: one line each for categories searched and categories not searched, with reasons]
-- Open questions: [suspicions with no location yet — leads with a location go to Needs Validation]
+- Open questions: [suspicions with no location yet — leads with a location get the needs-validation verdict]
 
 | Module or path | Secrets | Injection | Auth/debug | Config defaults | Credential storage | AI/LLM | Supply chain/CI | Authz/isolation |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -212,6 +206,19 @@ Close every audit pass with a short summary block, even when findings are zero:
 ```
 
 Each cell is `searched`, `partly searched`, `not searched`, or `not examined` (reference file not loaded); every `not searched` or `not examined` cell gives a reason. Never leave a cell blank or imply a clean result for an area not examined.
+
+## Verify Before Reporting
+
+Run the validator before reporting, and do not report while it fails:
+
+```bash
+node skills/security-audit-lens/scripts/validate-findings.cjs <findings.json> <report.md>
+```
+
+It exits 0 when every record has the fields its verdict requires, no needs-validation or rejected
+record carries a severity, and the report table and `findings.json` agree on ids and verdicts. Fix
+the file or the report, then run it again. It is a format check, not proof the findings are true;
+the Independent Disproof step above does that.
 
 ## What This Skill Does Not Do
 

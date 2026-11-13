@@ -43,6 +43,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { withHubType } from './hub-type.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -312,7 +313,11 @@ export function getTipForHub({
 	hasGraphifyInstaller,
 }) {
 	const config = readWorkspaceConfig(hubRoot, fsMod);
-	const tipHubType = resolveHubTipHubType(config, { hasGraphifyInstaller });
+	// A copy with the packaged tier filled in, so a hub that has not run setup
+	// yet still gets its tier's tips; `config` itself stays as read from disk.
+	const tipHubType = resolveHubTipHubType(withHubType(hubRoot, config, fsMod), {
+		hasGraphifyInstaller,
+	});
 	const eligible = filterTipsForHubType(loadTips(dataPath), tipHubType);
 	const next = pickNextTip(eligible, readTipsState(hubRoot, fsMod), rng);
 	const remember = () => {

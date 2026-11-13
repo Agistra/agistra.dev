@@ -30,6 +30,14 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** Tier recorded by the packaging profile; undefined for a hub without the sentinel. */
+function readPackagedHubType(hubRoot, fsMod) {
+	return readJsonSafe(
+		path.join(hubRoot, 'pipelines', 'deploy', '.hub-config.json'),
+		fsMod,
+	)?.hubType;
+}
+
 /** Adapter-specific profile path, relative to the hub root. See the Working
  * Directory Verification protocol table for the source of this mapping. */
 const ADAPTER_PROFILE_PATHS = [
@@ -238,12 +246,14 @@ async function workspaceSignals(hubRoot, fsMod) {
 	const configPath = path.join(hubRoot, 'workspace.config.json');
 	const configPresent = fsMod.existsSync(configPath);
 	const config = configPresent ? readJsonSafe(configPath, fsMod) : null;
+	// Before setup the tier only exists in the packaged sentinel.
+	const hubType = config?.hubType ?? readPackagedHubType(hubRoot, fsMod);
 	const doctorLastRanAtPresent = Boolean(config?.doctor?.lastRanAt);
 
 	let projectsScaffolded = fsMod.existsSync(path.join(hubRoot, 'projects'));
 	const mod = await loadMemoryRootModule(hubRoot);
 	if (mod) {
-		const segment = mod.resolveTasksRootSegment(config?.hubType);
+		const segment = mod.resolveTasksRootSegment(hubType);
 		projectsScaffolded = fsMod.existsSync(path.join(hubRoot, segment));
 	}
 
@@ -254,7 +264,7 @@ async function workspaceSignals(hubRoot, fsMod) {
 		activeStoragePlugin: null,
 	};
 
-	if (config?.hubType === 'dev:sub') {
+	if (hubType === 'dev:sub') {
 		signals.activeStoragePlugin = detectPlugin(hubRoot, fsMod);
 	}
 	return signals;

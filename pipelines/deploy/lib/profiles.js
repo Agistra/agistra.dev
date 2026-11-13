@@ -80,20 +80,16 @@ export function readProfilesConfig(profilesRoot) {
 
 /**
  * Resolve the default model to fall back to when a manifest doesn't set its own
- * `claude.model` (or a per-target override, e.g. `cursor.model`). Reads
+ * `claude.model`. Reads
  * `defaults.model` from `profiles.config.json` at the repo root — the single place
  * to update for a bulk model-version upgrade across every agent that doesn't
  * declare its own override (see README's "Bulk model upgrade" section).
  *
- * This function is intentionally provider-agnostic — it only ever resolves the
- * literal anthropic-direct pin. A caller that needs provider-aware resolution
- * (e.g. a hub configured against a non-default model provider) wraps this
- * function rather than this function knowing about any specific provider; see
- * `resolveProviderAwareDefaultModel()` in `model-provider.js`. This module ships
- * unconditionally to every deployed hub tier (doctor.js imports it regardless of
- * hubType), so it must never carry any tier-specific provider's name, config
- * shape, or dead-code branch — see model-provider.js's own doc comment for the
- * disclosure-safety reasoning.
+ * The value is a model level (`haiku` | `sonnet` | `opus`), written into
+ * Claude Code profiles as-is. It is provider-agnostic: Claude Code resolves the
+ * level to a model id for whichever provider the user runs (on Bedrock, through
+ * the pins saved by `/setup-bedrock`). This module ships unconditionally to every
+ * deployed hub tier, so it carries no provider name or config shape.
  *
  * @param {string} profilesRoot  Absolute path to the `agents/profiles` directory.
  * @returns {string|undefined}  The default model id, or `undefined` when
