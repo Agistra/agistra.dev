@@ -40,10 +40,12 @@
  * CLI (`npm run show:tip`):
  *   node pipelines/deploy/lib/tips.js [--ascii] [--hub-root <path>]
  */
+import { installCrashReporter } from './error-sources.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withHubType } from './hub-type.js';
+import { upgradeTipEligible } from './error-report-optin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -122,6 +124,30 @@ export function pickTip(tips, rng = Math.random) {
 	if (!Array.isArray(tips) || tips.length === 0) return null;
 	const index = Math.min(tips.length - 1, Math.floor(rng() * tips.length));
 	return tips[index];
+}
+
+/**
+ * Conditions a tip may name in its `when` field. A tip with a `when` is in the
+ * rotation only while the condition holds; an unknown condition never holds.
+ */
+export const TIP_CONDITIONS = Object.freeze({
+	'error-report-trial-ended': ({ hubRoot, now }) =>
+		upgradeTipEligible({ hubRoot, now }),
+});
+
+/**
+ * Drop the tips whose `when` condition does not hold for this hub.
+ *
+ * @param {Array<{when?: string}>} tips
+ * @param {{hubRoot: string, now?: Date}} context
+ * @returns {Array}
+ */
+export function filterTipsByCondition(tips, context) {
+	return tips.filter((tip) => {
+		if (tip?.when === undefined) return true;
+		const holds = TIP_CONDITIONS[tip.when];
+		return typeof holds === 'function' && holds(context) === true;
+	});
 }
 
 // ── Rotation state ───────────────────────────────────────────────────────────
@@ -301,6 +327,7 @@ export function formatOnRequestLines() {
  * @param {string} [options.dataPath]
  * @param {() => number} [options.rng]
  * @param {() => boolean} [options.hasGraphifyInstaller]
+ * @param {Date} [options.now]               Clock for tips with a `when` condition.
  * @returns {{tip: object|null, tipHubType: string|undefined, config: object|null, remember: () => void}}
  *   `remember()` saves the rotation state; callers invoke it only when the tip
  *   is actually printed.
@@ -311,6 +338,7 @@ export function getTipForHub({
 	dataPath = DEFAULT_TIPS_DATA_PATH,
 	rng = Math.random,
 	hasGraphifyInstaller,
+	now,
 }) {
 	const config = readWorkspaceConfig(hubRoot, fsMod);
 	// A copy with the packaged tier filled in, so a hub that has not run setup
@@ -318,7 +346,10 @@ export function getTipForHub({
 	const tipHubType = resolveHubTipHubType(withHubType(hubRoot, config, fsMod), {
 		hasGraphifyInstaller,
 	});
-	const eligible = filterTipsForHubType(loadTips(dataPath), tipHubType);
+	const eligible = filterTipsByCondition(
+		filterTipsForHubType(loadTips(dataPath), tipHubType),
+		{ hubRoot, now, fsMod },
+	);
 	const next = pickNextTip(eligible, readTipsState(hubRoot, fsMod), rng);
 	const remember = () => {
 		if (next.tip) writeTipsState(hubRoot, next.state, fsMod);
@@ -511,5 +542,6 @@ const isMain =
 		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
+	installCrashReporter({ source: 'npm-run' });
 	process.exitCode = runShowTip(process.argv.slice(2));
 }

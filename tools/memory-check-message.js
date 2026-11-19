@@ -68,7 +68,12 @@ async function groupAgentsByShape(hubRoot, memoryRootAbs) {
 	}
 	const ids = new Set();
 	for (const e of dirents) {
-		if (e.isDirectory() && e.name !== 'archive' && !e.name.startsWith('.'))
+		if (
+			e.isDirectory() &&
+			e.name !== 'archive' &&
+			e.name !== 'rules' &&
+			!e.name.startsWith('.')
+		)
 			ids.add(e.name);
 		if (e.isFile() && e.name.endsWith('.md')) {
 			const id = e.name.slice(0, -3);

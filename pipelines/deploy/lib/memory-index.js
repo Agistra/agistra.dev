@@ -42,6 +42,7 @@
  *                       the existing index and flag the result as stale
  *                       instead.
  */
+import { installCrashReporter } from './error-sources.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -572,6 +573,7 @@ const isMain =
 		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
+	installCrashReporter({ source: 'npm-run' });
 	let output;
 	try {
 		const argv = process.argv.slice(2);

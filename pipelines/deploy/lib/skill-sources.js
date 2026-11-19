@@ -86,10 +86,11 @@ async function listFilesRecursive({ repo, subPath, ref, fetchFn }) {
  * @param {{ name: string, repo: string, path: string, ref: string }} options.entry
  * @param {string} options.destRoot absolute path to the invoking hub's own skills/ root
  * @param {typeof fetch} [options.fetchFn]
- * @param {(filename: string, content: string) => string} [options.fileTransform]
+ * @param {(filename: string, content: string, relPath: string) => string} [options.fileTransform]
  *   Optional per-file transform applied to each fetched file's text content before
- *   writing to disk. Receives the filename (basename only, e.g. "SKILL.md") and the
- *   UTF-8 string content; returns the modified string. Callers use this to apply
+ *   writing to disk. Receives the filename (basename only, e.g. "SKILL.md"), the
+ *   UTF-8 string content, and the file's path inside the skill folder with forward
+ *   slashes (e.g. "references/data-sources.md"); returns the modified string. Callers use this to apply
  *   skill-specific modifications at fetch time without keeping a local modified copy
  *   in the source repo. When omitted, content is written as-is.
  * @returns {Promise<{ name: string, status: 'added'|'updated'|'unchanged'|'error', filesWritten: string[], error?: string }>}
@@ -137,13 +138,17 @@ export async function installSkillFromCatalog({
 
 			// Apply the caller's per-file transform when one is provided. The transform
 			// receives the filename (e.g. "SKILL.md") and UTF-8 string content, and
-			// returns modified content. Used by the marketing-skills installer to strip
-			// prospecting's dangling "Tool Integrations" section at fetch time,
-			// without keeping a local modified copy in the source repo.
+			// returns modified content. Used by the marketing-skills installer to apply
+			// its documented install-time transforms, without keeping a local modified
+			// copy in the source repo.
 			if (fileTransform) {
 				const filename = path.basename(file.path);
 				newContent = Buffer.from(
-					fileTransform(filename, newContent.toString('utf-8')),
+					fileTransform(
+						filename,
+						newContent.toString('utf-8'),
+						relPath.split(path.sep).join('/'),
+					),
 					'utf-8',
 				);
 			}

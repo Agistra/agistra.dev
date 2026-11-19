@@ -143,7 +143,7 @@ function hasMarkdownNewerThan(dir, cutoffMs, strict) {
 	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (entry.name === 'archive') continue;
+			if (entry.name === 'archive' || entry.name === 'rules') continue;
 			if (hasMarkdownNewerThan(full, cutoffMs, strict)) return true;
 			continue;
 		}

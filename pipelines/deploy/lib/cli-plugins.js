@@ -17,6 +17,8 @@
  *
  *   scan = { flags, usage, description, run }
  *     flags        string[]  extra option names that take no value (booleans).
+ *     nameOnlyFlags string[] optional; flags (subset of flags) that make a run need
+ *                  only the project name, not its folder on disk.
  *     usage        string    option synopsis added to the `scan` usage line.
  *     description  string    one-line note shown next to that synopsis.
  *     run(ctx)     Promise<{ok: boolean}>  replaces the plain scan call.
@@ -64,6 +66,13 @@ export function scanPlugin(plugins) {
 /** Names of the extra no-value options the plugins add to `scan`. */
 export function extraBooleanFlags(plugins) {
 	return scanPlugin(plugins)?.flags ?? [];
+}
+
+/** True when a flag the plugin marks as name-only is set, so the project folder need not exist. */
+export function scanNeedsNameOnly(plugins, args) {
+	return (scanPlugin(plugins)?.nameOnlyFlags ?? []).some(
+		(f) => args[f] === true,
+	);
 }
 
 /** Usage and description for the extra `scan` options, or null when there are none. */

@@ -41,6 +41,11 @@ import {
 // shell (Bash/PowerShell) call that is not provably read-only since the
 // session-start marker, exit quietly. Otherwise (evidence unknown) fall
 // back to marker-only behaviour.
+// Loaded lazily: a hub with a partial tools/ folder still runs this hook.
+await import('./hook-error-report.js').then(
+	(m) => m.watchHookCrashes(),
+	() => {},
+);
 const stdinText = await readStdin();
 const evidence = sessionWorkEvidence(stdinText);
 if (evidence === false) {

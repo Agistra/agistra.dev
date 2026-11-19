@@ -99,6 +99,13 @@ export function readMemory(resolved, agent) {
 			return { ok: false, kind: 'note', detail: `cannot read: ${err.message}` };
 		}
 	}
+	if (resolved.plugin === 'obsidian') {
+		return {
+			ok: true,
+			kind: 'none',
+			detail: `no memory for ${agent} yet: the first \`memory add\` creates the keyed tree`,
+		};
+	}
 	return {
 		ok: true,
 		kind: 'none',
@@ -300,15 +307,19 @@ export async function writeRoundTrip({ hubRoot, agent, resolved }) {
 			error: 'skipped: a mixed memory is never written',
 		};
 	}
-	const memoryRoot =
-		resolved.shape === 'migrated'
-			? path.dirname(path.dirname(resolved.path))
-			: path.dirname(resolved.path);
+	// On a vault-backed tier an absent agent's path is the HOT index it will have,
+	// and its first write is a `memory add`, the same round trip as a migrated agent.
+	const keyed =
+		resolved.shape === 'migrated' ||
+		(resolved.shape === 'absent' && resolved.plugin === 'obsidian');
+	const memoryRoot = keyed
+		? path.dirname(path.dirname(resolved.path))
+		: path.dirname(resolved.path);
 	const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'self-check-memory-'));
 	try {
 		mirrorHub(hubRoot, tmp, memoryRoot, agent);
 		const ctx = { hubRoot, tmp, agent, resolved, memoryRoot };
-		if (resolved.shape === 'migrated') return await migratedRoundTrip(ctx);
+		if (keyed) return await migratedRoundTrip(ctx);
 		if (resolved.shape === 'single-note') return await singleRoundTrip(ctx);
 		return await absentRoundTrip(ctx);
 	} catch (err) {

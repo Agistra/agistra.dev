@@ -5,8 +5,8 @@
  * (agents/skills/agent-foundations/SKILL.md).
  *
  * Usage: node tools/resolve-path.js <store> <arg> [--hub-root <path>] [--json]
- *   store: memory | task | document | learnings
- *   arg:   agent id (memory) | project id (task) | collection (document) | store name (learnings)
+ *   store: memory | rules | task | document | learnings
+ *   arg:   agent id (memory, rules) | project id (task) | collection (document) | store name (learnings)
  *
  * Run from the hub root, or pass --hub-root <path> when the cwd is somewhere else
  * (a subagent started in a code worktree): the hub is then the path given, never
@@ -23,6 +23,9 @@
  *            A migrated agent (keyed entry files, no single note) resolves to
  *            its HOT index, Memory/<agent>/<agent>-hot.md; every other shape
  *            keeps Memory/<agent>.md.
+ *            rules returns `paths` instead of `path`: the files the agent reads for its
+ *            permanent rules, team rules first, each `{ scope, path, exists }`. A file that
+ *            does not exist means no rules, not an error.
  *   failure: { ok: false, code, error }
  * Exit code: 0 on success, 1 on any failure (bad usage, invalid arg, or a
  * plugin file present with an unresolvable vault root).
@@ -33,7 +36,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const STORES = ['memory', 'task', 'document', 'learnings'];
+const STORES = ['memory', 'rules', 'task', 'document', 'learnings'];
 const HUB_WIDE_DOC_COLLECTIONS = [
 	'decisions',
 	'architecture',
@@ -218,11 +221,41 @@ export async function resolvePath({ hubRoot, store, arg, fsMod = fs }) {
 			plugin === 'obsidian' ? 'dev:sub' : 'dev',
 		);
 		const shape = await memoryShape(hubRoot, root, arg, fsMod);
-		const file =
-			shape === 'migrated'
-				? path.join(root, arg, `${arg}-hot.md`)
-				: path.join(root, `${arg}.md`);
+		// A vault-backed agent has no single note: with no memory yet, its first
+		// `memory add` creates the keyed tree, so the path is the HOT index it will have.
+		const keyed =
+			shape === 'migrated' || (shape === 'absent' && plugin === 'obsidian');
+		const file = keyed
+			? path.join(root, arg, `${arg}-hot.md`)
+			: path.join(root, `${arg}.md`);
 		return { ok: true, store, plugin, path: file, shape };
+	}
+
+	if (store === 'rules') {
+		const safe = assertSafeName('agent id', arg);
+		if (!safe.ok) return safe;
+		const mod = await loadMemoryRootModule(hubRoot);
+		let scaffold = null;
+		try {
+			scaffold = await import(
+				pathToFileURL(
+					path.resolve(hubRoot, 'pipelines/deploy/lib/memory-scaffold.js'),
+				).href
+			);
+		} catch {
+			// reported below
+		}
+		if (!mod || typeof scaffold?.rulesReadFiles !== 'function')
+			return fail(
+				'rules-unavailable',
+				'could not load the rules helpers from pipelines/deploy/lib/memory-scaffold.js',
+			);
+		const vault = plugin === 'obsidian';
+		const root = mod.resolveMemoryRoot(hubRoot, vault ? 'dev:sub' : 'dev');
+		const paths = scaffold
+			.rulesReadFiles({ memoryRoot: root, agentId: arg, vault })
+			.map((f) => ({ ...f, exists: fsMod.existsSync(f.path) }));
+		return { ok: true, store, plugin, paths };
 	}
 
 	if (store === 'task') {
@@ -341,7 +374,7 @@ async function main() {
 	const [store, arg] = args;
 	if (!store || !arg) {
 		process.stderr.write(
-			'Usage: node tools/resolve-path.js <memory|task|document|learnings> <arg> [--hub-root <path>] [--json]\n',
+			'Usage: node tools/resolve-path.js <memory|rules|task|document|learnings> <arg> [--hub-root <path>] [--json]\n',
 		);
 		process.exit(1);
 		return;

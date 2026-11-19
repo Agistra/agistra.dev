@@ -4,7 +4,7 @@
  *
  * Obsidian rewrites both files as the user toggles plugins, so release tier
  * branches do not track them (hub.gitignore ignores everything under
- * `vault/.obsidian/` except the shipped plugins' code). packageHub() keeps a
+ * `vault/.obsidian/`; setup downloads the plugins' code, see vault-plugin-install.js). packageHub() keeps a
  * copy of each, taken from the deploy output, under
  * `pipelines/deploy/templates/vault-plugin-config/`. Setup creates a missing file
  * from its template. When the file exists, community-plugins.json gets back only
@@ -92,9 +92,15 @@ function mergeObjectConfig(existing, template) {
  * @param {object} opts
  * @param {string} opts.hubRoot
  * @param {object} [opts.fsMod]
+ * @param {boolean} [opts.createOnly]  Create a missing file and leave an existing one
+ *   untouched (doctor's repair); setup leaves this off and also completes existing files.
  * @returns {Array<{ file: string, status: 'created'|'updated'|'unchanged'|'unusable'|'no-template'|'no-vault' }>}
  */
-export function ensureVaultPluginConfig({ hubRoot, fsMod = fs }) {
+export function ensureVaultPluginConfig({
+	hubRoot,
+	fsMod = fs,
+	createOnly = false,
+}) {
 	const vaultRoot = path.join(hubRoot, 'vault');
 	if (!fsMod.existsSync(vaultRoot)) {
 		return VAULT_PLUGIN_CONFIG_FILES.map((file) => ({
@@ -116,6 +122,10 @@ export function ensureVaultPluginConfig({ hubRoot, fsMod = fs }) {
 			fsMod.mkdirSync(obsidianDir, { recursive: true });
 			fsMod.writeFileSync(target, templateRaw, 'utf-8');
 			results.push({ file, status: 'created' });
+			continue;
+		}
+		if (createOnly) {
+			results.push({ file, status: 'unchanged' });
 			continue;
 		}
 		let merged;

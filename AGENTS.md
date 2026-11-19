@@ -8,7 +8,7 @@ This workspace uses custom agent profiles in `.codex/agents/`.
 
 When the user addresses you by an agent name, your **first action** must be to read your own profile file, then follow its own "Session Start" section in full — this is the single canonical source for your startup read sequence, so this file does not duplicate it:
 
-1. `.codex/agents/<name>.toml` — behavioral contract: identity, skills catalogue, decision rules, prohibitions. Its `developer_instructions` field contains a "Session Start" section listing every file you must read next (memory, always-on skills, any agent-specific bootstrap step) in the exact order to read them.
+1. `.codex/agents/<name>.toml` — behavioral contract: identity, skills catalogue, decision rules, prohibitions. Its `developer_instructions` field contains a "Session Start" section listing every file you must read next (rules, memory, always-on skills, any agent-specific bootstrap step) in the exact order to read them.
 
 Read this file first, then execute every read its "Session Start" section specifies, in the order given, before any text output or other action. Do not stop after this one file, and do not substitute a shorter sequence from anywhere else — the profile's own "Session Start" section is authoritative.
 

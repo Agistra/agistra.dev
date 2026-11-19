@@ -146,8 +146,12 @@ const isMain =
 
 if (isMain) {
 	ensureRelayDaemon({ hubRoot: process.cwd() })
-		.catch((err) => {
+		.catch(async (err) => {
 			process.stderr.write(`relay autostart error: ${err.message}\n`);
+			await import('./hook-error-report.js').then(
+				(m) => m.reportHookFailure('hook-relay-autostart', err),
+				() => {},
+			);
 		})
 		.finally(() => process.exit(0));
 }

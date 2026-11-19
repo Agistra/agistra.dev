@@ -13,6 +13,7 @@
  *   "no-local-version" — local VERSION file missing or unreadable
  *   "no-remote-version"— remote returned unparseable content
  */
+import { installCrashReporter } from './error-sources.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
@@ -110,5 +111,6 @@ if (
 	process.argv[1] &&
 	fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
 ) {
+	installCrashReporter({ source: 'npm-run' });
 	main();
 }

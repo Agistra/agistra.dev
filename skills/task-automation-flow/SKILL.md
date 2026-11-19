@@ -21,6 +21,8 @@ On trigger: Architect enters automation mode, confirms the verifier field is set
 
 A ticket without a verifier field is underscoped. Do not dispatch — return to the team lead for clarification.
 
+Check the ticket's tracker labels first. If it carries `parked` (or an equivalent), read why it was parked; do not dispatch without the team lead's go.
+
 ## Verifier
 
 Every ticket has acceptance criteria. Architect specifies the verifier when creating the ticket — in this flow, Architect acts as Technical Lead and is responsible for setting the verifier field at ticket creation, consistent with the Technical Lead role defined in `ticket-lifecycle-mode`. There is no "no QA" — only a question of who verifies.
@@ -53,9 +55,13 @@ When no tracker is configured or auth is unavailable, create the local task file
 
 Before dispatching Builder or Tester, include the following paragraph verbatim in the dispatch prompt. This is not optional — it closes the gap where tickets can sit in an inconsistent state (local status and tracker labels out of sync) through an entire dispatch/QA lifecycle without any agent catching it.
 
-> You own transitioning this ticket's state at each lifecycle step: run `npm run task -- transition <id> <new-state>` (see `ticket-lifecycle-mode` State Transition CLI section) instead of manually editing the frontmatter, renaming the file, and calling the tracker plugin as separate steps — the CLI does all three atomically, including the tracker label sync and post-verify when a tracker is configured. Do not leave this for the dispatching agent to reconstruct afterward — transition state yourself as you move through each stage of the flow.
+> You own transitioning this ticket's state at each lifecycle step: run `npm run task -- transition <project>#task_N <new-state>` (see `ticket-lifecycle-mode` State Transition CLI section) instead of manually editing the frontmatter, renaming the file, and calling the tracker plugin as separate steps — the CLI does all three atomically, including the tracker label sync and post-verify when a tracker is configured. Do not leave this for the dispatching agent to reconstruct afterward — transition state yourself as you move through each stage of the flow.
 
 Run `npm run check:tickets` periodically (see `pipelines/deploy/lib/ticket-drift.js`) to catch any drift that slips through regardless.
+
+## Run Records
+
+At dispatch, run `npm run task -- run start <project>#task_N --agent <id> [--instance N] [--worktree <path>]` and keep the run id it prints. On a long task, `run touch <run-id>` shows the agent is still working. When the agent's result is verified, or the agent is stopped, run `run end <run-id> --outcome done|failed|stopped [--note "..."]`. `npm run status` reads these records and flags a run with no update for 3 hours as stuck.
 
 ## Mandatory dispatch inclusion: end-to-end run step for integration-shaped work
 
@@ -156,7 +162,7 @@ Team Lead: "do work" / "dispatch builder"
                                   └─> Team Lead: merges + closes ticket
 ```
 
-After Tester exits (pass or fail), main context returns to Architect. Builder does not spawn Tester — Architect classifies the QA. Non-browser: Architect dispatches Tester as a subagent in Full QA mode. Browser-driven: direct Tester session — handing main context to Tester when operating in main, or notifying the team lead to start a dedicated Tester session when not in main.
+After Tester exits (pass or fail), main context returns to Architect. Builder does not spawn Tester.
 
 ### verifier: Architect
 
@@ -326,14 +332,19 @@ Note: For `verifier: Architect`, the intermediate state is `state:ready-for-revi
 
 Immediately after any confirmed merge (single-ticket or batch), before moving on to the next ticket or action, the agent whose local checkout tracks the merged branch runs `git fetch origin && git pull` on the default branch. This keeps the local checkout current so the next dispatch, review, or branch cut starts from the merged state rather than a stale one.
 
+After the hygiene pull, Architect runs `npm run work -- clean --merged` (a dry run: it removes nothing) and reports which working copies would go. The team lead removes them by re-running it with `--yes`; Architect, Builder and Tester never do.
+
+Then run `npm run check:tickets` from the hub root. It checks every project and reports a tracker issue that is closed (completed) while its local task is not closed, so a merge that closed the issue but left the task in `state:qa-passed` is caught right away. Closing the local task stays a deliberate `task transition <id> closed`. A run that finds no task files exits non-zero; it never reports clean over an empty folder.
+
 ### Verified Work Cleanup
 
-After verifying a Builder's (or any subagent's) work, stop that agent and any background work it started, and confirm with the agent list that none is still running.
+After verifying a Builder's (or any subagent's) work, in the same turn: stop that agent, confirm with the agent list that none is still running, and check for processes or servers left from its worktree. Stop them by process id only, never by a broad name or text pattern.
 
 ## Agent Boundaries and Long Commands
 
 - Agents never remove worktrees and never redeploy the team lead's hub. The team lead does both.
-- A Builder runs lint and the tests for the area it changed, not the full coverage suite, unless the ticket asks for it; the CI run on the pull request covers the rest. The rule and its exceptions are in `software-engineer-mode` (Step 4, Local test scope).
+- Builder and Tester working copies come from one command, `npm run work -- new <project> <ticket> builder|tester`, which computes the path under the shared workspaces root. A dispatch names the project, the ticket and the role, not a folder. `npm run work -- list` shows every working copy with its branch and pull request state.
+- A Builder runs lint and the tests for the area it changed, not the full coverage suite, unless the ticket asks for it; the CI run on the pull request covers the rest. Run one full test suite at a time per machine; a Tester relies on green CI for the full suite and runs only the affected suites locally. The rule and its exceptions are in `software-engineer-mode` (Step 4, Local test scope).
 - No background polling loops (`until`, `sleep`) and no polling on git state such as `git stash list`, which every worktree shares. Run a long command once in the background and wait for its completion notice.
 
 ## Resuming an Interrupted Run
@@ -359,6 +370,7 @@ This is the one place these rules live; other skills and the Architect profile r
 **Merging into `develop`.** Architect verifies the PR (head SHA checked, CI green) and hands it to the team lead with the verification summary. The team lead merges.
 
 - Builders never merge.
+- Before handing over a PR whose branch is behind base and shares files with work merged since it branched, merge base into it and get CI green on the combined code.
 - A release bump PR (head branch `release/v*`) also needs the Windows check green before the merge.
 - Merging to `main`/production and deploying stay with the team lead.
 - Tickets close when their PR merges into `develop`. There is no `state:released` (see `ticket-lifecycle-mode`).
@@ -382,8 +394,6 @@ Architect proposes a candidate pair from eligible backlog tickets. Before propos
 - do not touch overlapping files or modules (non-conflicting) — cross-checked by `waves`' `touches` comparison, but the team lead's judgment governs, not the tool's output alone
 - are not dependent on each other (B does not need A to land first) — cross-checked by `waves`' `depends_on` comparison
 - do not require a merge between them before the second can start
-
-Neither ticket is declared eligible unilaterally — this is a joint call every time, computed grouping or not. Architect does not self-select a batch from `waves` output without team lead confirmation.
 
 ### Batch Flow
 
@@ -410,7 +420,7 @@ Team Lead: reviews → merges in recommended order → closes both tickets
 
 ### Merge Order
 
-Architect always recommends merge order at batch completion, even if tickets were declared non-conflicting. Branch history can create ordering sensitivity that wasn't visible at selection time.
+Architect always recommends a merge order at batch completion.
 
 ### Batch Fail Handling
 
@@ -433,8 +443,9 @@ All three rules below are mandatory during an automation run.
 
 **Local task files are the canonical system of record.** On every lifecycle transition:
 
-1. **Run the state transition CLI** (`npm run task -- transition <id> <new-state>`, see `ticket-lifecycle-mode` State Transition CLI section) instead of hand-editing the frontmatter, renaming the file, and calling the tracker plugin as separate steps:
-   - Updates `status:` frontmatter field to the new lifecycle state (e.g., `state:in-progress`, `state:ready-for-qa`, `state:qa-passed`, `state:changes-requested`) — set `fail-count:` and `parked: true` (when fail-count reaches 3) via `npm run task -- update-field <id> <field> <value>`
+1. **Run the state transition CLI** (`npm run task -- transition <project>#task_N <new-state>`, see `ticket-lifecycle-mode` State Transition CLI section) instead of hand-editing the frontmatter, renaming the file, and calling the tracker plugin as separate steps:
+   - Name the ticket as `<project>#task_N`. A bare `task_N` that exists in more than one project is refused (`ok: false`, every match listed, nothing read or written, no `gh` call); check the `project` and `path` in the output of every call
+   - Updates `status:` frontmatter field to the new lifecycle state (e.g., `state:in-progress`, `state:ready-for-qa`, `state:qa-passed`, `state:changes-requested`) — set `fail-count:` and `parked: true` (when fail-count reaches 3) via `npm run task -- update-field <project>#task_N <field> <value>`
    - Renames the file to reflect the new state token (e.g., `task_N_ready-for-qa_slug.md` → `task_N_changes-requested_slug.md`)
    - **If a tracker is configured** (presence of a tracker reference field in the task file frontmatter, or workspace tracker config): the same CLI invocation syncs the tracker's `state:*` label and post-verifies it landed — this is mandatory, not optional, and happens automatically as part of the atomic transition
    - **If the CLI reports a non-zero exit / `ok: false`:**

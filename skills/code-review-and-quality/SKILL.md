@@ -131,7 +131,7 @@ Before looking at code, understand the intent:
 - What spec or task does it implement?
 - What is the expected behavior change?
 
-**Gather your own evidence.** The reviewer pulls the diff directly (`gh pr diff` or equivalent), reads the changed files, and runs the test suite itself in an isolated worktree. An automated or third-party review tool's output (e.g. GitHub Copilot's PR review) is not a substitute for this independent pass — treat it, at most, as one more input to weigh alongside your own reading of the diff and your own test run, never as the review itself.
+**Gather your own evidence.** The reviewer pulls the diff directly (`gh pr diff` or equivalent), reads the changed files, and runs the test suite itself in an isolated worktree (made with `npm run work -- new <project> <ticket> builder`). An automated or third-party review tool's output (e.g. GitHub Copilot's PR review) is not a substitute for this independent pass — treat it, at most, as one more input to weigh alongside your own reading of the diff and your own test run, never as the review itself.
 
 ### Step 2: Review the Tests First
 

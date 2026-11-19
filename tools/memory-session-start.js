@@ -35,7 +35,11 @@ try {
 		fs.writeFileSync(workPath, '');
 		fs.utimesSync(workPath, 0, 0);
 	}
-} catch {
-	// Swallow: see header.
+} catch (err) {
+	// Swallow: see header. The failure is reported when reporting is on.
+	await import('./hook-error-report.js').then(
+		(m) => m.reportHookFailure('hook-memory-session-start', err),
+		() => {},
+	);
 }
 process.exit(0);

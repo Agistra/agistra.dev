@@ -18,6 +18,10 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { auditProfile } from './skills-audit.js';
 import {
+	installCrashReporter,
+	reportSelfCheckBlocked,
+} from '../pipelines/deploy/lib/error-sources.js';
+import {
 	resolvePath,
 	detectPlugin,
 	loadMemoryRootModule,
@@ -413,6 +417,7 @@ async function main() {
 	process.stdout.write(
 		asJson ? `${JSON.stringify(report)}\n` : `${formatHuman(report)}\n`,
 	);
+	await reportSelfCheckBlocked(report, { hubRoot });
 	process.exit(report.exitCode);
 }
 
@@ -422,5 +427,6 @@ const isMain =
 		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
+	installCrashReporter({ source: 'npm-run' });
 	main();
 }

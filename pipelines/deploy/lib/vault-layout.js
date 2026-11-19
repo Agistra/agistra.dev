@@ -11,6 +11,7 @@
  *   vault/Projects/<project>/Docs/decisions/   working decision logs
  *   vault/Projects/<project>/ADRs/             final ADRs
  *   vault/Workspace/{ADRs,Learnings,reports}   cross-project material
+ *   vault/Workspace/Runs/                      agent run records (JSON, made on first use)
  *   vault/{Memory,Agistra,Templates}
  *
  * Hubs that are not vault-backed have no vault and keep the plain repo
@@ -55,6 +56,7 @@ const PROJECT_ADRS = 'ADRs';
 const WORKSPACE_ADRS = 'ADRs';
 const WORKSPACE_LEARNINGS = 'Learnings';
 const WORKSPACE_REPORTS = 'reports';
+const WORKSPACE_RUNS = 'Runs';
 
 /** Vault folders outside Projects and Workspace. */
 const COMMON_FOLDERS = ['Agistra', 'Memory', 'Templates'];
@@ -254,7 +256,7 @@ export function projectHubNoteRel(layout, project) {
  * Vault-relative cross-project folder, or null when the layout has none.
  *
  * @param {'projects'|'none'} layout
- * @param {'root'|'adrs'|'learnings'|'reports'} kind
+ * @param {'root'|'adrs'|'learnings'|'reports'|'runs'} kind
  */
 export function workspaceFolderRel(layout, kind) {
 	if (layout !== LAYOUT_PROJECTS) return null;
@@ -267,6 +269,8 @@ export function workspaceFolderRel(layout, kind) {
 			return path.join(WORKSPACE_ROOT, WORKSPACE_LEARNINGS);
 		case 'reports':
 			return path.join(WORKSPACE_ROOT, WORKSPACE_REPORTS);
+		case 'runs':
+			return path.join(WORKSPACE_ROOT, WORKSPACE_RUNS);
 		default:
 			return null;
 	}
@@ -309,6 +313,7 @@ export function workspacePaths(hubRoot, layout) {
 		adrs: abs(workspaceFolderRel(layout, 'adrs')),
 		learnings: abs(workspaceFolderRel(layout, 'learnings')),
 		reports: abs(workspaceFolderRel(layout, 'reports')),
+		runs: abs(workspaceFolderRel(layout, 'runs')),
 	};
 }
 

@@ -50,6 +50,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { installCrashReporter, reportHookFailure } from './error-sources.js';
 import { scanForSecrets, formatSecretScanError } from './secret-scan.js';
 import { WORKSPACE_ROOT_FOLDER } from './vault-layout.js';
 
@@ -155,12 +156,14 @@ export function readStdinSync(fsMod = fs) {
  * @param {object} [options.fsMod]
  * @param {function(string): void} [options.stdoutWrite]
  * @param {function(string): void} [options.stderrWrite]
+ * @param {function(Error): void} [options.onError] called when the gate fails open
  * @returns {number} process exit code (always 0 — fail-open never exits non-zero)
  */
 export function runGate({
 	fsMod = fs,
 	stdoutWrite = (s) => process.stdout.write(s),
 	stderrWrite = (s) => process.stderr.write(s),
+	onError = () => {},
 } = {}) {
 	let hookInput;
 	try {
@@ -170,6 +173,7 @@ export function runGate({
 		stderrWrite(
 			`secret-scan-gate: failed to parse hook input JSON (failing open): ${err.message}\n`,
 		);
+		onError(err);
 		stdoutWrite(JSON.stringify(ALLOW_PRE_TOOL_USE));
 		return 0;
 	}
@@ -182,6 +186,7 @@ export function runGate({
 		stderrWrite(
 			`secret-scan-gate: gate error (failing open): ${err.message}\n`,
 		);
+		onError(err);
 		stdoutWrite(JSON.stringify(ALLOW_PRE_TOOL_USE));
 		return 0;
 	}
@@ -191,5 +196,8 @@ if (
 	process.argv[1] &&
 	fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
 ) {
-	process.exitCode = runGate();
+	installCrashReporter({ source: 'hook' });
+	process.exitCode = runGate({
+		onError: (err) => reportHookFailure('hook-secret-scan-gate', err),
+	});
 }

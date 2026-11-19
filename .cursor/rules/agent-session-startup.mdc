@@ -20,13 +20,13 @@ This workspace has multiple root folders. Agent profiles and memory files both l
 
 Replace `<hub>` with the actual hub folder name (e.g. `agistra.dev`).
 
-Read the profile file first. It contains a "Session Start" section listing every file you must read next (memory, always-on skills, any agent-specific bootstrap step) in the exact order to read them — execute that sequence in full before writing a single word of response or issuing any other tool call. After the profile's own "Session Start" sequence is complete, check whether `<hub>/workspace.config.json` exists; if present, read it for personalisation context. If absent, proceed without it — this is normal, not an error.
+Read the profile file first. It contains a "Session Start" section listing every file you must read next (rules, memory, always-on skills, any agent-specific bootstrap step) in the exact order to read them — execute that sequence in full before writing a single word of response or issuing any other tool call. After the profile's own "Session Start" sequence is complete, check whether `<hub>/workspace.config.json` exists; if present, read it for personalisation context. If absent, proceed without it — this is normal, not an error.
 
 ## Why the profile file is required
 
 | File | Purpose |
 |------|---------|
-| `.cursor/agents/<agent>.md` | Behavioral contract — identity, skills, decision rules, output formats, absolute prohibitions, AND the authoritative "Session Start" read sequence (memory file, always-on skills) |
+| `.cursor/agents/<agent>.md` | Behavioral contract — identity, skills, decision rules, output formats, absolute prohibitions, AND the authoritative "Session Start" read sequence (rules, memory file, always-on skills) |
 | `workspace.config.json` | Personalisation context — user name/role, organisation, per-agent display names |
 
 Do not hand-list memory or skill files here — the profile's own "Session Start" section is the single source of truth for that sequence, and duplicating it in this file risks the two drifting out of sync.
@@ -42,12 +42,12 @@ Do not hand-list memory or skill files here — the profile's own "Session Start
 
 ❌ **Wrong** — completes the profile's "Session Start" sequence but skips `workspace.config.json` when it exists:
 > *[Read tool call: `<hub>/.cursor/agents/builder.md`]*
-> *[follows Session Start: memory + always-on skills]*
+> *[follows Session Start: rules, memory + always-on skills]*
 > *[proceeds without checking `workspace.config.json`]*
 
 ✅ **Correct** — profile read first, its full "Session Start" sequence executed, then the config check:
 > *[Read tool call: `<hub>/.cursor/agents/builder.md`]*
-> *[follows Session Start section exactly: memory, then every always-on skill it names, in order]*
+> *[follows Session Start section exactly: rules, memory, then every always-on skill it names, in order]*
 > *[Read tool call: `<hub>/workspace.config.json`]* (if present)
 > *[task work begins]*
 

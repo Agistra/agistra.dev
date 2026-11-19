@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Claude Code status line: model name, context window usage (with bar),
-# tokens consumed, repo:branch, 5h and 7d (weekly) rate-limit usage, and
-# session cost. Parses the stdin JSON payload without jq (grep/sed only) -
+# tokens consumed, 5h and 7d (weekly) rate-limit usage, session cost, and
+# repo:branch last (so a narrow screen cuts off the location, not the usage
+# numbers; hidden when the folder is not a repo). Parses the stdin JSON
+# payload without jq (grep/sed only) -
 # jq is not guaranteed to be installed in the Git Bash environment Claude
 # Code uses to run status line commands on Windows.
 
@@ -68,12 +70,29 @@ while [ "$i" -lt "$empty" ]; do bar="${bar}-"; i=$((i + 1)); done
 in_tok=$(printf '%.0f' "$in_tok_raw" 2>/dev/null); [ -z "$in_tok" ] && in_tok=0
 out_tok=$(printf '%.0f' "$out_tok_raw" 2>/dev/null); [ -z "$out_tok" ] && out_tok=0
 total_tokens=$(( in_tok + out_tok ))
-fmt_tokens=$(printf "%'d" "$total_tokens" 2>/dev/null)
-[ -z "$fmt_tokens" ] && fmt_tokens="$total_tokens"
+# Thousands separators added by hand (printf "%'d" depends on the locale), so
+# the output matches the PowerShell script's invariant-culture "N0" format.
+fmt_tokens=""
+tok_digits="$total_tokens"
+while [ "${#tok_digits}" -gt 3 ]; do
+  fmt_tokens=",${tok_digits: -3}${fmt_tokens}"
+  tok_digits="${tok_digits:0:$(( ${#tok_digits} - 3 ))}"
+done
+fmt_tokens="${tok_digits}${fmt_tokens}"
 
-repo_block=$(printf '%s' "$scope" | grep -oE '"repo"[[:space:]]*:[[:space:]]*\{[^}]*\}')
-repo_name=$(extract_str name "$repo_block")
-[ -z "$repo_name" ] && repo_name="no-repo"
+# Claude Code sends the repo under workspace.repo (alphabetically after
+# rate_limits, so it is searched in the full payload, not the scoped one); the
+# old top-level repo field is the fallback.
+repo_name=""
+if printf '%s' "$flat" | grep -q '"workspace"'; then
+  workspace_scope="${flat#*\"workspace\"}"
+  repo_block=$(printf '%s' "$workspace_scope" | grep -oE '"repo"[[:space:]]*:[[:space:]]*\{[^}]*\}' | head -n1)
+  repo_name=$(extract_str name "$repo_block")
+fi
+if [ -z "$repo_name" ]; then
+  repo_block=$(printf '%s' "$flat" | grep -oE '"repo"[[:space:]]*:[[:space:]]*\{[^}]*\}' | head -n1)
+  repo_name=$(extract_str name "$repo_block")
+fi
 
 cwd_val=$(extract_str cwd "$scope")
 cwd_val=$(printf '%s' "$cwd_val" | sed 's/\\\\/\\/g')
@@ -120,7 +139,11 @@ seven_day_pct=$(printf '%.0f' "$seven_day_pct_raw" 2>/dev/null)
 [ "$seven_day_pct" -lt 0 ] && seven_day_pct=0
 [ "$seven_day_pct" -gt 100 ] && seven_day_pct=100
 
-cost_raw=$(extract_num total_cost_usd "$flat")
+# Claude Code sends the session cost under cost.total_cost_usd; the old
+# top-level total_cost_usd is the fallback.
+cost_block=$(printf '%s' "$flat" | grep -oE '"cost"[[:space:]]*:[[:space:]]*\{[^}]*\}' | head -n1)
+cost_raw=$(extract_num total_cost_usd "$cost_block")
+{ [ -z "$cost_raw" ] || [ "$cost_raw" = "null" ]; } && cost_raw=$(extract_num total_cost_usd "$flat")
 { [ -z "$cost_raw" ] || [ "$cost_raw" = "null" ]; } && cost_raw=0
 fmt_cost=$(printf '%.2f' "$cost_raw" 2>/dev/null)
 [ -z "$fmt_cost" ] && fmt_cost="0.00"
@@ -134,5 +157,17 @@ usage_color=$(severity_color "$pct")
 five_hour_color=$(severity_color "$five_hour_pct")
 seven_day_color=$(severity_color "$seven_day_pct")
 
-printf "${model_color}%s${reset} ${dim}|${reset} ${usage_color}[%s] %d%%${reset} ${dim}|${reset} ${dim}%s tok${reset} ${dim}|${reset} ${repo_color}%s:%s${reset} ${dim}|${reset} ${five_hour_color}5h: %d%%${reset} ${dim}|${reset} ${seven_day_color}7d: %d%%${reset} ${dim}|${reset} ${dim}%s${reset}" \
-  "$model" "$bar" "$pct" "$fmt_tokens" "$repo_name" "$branch" "$five_hour_pct" "$seven_day_pct" "$cost_display"
+# Long branch names are shortened to 30 characters with a trailing ellipsis.
+max_branch=30
+if [ "${#branch}" -gt "$max_branch" ]; then
+  branch="${branch:0:$((max_branch - 1))}…"
+fi
+
+printf "${model_color}%s${reset} ${dim}|${reset} ${usage_color}[%s] %d%%${reset} ${dim}|${reset} ${dim}%s tok${reset} ${dim}|${reset} ${five_hour_color}5h: %d%%${reset} ${dim}|${reset} ${seven_day_color}7d: %d%%${reset} ${dim}|${reset} ${dim}%s${reset}"   "$model" "$bar" "$pct" "$fmt_tokens" "$five_hour_pct" "$seven_day_pct" "$cost_display"
+
+# Only show the location when the folder is a repo: hidden otherwise.
+if [ -n "$repo_name" ]; then
+  location="$repo_name"
+  [ "$branch" != "no-branch" ] && location="${repo_name}:${branch}"
+  printf " ${dim}|${reset} ${repo_color}%s${reset}" "$location"
+fi

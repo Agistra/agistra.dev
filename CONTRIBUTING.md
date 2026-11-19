@@ -78,7 +78,7 @@ Useful scripts:
 
 ```bash
 npm run dispatch     # show the current work queue
-npm run scan <proj>  # scan a project for new tasks
+npm run scan <proj>  # scan a project for new tasks (name, or a full path to add one)
 ```
 
 ## Questions

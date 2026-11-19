@@ -6,6 +6,9 @@
  *   node pipelines/deploy/relay/telegram-relay/status.js --hub <hub-root>
  */
 import { loadRelayConfig, resolveHubRoot } from './config.js';
+import { installCrashReporter } from '../../lib/error-sources.js';
+
+installCrashReporter({ source: 'npm-run' });
 
 const hubRoot = resolveHubRoot(process.argv.slice(2));
 

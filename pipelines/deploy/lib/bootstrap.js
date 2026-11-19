@@ -403,3 +403,110 @@ if (isMain) {
 	const updated = markBootstrapCompleted(hubRoot);
 	process.stdout.write(JSON.stringify(updated, null, 2) + '\n');
 }
+
+/** True when the `<project>` argument is a path rather than a bare name. */
+function isPathArg(arg) {
+	return (
+		arg.includes('/') ||
+		arg.includes('\\') ||
+		path.isAbsolute(arg) ||
+		arg === '.' ||
+		arg === '..'
+	);
+}
+
+function isDirectory(p, fsMod) {
+	try {
+		return fsMod.statSync(p).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+function samePath(a, b) {
+	const x = path.resolve(a);
+	const y = path.resolve(b);
+	return process.platform === 'win32'
+		? x.toLowerCase() === y.toLowerCase()
+		: x === y;
+}
+
+/**
+ * Resolve the `<project>` argument of `scan` / `dispatch` to a project folder.
+ *
+ * A bare name resolves, in order, to:
+ *   1. `projects.<name>.repoPath` in the hub's workspace.config.json;
+ *   2. a folder `<name>` next to the hub;
+ *   3. otherwise a failure with one clear message.
+ * A path (full or relative to `cwd`) adds a project anywhere: the folder must
+ * exist; the name is the folder name, or `nameOverride` (`--name`). A name that
+ * is already registered to a different path is refused, never overwritten.
+ * Nothing is searched for on disk and nothing is written here.
+ *
+ * @param {object} o
+ * @param {string} o.arg            the raw `<project>` argument
+ * @param {string} o.hubRoot
+ * @param {string} [o.workspaceRoot] parent folder of the hub (default: its parent)
+ * @param {string} [o.nameOverride]  `--name`, honoured for a path only
+ * @param {string} [o.cwd]
+ * @param {object} [o.fsMod]
+ * @returns {{ ok: true, name: string, root: string }
+ *   | { ok: false, kind: 'unknown-name'|'missing-path'|'collision'|'missing-registered', message: string }}
+ */
+export function resolveProject({
+	arg,
+	hubRoot,
+	workspaceRoot = path.resolve(hubRoot, '..'),
+	nameOverride,
+	cwd = process.cwd(),
+	fsMod = fs,
+}) {
+	const projects = readWorkspaceConfig(hubRoot, fsMod)?.projects ?? {};
+
+	if (!isPathArg(arg)) {
+		const repoPath = projects[arg]?.repoPath;
+		if (typeof repoPath === 'string' && repoPath) {
+			const root = path.resolve(hubRoot, repoPath);
+			if (isDirectory(root, fsMod)) return { ok: true, name: arg, root };
+			return {
+				ok: false,
+				kind: 'missing-registered',
+				message: `Project "${arg}" is registered to ${root}, but that folder does not exist. Fix projects.${arg}.repoPath in workspace.config.json, or pass its new full path with --name ${arg}.`,
+			};
+		}
+		const sibling = path.resolve(workspaceRoot, arg);
+		if (isDirectory(sibling, fsMod))
+			return { ok: true, name: arg, root: sibling };
+		return {
+			ok: false,
+			kind: 'unknown-name',
+			message: `No project "${arg}": not registered in this hub and no folder "${arg}" next to the hub (checked ${sibling}). To add it, pass its full path: npm run scan -- "/path/to/${arg}"`,
+		};
+	}
+
+	const root = path.resolve(cwd, arg);
+	if (!isDirectory(root, fsMod)) {
+		return {
+			ok: false,
+			kind: 'missing-path',
+			message: `No project folder at ${root}. Pass the full path of an existing project folder: npm run scan -- "/path/to/project"`,
+		};
+	}
+	const name =
+		typeof nameOverride === 'string' && nameOverride
+			? nameOverride
+			: path.basename(root);
+	const registered = projects[name]?.repoPath;
+	if (
+		typeof registered === 'string' &&
+		registered &&
+		!samePath(path.resolve(hubRoot, registered), root)
+	) {
+		return {
+			ok: false,
+			kind: 'collision',
+			message: `Project "${name}" is already registered to ${path.resolve(hubRoot, registered)}, not ${root}. To add this folder under another name: npm run scan -- "${arg}" --name <other-name>`,
+		};
+	}
+	return { ok: true, name, root };
+}

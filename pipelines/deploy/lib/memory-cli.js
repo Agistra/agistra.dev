@@ -18,6 +18,12 @@
  *   - Creates `memory/archive/` if it does not exist.
  *   - Idempotent: running it twice produces no diff on the second run.
  *
+ * On a vault-backed tier (dev:sub/ops) there is no single note: `ensure <agent>`
+ * creates the agent's empty keyed tree instead, the `hot/`, `warm/` and `cold/`
+ * folders and the generated indexes (lib/memory-tier-index.js ensureKeyedTree),
+ * and never `<agent>.md`. It is create-if-absent and idempotent there too. An agent
+ * that still has its single note is left as it is: `memory migrate` converts it.
+ *
  * This intentionally does NOT perform any HOT/WARM/COLD compaction, decay,
  * or archival — that remains `dreaming`'s judgment-driven territory. This
  * command only covers the existence/skeleton step described above.
@@ -32,7 +38,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMigratedAgent } from './memory-scaffold.js';
-import { resolveMemoryRootForHub } from './memory-root.js';
+import {
+	isVaultBackedHubType,
+	resolveMemoryRootForHub,
+} from './memory-root.js';
+import { effectiveHubType } from './hub-type.js';
+import { readJsonSafe } from '../wizard.js';
+import { installCrashReporter, reportMemoryResult } from './error-sources.js';
+
+// The keyed memory modules ship to vault-backed tiers only, so they are loaded
+// when present and never imported statically.
+const keyedTree = await import('./memory-tier-index.js').catch(() => null);
 
 /** Capitalises the first letter of an agent id for the memory file title (architect -> Architect). */
 function displayName(agentId) {
@@ -72,6 +88,41 @@ export function ensureMemoryFile(
 
 	if (!fsMod.existsSync(memoryDir)) {
 		fsMod.mkdirSync(memoryDir, { recursive: true });
+	}
+
+	const hubType = effectiveHubType(
+		repoRoot,
+		readJsonSafe(path.join(repoRoot, 'workspace.config.json'), fsMod),
+		fsMod,
+	);
+	if (isVaultBackedHubType(hubType)) {
+		if (!keyedTree?.ensureKeyedTree) {
+			return {
+				ok: false,
+				error:
+					'the keyed memory modules (lib/memory-tier-index.js) are missing from this hub',
+			};
+		}
+		const tree = keyedTree.ensureKeyedTree({
+			paths: { ok: true, hubRoot: repoRoot, hubType, memoryRoot: memoryDir },
+			agent: agentId,
+			fsMod,
+		});
+		if (!tree.ok) return { ok: false, code: tree.code, error: tree.error };
+		if (!fsMod.existsSync(archiveDir)) {
+			fsMod.mkdirSync(archiveDir, { recursive: true });
+			archiveDirCreated = true;
+		}
+		return {
+			ok: true,
+			agent: agentId,
+			memoryFile: null,
+			archiveDir,
+			memoryFileCreated: false,
+			archiveDirCreated,
+			keyedTree: tree.created.length > 0,
+			created: tree.created,
+		};
 	}
 
 	// A migrated agent (keyed entries, no single note) keeps it that way.
@@ -118,6 +169,7 @@ const isMain =
 		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
+	installCrashReporter({ source: 'npm-run' });
 	let output;
 	try {
 		const argv = process.argv.slice(2);
@@ -126,5 +178,6 @@ if (isMain) {
 		output = { ok: false, error: err.message };
 	}
 	process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+	await reportMemoryResult(output, { hubRoot: process.cwd() });
 	process.exit(output.ok ? 0 : 1);
 }

@@ -124,22 +124,13 @@ If architecture-mode has already produced `Evidence and Current State`, `Impleme
 - If an issue branch already exists, check whether it is behind base and bring it up to date using the repository-approved merge or rebase flow before new implementation or local validation.
 - For local PR review or review-comment follow-up, switch to the PR head branch or use a dedicated worktree before running code, tests, lint, or build commands.
 - If the repository uses lifecycle labels or workflow states, move the ticket to `state:in-progress` when active implementation starts.
-- Refresh dependencies only when the task or validation requires it.
+- Install dependencies cleanly in each worktree (`npm ci`); never link another checkout's `node_modules`.
 
-**Never mutate the operator's default checkout.** If the team lead's primary local clone of a
-repository is checked out to the default/main branch, or to any branch carrying the team
-lead's own uncommitted work, treat that working tree as read-only. All branch/commit/rebase/
-stash work happens in a dedicated worktree (`git worktree add`) or a separate clone — never
-`git stash`, `git checkout`, `git reset`, or any other tree-mutating command against the
-operator's own checkout, even to "temporarily" get it out of the way. This applies regardless
-of whether the dispatch explicitly names a worktree path: the default is isolation, not the
-operator's tree, and a dispatch that forgets to say so is not permission to touch it.
+**Never mutate the operator's default checkout.** Treat the team lead's primary clone as read-only when it is on the default branch or carries uncommitted work. All branch, commit, rebase and stash work happens in a dedicated worktree or separate clone; never run `git stash`, `git checkout`, `git reset` or any other tree-mutating command against it, even briefly. This holds whether or not the dispatch names a worktree.
 
-If a dispatch's worktree setup fails or the target path is unexpectedly dirty, STOP and report
-the exact failure — do not work around it by stashing, resetting, or otherwise touching the
-operator's tree to make room. A blocked task is recoverable; an operator's uncommitted work
-touched without consent is a trust failure regardless of whether the change turns out to be
-reversible.
+**Create the worktree with the workspace command, never a typed path.** Run `npm run work -- new <project> <ticket> builder` from the hub root. It puts the worktree at its computed place under the shared workspaces root, branches it from the project's default branch, records it in the root's registry, and prints the path as JSON. Running it again for the same ticket returns the same worktree. Use the printed `path` as the code working directory. Do not run `git worktree add` by hand, and do not remove a worktree: the team lead does that with `npm run work -- clean --merged`.
+
+If worktree setup fails or the target path is unexpectedly dirty, STOP and report the exact failure; never stash, reset or touch the operator's tree to make room. A blocked task is recoverable; touching uncommitted work without consent is a trust failure.
 
 ### Step 3 - Implement
 
@@ -173,6 +164,8 @@ Use this order:
 
 **Local test scope.** Run lint and the tests for the area you changed. Do not run the full coverage suite (or a local CI-mirror command that includes it) locally by default: the Linux CI job runs it on the pull request in a few minutes, and on a slow local machine it can take 30 to 40 minutes. Run the full suite locally only when the ticket asks for it, or when the change touches test infrastructure or shared deploy or packaging code. The Windows suite runs only on release bump pull requests and on manual dispatch, so do not run it locally unless the ticket asks.
 
+Tests with platform-specific paths use `path.win32` or `path.posix` explicitly, so they pass on Linux CI. Wait for CI in the foreground.
+
 Validation should confirm the expected observable signal, not only command success. If the observed signal is ambiguous, do one nearby disambiguating read or check before expanding scope.
 
 ### Step 5 - Closeout
@@ -199,7 +192,8 @@ Before handoff or review request:
 - complete required deploy, environment, migration, seed, or configuration steps when the repository workflow requires them
 - run the checks chosen under Local test scope before every push and report each command's exit code; a full local CI mirror applies only in the cases that rule names
 - push only after code and validation are in good shape or any remaining blocker is explicitly recorded
-- open or update the PR with what changed, why, how to test, and reviewer focus when the repository uses PR workflow
+- open or update the PR with what changed, why, how to test, and reviewer focus when the repository uses PR workflow; write the body to a uniquely named file (for example `pr-body-<issue>.md`), never a shared scratch name
+- stop your own background jobs and servers before reporting, by their own job or process id only (never by a broad name or pattern)
 - update the linked issue with implementation and validation status when the repository uses issue-based workflow
 - move the ticket to the next required lifecycle state, such as `state:ready-for-review` after implementation or `state:ready-for-qa` after accepted engineering review, following local policy or `ticket-lifecycle-mode`
 - **complete all active lens pre-handoff gates before moving to `state:ready-for-qa`** — post the UIX, CSV, and/or INF confirmation blocks declared at intake; a ticket with active lenses that has no confirmation blocks has not completed its gate
@@ -331,7 +325,7 @@ If the request is a review rather than implementation:
 
 - capture the review entry point, evidence, local concern, first validation slice, and expected verification signals before forming conclusions
 - read the issue, PR, acceptance criteria, and diff before judging the patch
-- if local validation is required, switch to the PR head branch or a dedicated review worktree first
+- if local validation is required, switch to the PR head branch or a dedicated review worktree first (create it with `npm run work -- new <project> <ticket> builder --branch <pr-branch>`)
 - inspect branch status against the default branch when validation or tooling results look inconsistent
 - separate `branch-local defect`, `stale-branch drift`, `repo-wide blocker`, and `missing evidence` before reporting findings
 - tie each finding to exact evidence, the violated expectation or acceptance criterion, and the narrowest check that would confirm the issue

@@ -122,3 +122,122 @@ export function isPlaceholderMemoryNote(content) {
 		.filter((l) => l !== '' && l !== '---' && !/^#{1,6}\s/.test(l))
 		.every((l) => /^_\(.*\)_$/.test(l));
 }
+
+// ── Rules store (permanent rules, read first at Session Start) ───────────────
+//
+// A rule is a standing instruction the team lead gave. Rules are kept apart
+// from the decaying memory, so nothing that rewrites, sweeps or compacts
+// memory can touch them.
+//
+//   free tiers   <memory-root>/rules/team.md and <memory-root>/rules/<agent>.md,
+//                plain bullet lists the agents edit with the team lead's OK
+//   vault tiers  <memory-root>/team/team-rules.md and <memory-root>/<agent>/<agent>-rules.md,
+//                generated indexes of the rule entries `npm run memory -- add ... --rules` writes
+//
+// The free-tier folder is `memory/rules/`, a subfolder like `memory/archive/`,
+// so the one-file-per-agent listing of `memory/*.md` never sees it.
+
+/** Folder under the free-tier memory root that holds the rules files. */
+export const RULES_FOLDER = 'rules';
+/** Scope name for the rules every agent follows. */
+export const TEAM_RULES_SCOPE = 'team';
+/**
+ * `npm run doctor` warns when the rules an agent reads at Session Start (team
+ * plus its own) pass this many bytes. About a fifth of the 20000-byte HOT
+ * ceiling: roughly 25 rules of 160 characters.
+ */
+export const RULES_WARN_BYTES = 4096;
+
+/**
+ * The files an agent reads for its rules, team rules first. They may not exist:
+ * a missing file means no rules.
+ *
+ * @param {object} options
+ * @param {string} options.memoryRoot
+ * @param {string} options.agentId
+ * @param {boolean} options.vault  true on vault-backed tiers
+ * @returns {Array<{ scope: string, path: string }>}
+ */
+export function rulesReadFiles({ memoryRoot, agentId, vault }) {
+	if (vault) {
+		return [
+			{
+				scope: TEAM_RULES_SCOPE,
+				path: path.join(
+					memoryRoot,
+					TEAM_RULES_SCOPE,
+					`${TEAM_RULES_SCOPE}-rules.md`,
+				),
+			},
+			{
+				scope: agentId,
+				path: path.join(memoryRoot, agentId, `${agentId}-rules.md`),
+			},
+		];
+	}
+	return [
+		{
+			scope: TEAM_RULES_SCOPE,
+			path: path.join(memoryRoot, RULES_FOLDER, `${TEAM_RULES_SCOPE}.md`),
+		},
+		{
+			scope: agentId,
+			path: path.join(memoryRoot, RULES_FOLDER, `${agentId}.md`),
+		},
+	];
+}
+
+/** Starter content of a free-tier rules file. */
+export function rulesStarter(scope) {
+	const title =
+		scope === TEAM_RULES_SCOPE
+			? 'Team rules'
+			: `${scope.charAt(0).toUpperCase()}${scope.slice(1)} rules`;
+	return `# ${title} (permanent; only the team lead decides what goes here)\n\n_(none yet)_\n`;
+}
+
+/**
+ * Create `<memoryRoot>/rules/team.md` and `<memoryRoot>/rules/<agent>.md` for
+ * every agent, create-if-absent: an existing file is never touched. Free tiers
+ * only; vault tiers write rules through the memory command.
+ *
+ * @returns {string[]} the file names created, relative to the rules folder
+ */
+export function scaffoldRulesFiles({ memoryRoot, agentIds, fsMod = fs }) {
+	const created = [];
+	const dir = path.join(memoryRoot, RULES_FOLDER);
+	for (const scope of [TEAM_RULES_SCOPE, ...agentIds]) {
+		const file = path.join(dir, `${scope}.md`);
+		if (fsMod.existsSync(file)) continue;
+		fsMod.mkdirSync(dir, { recursive: true });
+		fsMod.writeFileSync(file, rulesStarter(scope), 'utf-8');
+		created.push(`${scope}.md`);
+	}
+	return created;
+}
+
+/**
+ * Size of the rules an agent reads at Session Start (team plus its own).
+ * Never throws: a missing or unreadable file counts as zero bytes.
+ *
+ * @returns {{ bytes: number, files: Array<{ scope: string, path: string, bytes: number }>, over: boolean, limit: number }}
+ */
+export function measureRules({ memoryRoot, agentId, vault, fsMod = fs }) {
+	const files = rulesReadFiles({ memoryRoot, agentId, vault }).map((f) => {
+		try {
+			return {
+				...f,
+				bytes: Buffer.byteLength(fsMod.readFileSync(f.path, 'utf-8'), 'utf-8'),
+			};
+		} catch {
+			return { ...f, bytes: 0 };
+		}
+	});
+	const bytes = files.reduce((sum, f) => sum + f.bytes, 0);
+	return {
+		bytes,
+		files,
+		over: bytes > RULES_WARN_BYTES,
+		limit: RULES_WARN_BYTES,
+	};
+}

@@ -138,7 +138,7 @@ You can use VS Code, Cursor, Claude Code, or Codex to interact with the agents. 
 
 Every time you add a new project by running `npm run scan <my-project>`, the project is added to projects and project related tasks are generated.
 
-The best structure is to have the project workspace folder next to my-hub.
+A project folder next to my-hub is found by its folder name. A project anywhere else is added by its full path: `npm run scan -- "/path/to/some folder/my-app"` (add `--name <name>` to register it under another name). The hub records it as `projects.<name>.repoPath` in `workspace.config.json`, and later runs use the name. A name that is not registered and has no folder next to the hub gets an error that says so; nothing is written.
 
 ```text
 my-hub/
@@ -217,11 +217,13 @@ Run from the hub directory. Replace `<project>` with your project name.
 ```powershell
 npm run setup                     # first-time wizard (re-run to update config)
 npm run list                      # show pending tasks across all projects
-npm run scan     -- <project>     # scan project and generate task files
+npm run scan     -- <project>     # scan project and generate task files (<project>: registered name, folder next to the hub, or a full path to add one)
 npm run dispatch -- <project>     # print the current task prompt
 npm run advance  -- <project>     # mark current task done, show next
 npm run launch   -- <project>     # launch Claude in the project directory
 ```
+
+In Windows PowerShell 5.1, quote the separator (`npm run scan '--' <project>`, `npm run task '--' transition ...`); a bare `--` fails with `EUNKNOWNCONFIG`. PowerShell 7, cmd and Git Bash need no quotes.
 
 Target a specific task:
 
@@ -342,7 +344,7 @@ memory/
 
 Agents read their memory file at session start and update it at session end. HOT items surface in the morning briefing. WARM items inform planning. COLD items are archived or dropped.
 
-If a memory file goes missing (e.g. a fresh deploy, or a file deleted by accident), `npm run doctor` scaffolds it automatically the next time it runs — no extra flag or command needed. Files that already exist are left untouched.
+If a memory file goes missing (e.g. a fresh deploy, or a file deleted by accident), `npm run doctor` scaffolds it automatically the next time it runs — no extra flag or command needed. Files that already exist are left untouched. On a vault-backed tier (`dev:sub`, `ops`) doctor writes nothing under `vault/Memory/`: deploy creates each agent's empty keyed tree (`hot/`, `warm/`, `cold/` and the generated indexes), and doctor reports the shape of each agent.
 
 ### Untrack generated state in an existing hub
 

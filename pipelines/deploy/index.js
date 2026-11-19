@@ -8,10 +8,11 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { dispatch } from './dispatch.js';
 import { runScan } from './scan.js';
-import { extraBooleanFlags, loadCliPlugins, scanHelp } from './lib/cli-plugins.js';
+import { extraBooleanFlags, loadCliPlugins, scanHelp, scanNeedsNameOnly } from './lib/cli-plugins.js';
 import { readJsonSafe } from './wizard.js';
 import { resolveTasksRootSegment } from './lib/memory-root.js';
 import { projectTaskDir } from './lib/vault-layout.js';
+import { resolveProject } from './lib/bootstrap.js';
 import { effectiveHubType } from './lib/hub-type.js';
 import { findSkillCatalogEntry, installSkillFromCatalog } from './lib/skill-sources.js';
 
@@ -57,7 +58,7 @@ const args   = parseArgs(process.argv.slice(2), extraBooleanFlags(cliPlugins));
 const command = args._command ?? 'dispatch';
 
 // --project flag takes precedence over positional project name
-const project = typeof args.project === 'string' ? args.project : args._project;
+const projectArg = typeof args.project === 'string' ? args.project : args._project;
 
 // Vault-backed tiers keep a project's tasks under vault/Projects/<project>/Tasks;
 // every other tier keeps projects/<project>. An explicit --projects-root wins.
@@ -68,8 +69,27 @@ const projectsRoot = path.resolve(
 	args['projects-root'] ?? resolveTasksRootSegment(effectiveHubType(consultingRoot, hubConfig)),
 );
 const skillsRoot   = path.resolve(consultingRoot, args['skills-root']   ?? 'skills');
-const projectsDir  = project ? path.join(projectsRoot, project) : null;
-const projectRoot  = project ? path.join(workspaceRoot, project) : null;
+
+// <project> is a registered project name (projects.<name>.repoPath), a folder
+// next to the hub, or a path to a project anywhere (which adds it).
+const resolved = projectArg && (command === 'dispatch' || command === 'scan')
+	? resolveProject({
+			arg: projectArg,
+			hubRoot: consultingRoot,
+			workspaceRoot,
+			nameOverride: typeof args.name === 'string' ? args.name : undefined,
+		})
+	: null;
+// A scan option can mark a run as needing just the name (the project may live only in the vault).
+const needsProject = (command === 'scan' && !scanNeedsNameOnly(cliPlugins, args)) || args.launch === true;
+// dispatch only reads projects/<name>/ task files, so a bare name with no folder
+// on disk still dispatches (as before) unless a launch needs the folder.
+if (resolved && !resolved.ok && (needsProject || resolved.kind !== 'unknown-name')) {
+	process.stderr.write(resolved.message + '\n');
+	process.exit(1);
+}
+const project     = resolved?.ok ? resolved.name : projectArg;
+const projectRoot = resolved?.ok ? resolved.root : null;
 
 if (command === 'dispatch') {
 	const advance = args.advance === true;
@@ -139,6 +159,8 @@ if (command === 'dispatch') {
 		'  node pipelines/deploy/index.js dispatch <project> --launch                   # launch Claude in the project dir',
 		'  node pipelines/deploy/index.js dispatch <project> --task <num-or-slug>         # dispatch a specific task',
 		'  node pipelines/deploy/index.js scan     <project>             # scan project and generate increments',
+		'                                                <project> is a registered project name or a folder next to the hub;',
+		'                                                pass a full path to add a project elsewhere (--name <name> to rename it)',
 		'  node pipelines/deploy/index.js scan     <project> --dry-run   # preview without writing files',
 		...(scanHelp(cliPlugins)
 			? [`  node pipelines/deploy/index.js scan     <project> ${scanHelp(cliPlugins).usage}   # ${scanHelp(cliPlugins).description}`]

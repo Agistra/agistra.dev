@@ -156,8 +156,12 @@ if (isMain) {
 			await resolveMemoryRootSegment(hubRoot),
 		);
 		if (isWorkPayload(await readStdin(), memoryRoot)) touchWorkMarker(hubRoot);
-	} catch {
-		// Swallow: see header.
+	} catch (err) {
+		// Swallow: see header. The failure is reported when reporting is on.
+		await import('./hook-error-report.js').then(
+			(m) => m.reportHookFailure('hook-memory-work-marker', err),
+			() => {},
+		);
 	}
 	process.exit(0);
 }

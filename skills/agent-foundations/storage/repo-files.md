@@ -29,7 +29,7 @@ Example: `memory/builder.md`, `memory/architect.md`.
 ### list-memory-agents()
 
 List the `.md` files directly under `memory/` (top-level only, non-recursive).
-Excludes `memory/archive/` (a subdirectory, not an agent file) and non-agent files
+Excludes `memory/archive/` and `memory/rules/` (subdirectories, not agent files) and non-agent files
 such as `memory/working-buffer.md`. Each remaining filename, minus the `.md`
 extension, is an agent id (e.g. `architect`, `builder`, `router`, `tester`). Supports
 tooling such as the memory-index CLI, which must enumerate every agent's memory
@@ -52,6 +52,38 @@ consolidation cycle before compacting the live file.
 Rewrite `memory/<agent>.md` with the compacted content. The dreaming skill supplies
 the full new file content after distilling HOT→WARM→COLD decay. This is a full
 overwrite, not an append.
+
+---
+
+## Rules store
+
+Standing rules never fade, so they live apart from `memory/<agent>.md` (dreaming rewrites that
+whole file): `memory/rules/team.md` for rules every agent follows and `memory/rules/<agent>.md`
+for one agent's own. `npm run setup` and `npm run doctor` create them if absent; `memory/` is local and gitignored,
+and so is this folder. Session Start reads team rules, then the agent's own
+(`node tools/resolve-path.js rules <agent>`); a missing file means no rules.
+
+### read-rules(agent)
+
+Read `memory/rules/team.md`, then `memory/rules/<agent>.md`.
+
+### write-rule(scope, text)
+
+Only on the team lead's words or explicit OK; never on an agent's own call. Append one bullet to
+`memory/rules/team.md` (scope `team`) or `memory/rules/<agent>.md`:
+`- <the rule, one line> (added YYYY-MM-DD)`. Dreaming, compaction and sweeps never edit these files.
+
+### replace-rule(scope, old, text) and remove-rule(scope, old)
+
+Only with the team lead's OK. A replacing rule is a new bullet ending `(added YYYY-MM-DD; supersedes: "<first words of the old rule>")`.
+Move the old bullet, never delete it, to `memory/rules/archive.md` with `(archived YYYY-MM-DD, superseded)`
+or `(archived YYYY-MM-DD, removed)`.
+
+### move-rule-from-memory(agent, text)
+
+By hand, after the team lead confirms the list: copy the line from `memory/<agent>.md` into
+`memory/rules/team.md` (applies to every agent) or `memory/rules/<agent>.md`, then delete it from
+the note's HOT, WARM or COLD section. `npm run doctor` warns when an agent's team plus own rules pass 4096 bytes.
 
 ---
 

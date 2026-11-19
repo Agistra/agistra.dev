@@ -71,7 +71,11 @@ try {
 			`${JSON.stringify({ systemMessage: lines.join('\n') })}\n`,
 		);
 	}
-} catch {
-	// Swallow: see header.
+} catch (err) {
+	// Swallow: see header. The failure is reported when reporting is on.
+	await import('./hook-error-report.js').then(
+		(m) => m.reportHookFailure('hook-memory-check-codex', err),
+		() => {},
+	);
 }
 process.exit(0);

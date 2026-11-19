@@ -17,9 +17,12 @@
  * surface — implementing that backend is explicitly out of scope for this
  * ticket (see Scope boundaries).
  *
- * Commands: read, list, transition, update-field, waves. All output is JSON
+ * Commands: read, list, transition, update-field, waves, run. All output is JSON
  * on stdout; exit code is 0 on success and non-zero on any partial failure
  * (per AC 6).
+ *
+ * `run start|touch|end|list` keeps the agent run records `npm run status`
+ * reads (status-runs.js).
  *
  * `waves` is read/compute-only: it never mutates task state or
  * dispatches anything. It tells Architect which `todo` tasks in a project
@@ -60,6 +63,7 @@
  * vault-backed) the existing repo-files filename-infix convention is
  * preserved unchanged, per `storage/repo-files.md`'s create-task contract.
  */
+import { installCrashReporter } from './error-sources.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -71,19 +75,24 @@ import {
 	updateTaskFields,
 	appendTaskSection,
 	listAllTasks,
-	findTaskByQuery,
+	findTaskInProject,
+	taskNumberOf,
+	projectDirFromTaskPath,
 	computeWaves,
 	loadSkillContent,
 	stateToToken,
 	serializeFrontmatter,
 } from './tasks.js';
+import { normalizeTicketField } from './status-fields.js';
+import { discoverAgentIds } from './agent-discovery.js';
 import { parseGithubIssueRef, fetchIssueState } from './ticket-drift.js';
 import { resolveTasksRoot, isVaultBackedHubType } from './memory-root.js';
-import { projectTaskDir } from './vault-layout.js';
+import { projectTaskDir, taskDirContext } from './vault-layout.js';
 import { readJsonSafe } from '../wizard.js';
 import { effectiveHubType, isHubRoot } from './hub-type.js';
 import { loadCliPlugins } from './cli-plugins.js';
 import { scanForSecrets, formatSecretScanError } from './secret-scan.js';
+import { runSubcommand } from './status-runs.js';
 
 export const DEFAULT_PROJECTS_ROOT = 'projects';
 
@@ -91,68 +100,153 @@ export const DEFAULT_PROJECTS_ROOT = 'projects';
 // project repo `--projects-root` points at — so the default is resolved
 // relative to this module's own location, not the CLI process cwd.
 const __taskCliDir = path.dirname(fileURLToPath(import.meta.url));
-export const DEFAULT_SKILLS_ROOT = path.resolve(
-	__taskCliDir,
-	'..',
-	'..',
-	'..',
-	'agents',
-	'skills',
+/**
+ * Find the skills folder for a hub root. A deployed hub keeps skills in
+ * `<hub>/skills`; the source repo keeps them in `<hub>/agents/skills`. The
+ * deployed layout is tried first. When neither exists, the source-repo path
+ * is returned so the "skill not found" error names a real location.
+ */
+export function resolveSkillsRoot(hubRoot, fsMod = fs) {
+	const deployed = path.join(hubRoot, 'skills');
+	if (fsMod.existsSync(deployed)) return deployed;
+	return path.join(hubRoot, 'agents', 'skills');
+}
+
+export const DEFAULT_SKILLS_ROOT = resolveSkillsRoot(
+	path.resolve(__taskCliDir, '..', '..', '..'),
 );
 
 /**
- * Resolve a task file path from an id.
+ * Project name of a task file path: the `<project>` folder, whether the file
+ * sits in a flat project folder, `<project>/done/`, or a vault-shaped
+ * `<project>/Tasks/` (or `Tasks/done/`).
+ */
+function projectOfTaskPath(taskPath) {
+	return taskDirContext(projectDirFromTaskPath(taskPath)).project;
+}
+
+/**
+ * Resolve a task id to a ticket, naming the project it belongs to.
  *
  * Accepted id formats:
  *  - a literal path to an existing `.md` file
- *  - "<project>#<query>" — query is a task number or slug fragment, resolved
- *    via findTaskByQuery against `<projectsRoot>/<project>`
- *  - "<query>" alone — searched across every project directory under
- *    projectsRoot (first match wins)
+ *  - "<project>#<query>" — query is a task number (`5` or `task_N`) or slug
+ *    fragment, resolved inside `<projectsRoot>/<project>` (live folder, then
+ *    its `done/`)
+ *  - "<query>" alone — searched across every project folder. When exactly one
+ *    project matches it is used. When more than one matches the id is
+ *    ambiguous and nothing is picked: the caller gets every match as
+ *    `project#task_N` and must rerun with one of them.
  *
- * Returns the absolute file path, or null if no match was found.
+ * Returns one of:
+ *  - `{ path, project }`
+ *  - `{ path: null }` when nothing matches
+ *  - `{ path: null, ambiguous: true, error, matches: [{ ref, project, path }] }`
  */
-export function resolveTaskPath(
+export function resolveTask(
 	id,
 	{ projectsRoot = DEFAULT_PROJECTS_ROOT, fsMod = fs } = {},
 ) {
-	if (typeof id !== 'string' || id.length === 0) return null;
+	if (typeof id !== 'string' || id.length === 0) return { path: null };
 
 	if (id.endsWith('.md') && fsMod.existsSync(id)) {
-		return path.resolve(id);
+		const resolved = path.resolve(id);
+		return { path: resolved, project: projectOfTaskPath(resolved) };
 	}
 
 	const hashIdx = id.indexOf('#');
 	if (hashIdx !== -1) {
 		const project = id.slice(0, hashIdx);
 		const query = id.slice(hashIdx + 1);
-		return findTaskByQuery(projectTaskDir(projectsRoot, project), query);
+		const found = findTaskInProject(
+			projectTaskDir(projectsRoot, project),
+			query,
+		);
+		return found ? { path: found, project } : { path: null };
 	}
 
-	if (!fsMod.existsSync(projectsRoot)) return null;
+	if (!fsMod.existsSync(projectsRoot)) return { path: null };
 	const projects = fsMod
 		.readdirSync(projectsRoot, { withFileTypes: true })
 		.filter((e) => e.isDirectory())
-		.map((e) => e.name);
+		.map((e) => e.name)
+		.sort();
 
+	const matches = [];
 	for (const project of projects) {
-		const found = findTaskByQuery(projectTaskDir(projectsRoot, project), id);
-		if (found) return found;
+		const found = findTaskInProject(projectTaskDir(projectsRoot, project), id);
+		if (!found) continue;
+		const num = taskNumberOf(found);
+		matches.push({
+			ref: `${project}#${num === null ? id : `task_${num}`}`,
+			project,
+			path: found,
+		});
 	}
-	return null;
+
+	if (matches.length === 0) return { path: null };
+	if (matches.length === 1) {
+		return { path: matches[0].path, project: matches[0].project };
+	}
+	const list = matches.map((m) => `  ${m.ref}  (${m.path})`).join('\n');
+	return {
+		path: null,
+		ambiguous: true,
+		error:
+			`ambiguous task id "${id}": it matches ${matches.length} projects. ` +
+			`Nothing was read or changed. Rerun with the project, one of:\n${list}`,
+		matches,
+	};
+}
+
+/**
+ * Resolve a task file path from an id (see `resolveTask`). Returns the
+ * absolute file path, or null when nothing matches or the id is ambiguous.
+ * The commands use `resolveTask` so they can report the ambiguity.
+ */
+export function resolveTaskPath(id, opts = {}) {
+	return resolveTask(id, opts).path;
+}
+
+/**
+ * Failure result for an id that did not resolve to one ticket: the
+ * ambiguity error with its matches, or the plain not-found error.
+ */
+function unresolvedResult(id, resolved) {
+	return resolved.ambiguous
+		? { ok: false, error: resolved.error, matches: resolved.matches }
+		: { ok: false, error: `task not found: ${id}` };
+}
+
+/**
+ * Warning text when the resolved file's ticket number differs from the number
+ * the id asked for, else null. The asked-for number is the leading digits of
+ * the id's query part (`project#task_<n>`, `project#<n>`, `project#<n>_slug`);
+ * an id with no leading number (a pure slug, or a file path) is never flagged.
+ */
+export function numberMismatchWarning(id, resolvedPath) {
+	if (typeof id !== 'string' || id.endsWith('.md')) return null;
+	const query = id.includes('#') ? id.slice(id.indexOf('#') + 1) : id;
+	const m = query.match(/^(?:task_)?(\d+)/i);
+	const got = taskNumberOf(resolvedPath);
+	if (!m || got === null) return null;
+	const asked = parseInt(m[1], 10);
+	if (asked === got) return null;
+	return `asked for ${asked} but resolved ${path.basename(resolvedPath)} (task ${got}); check this is the ticket you meant`;
 }
 
 /**
  * `task read <id>` — read a single task file's frontmatter and body.
  */
 export function readTask(id, opts = {}) {
-	const taskPath = resolveTaskPath(id, opts);
+	const resolved = resolveTask(id, opts);
+	const taskPath = resolved.path;
 	if (!taskPath || !fs.existsSync(taskPath)) {
-		return { ok: false, error: `task not found: ${id}` };
+		return unresolvedResult(id, resolved);
 	}
 	const raw = fs.readFileSync(taskPath, 'utf-8');
 	const { meta, body } = parseFrontmatter(raw);
-	return { ok: true, path: taskPath, meta, body };
+	return { ok: true, project: resolved.project, path: taskPath, meta, body };
 }
 
 /**
@@ -204,8 +298,21 @@ export function wavesCommand(
  */
 export function updateField(id, field, value, opts = {}) {
 	if (!field) return { ok: false, error: 'field is required' };
-	const taskPath = resolveTaskPath(id, opts);
-	if (!taskPath) return { ok: false, error: `task not found: ${id}` };
+	const resolved = resolveTask(id, opts);
+	const taskPath = resolved.path;
+	if (!taskPath) return unresolvedResult(id, resolved);
+	const { project } = resolved;
+
+	// The optional status fields (queue, go, waiting_on, ask) are checked and
+	// normalised first; an empty value clears one. A literal `null` clears any
+	// field, rather than being stored as the text "null".
+	const clear = String(value ?? '').trim() === 'null';
+	const normalized = normalizeTicketField(field, clear ? '' : value, {
+		agents: opts.hubRoot ? discoverAgentIds({ hubRoot: opts.hubRoot }) : [],
+	});
+	if (!normalized.ok) {
+		return { ok: false, error: normalized.error, project, path: taskPath };
+	}
 
 	// Secret scan before writing — never partially writes the file.
 	const secretMatch = scanForSecrets(String(value));
@@ -213,20 +320,29 @@ export function updateField(id, field, value, opts = {}) {
 		return {
 			ok: false,
 			error: formatSecretScanError(secretMatch),
+			project,
 			path: taskPath,
 		};
 	}
 
 	try {
-		updateTaskFields(taskPath, { [field]: value });
+		updateTaskFields(taskPath, {
+			[field]:
+				normalized.value === undefined
+					? clear
+						? null
+						: value
+					: normalized.value,
+		});
 	} catch (err) {
 		return {
 			ok: false,
 			error: `update-field failed: ${err.message}`,
+			project,
 			path: taskPath,
 		};
 	}
-	return { ok: true, path: taskPath, field, value };
+	return { ok: true, project, path: taskPath, field, value };
 }
 
 /**
@@ -341,11 +457,19 @@ export function transitionTask(
 ) {
 	const result = { ok: false, steps: [] };
 
-	const taskPath = resolveTaskPath(id, { projectsRoot });
+	const resolved = resolveTask(id, { projectsRoot });
+	const taskPath = resolved.path;
 	if (!taskPath) {
-		result.error = `task not found: ${id}`;
+		const failure = unresolvedResult(id, resolved);
+		result.error = failure.error;
+		if (failure.matches) result.matches = failure.matches;
 		return result;
 	}
+	result.project = resolved.project;
+	result.resolvedFile = path.basename(taskPath);
+	result.warnings = [];
+	const mismatch = numberMismatchWarning(id, taskPath);
+	if (mismatch) result.warnings.push(mismatch);
 
 	// Secret scan the incoming frontmatter-updates values before writing —
 	// never partially writes the file. Only the caller-supplied updates are
@@ -364,6 +488,17 @@ export function transitionTask(
 	const rawBefore = fs.readFileSync(taskPath, 'utf-8');
 	const { meta: metaBefore, body: bodyBefore } = parseFrontmatter(rawBefore);
 	const oldState = metaBefore.status;
+
+	// Already in the target state: nothing to write and nothing to tell GitHub.
+	// (A caller that also supplies --github is changing the ticket, so that
+	// call goes on to the normal path.)
+	if (oldState === newState && Object.keys(frontmatterUpdates).length === 0) {
+		result.ok = true;
+		result.path = taskPath;
+		result.note = `nothing changed: ${resolved.project}#task_${taskNumberOf(taskPath)} is already ${newState}; no file write and no GitHub update`;
+		result.mirror = 'skipped (already in target state)';
+		return result;
+	}
 
 	// Step 1 + 2: atomic local write (frontmatter status + filename rename).
 	let newPath;
@@ -406,7 +541,11 @@ export function transitionTask(
 	// not itself a transition failure as long as the new label lands and
 	// verifies. Adding the new label is NOT best-effort: any failure there
 	// aborts the transition.
-	if (oldState && oldState.startsWith('state:') && oldState !== newState) {
+	if (
+		oldState &&
+		(oldState.startsWith('state:') || oldState === 'dropped') &&
+		oldState !== newState
+	) {
 		try {
 			execFn(
 				'gh',
@@ -528,8 +667,10 @@ export function appendSection(id, section, content, opts = {}) {
 	if (typeof content !== 'string' || content.trim() === '') {
 		return { ok: false, error: 'content is required' };
 	}
-	const taskPath = resolveTaskPath(id, opts);
-	if (!taskPath) return { ok: false, error: `task not found: ${id}` };
+	const resolved = resolveTask(id, opts);
+	const taskPath = resolved.path;
+	if (!taskPath) return unresolvedResult(id, resolved);
+	const { project } = resolved;
 
 	// Secret scan before writing — never partially writes the file.
 	const secretMatch = scanForSecrets(content);
@@ -537,6 +678,7 @@ export function appendSection(id, section, content, opts = {}) {
 		return {
 			ok: false,
 			error: formatSecretScanError(secretMatch),
+			project,
 			path: taskPath,
 		};
 	}
@@ -547,10 +689,11 @@ export function appendSection(id, section, content, opts = {}) {
 		return {
 			ok: false,
 			error: `append-section failed: ${err.message}`,
+			project,
 			path: taskPath,
 		};
 	}
-	return { ok: true, path: taskPath, section };
+	return { ok: true, project, path: taskPath, section };
 }
 
 // ── qa-report ───────────────────────────────────────────────────────────────
@@ -762,11 +905,15 @@ export function qaReport(
 	const isFail =
 		FAIL_VERDICTS.has(verdictUpper) || verdictUpper.startsWith('PARTIAL');
 
-	const taskPath = resolveTaskPath(id, { projectsRoot, fsMod });
+	const resolved = resolveTask(id, { projectsRoot, fsMod });
+	const taskPath = resolved.path;
 	if (!taskPath) {
-		result.error = `task not found: ${id}`;
+		const failure = unresolvedResult(id, resolved);
+		result.error = failure.error;
+		if (failure.matches) result.matches = failure.matches;
 		return result;
 	}
+	result.project = resolved.project;
 	result.path = taskPath;
 
 	const raw = fsMod.readFileSync(taskPath, 'utf-8');
@@ -1250,10 +1397,12 @@ export function dispatchContext(
 		fsMod = fs,
 	} = {},
 ) {
-	const taskPath = resolveTaskPath(id, { projectsRoot, fsMod });
+	const resolved = resolveTask(id, { projectsRoot, fsMod });
+	const taskPath = resolved.path;
 	if (!taskPath || !fsMod.existsSync(taskPath)) {
-		return { ok: false, error: `task not found: ${id}` };
+		return unresolvedResult(id, resolved);
 	}
+	const { project } = resolved;
 
 	const raw = fsMod.readFileSync(taskPath, 'utf-8');
 	const { meta } = parseFrontmatter(raw);
@@ -1300,6 +1449,7 @@ export function dispatchContext(
 
 	return {
 		ok: true,
+		project,
 		path: taskPath,
 		id,
 		verifier,
@@ -1545,7 +1695,12 @@ export function extractHubRootFlag(argv) {
 
 export function runCli(
 	argv,
-	{ fsMod = fs, execFn = execFileSync, cwd = process.cwd() } = {},
+	{
+		fsMod = fs,
+		execFn = execFileSync,
+		cwd = process.cwd(),
+		now = () => new Date(),
+	} = {},
 ) {
 	const {
 		present: hubRootPresent,
@@ -1631,12 +1786,16 @@ export function runCli(
 			const frontmatterUpdates = github ? { github } : {};
 			output = transitionTask(transitionArgs[0], transitionArgs[1], {
 				...rootOpts,
+				execFn,
 				frontmatterUpdates,
 			});
 			break;
 		}
 		case 'update-field':
-			output = updateField(rest[0], rest[1], rest[2], rootOpts);
+			output = updateField(rest[0], rest[1], rest[2], {
+				...rootOpts,
+				...(!present && effectiveHubRootPresent && hubRoot ? { hubRoot } : {}),
+			});
 			break;
 		case 'waves':
 			output = wavesCommand(rest[0], rootOpts);
@@ -1669,9 +1828,27 @@ export function runCli(
 			break;
 		}
 		case 'dispatch-context': {
-			output = dispatchContext(rest[0], rootOpts);
+			// A hub root in play (cwd default or --hub-root) names where its skills
+			// live: `skills/` on a deployed hub, `agents/skills` in the source repo.
+			output = dispatchContext(rest[0], {
+				...rootOpts,
+				...(effectiveHubRootPresent && hubRoot
+					? { skillsRoot: resolveSkillsRoot(hubRoot, fsMod) }
+					: {}),
+			});
 			break;
 		}
+		case 'run':
+			// Run records live with the hub, so they need a hub root; a bare
+			// --projects-root has none.
+			output = runSubcommand(rest, {
+				hubRoot: !present && effectiveHubRootPresent ? hubRoot : undefined,
+				hubType,
+				projectsRoot: rootOpts.projectsRoot ?? DEFAULT_PROJECTS_ROOT,
+				now,
+				fsMod,
+			});
+			break;
 		case 'create': {
 			const { fields, rest: createArgs } = parseCreateFlags(rest);
 			output = createTask(createArgs[0], createArgs[1], createArgs[2], {
@@ -1685,7 +1862,7 @@ export function runCli(
 		default:
 			output = {
 				ok: false,
-				error: `unknown command: ${cmd ?? '(none)'}. Usage: task <read|list|transition|update-field|waves|append-section|qa-report|post-merge-check|dispatch-context|create> ... [--projects-root <path>] [--hub-root <path>]`,
+				error: `unknown command: ${cmd ?? '(none)'}. Usage: task <read|list|transition|update-field|waves|append-section|qa-report|post-merge-check|dispatch-context|create|run> ... [--projects-root <path>] [--hub-root <path>]`,
 			};
 	}
 
@@ -1747,6 +1924,7 @@ export async function runAfterTaskCreate(
 }
 
 if (isMain) {
+	installCrashReporter({ source: 'npm-run' });
 	let output;
 	const argv = process.argv.slice(2);
 	try {
@@ -1755,6 +1933,9 @@ if (isMain) {
 		output = { ok: false, error: err.message };
 	}
 	await runAfterTaskCreate(argv, output);
+	for (const w of output?.warnings ?? []) {
+		process.stderr.write(`warning: ${w}\n`);
+	}
 	process.stdout.write(JSON.stringify(output, null, 2) + '\n');
 	process.exit(output.ok ? 0 : 1);
 }

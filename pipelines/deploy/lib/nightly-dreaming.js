@@ -47,6 +47,7 @@
  * resolution an interactive shell performs. Routing through `cmd.exe /c` reproduces that
  * resolution exactly.
  */
+import { PROBE_TIMEOUT_MS } from './npm-install.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -264,7 +265,10 @@ export function isNightlyDreamingTaskRegistered({
 	execFn = execFileSync,
 } = {}) {
 	try {
-		execFn('schtasks', ['/query', '/tn', taskName], { stdio: 'pipe' });
+		execFn('schtasks', ['/query', '/tn', taskName], {
+			stdio: 'pipe',
+			timeout: PROBE_TIMEOUT_MS,
+		});
 		return true;
 	} catch {
 		return false;
@@ -289,6 +293,7 @@ export function queryNightlyDreamingTaskXml({
 		const raw = execFn('schtasks', ['/query', '/tn', taskName, '/xml', 'ONE'], {
 			stdio: 'pipe',
 			encoding: 'utf-8',
+			timeout: PROBE_TIMEOUT_MS,
 		});
 		return raw?.toString ? raw.toString() : raw;
 	} catch {
@@ -350,6 +355,7 @@ export function registerNightlyDreamingTask({
 	try {
 		execFn('schtasks', ['/create', '/tn', taskName, '/xml', xmlPath, '/f'], {
 			stdio: 'pipe',
+			timeout: PROBE_TIMEOUT_MS,
 		});
 		return { ok: true, xmlPath };
 	} catch (err) {
@@ -381,7 +387,10 @@ export function removeNightlyDreamingTask({
 		return { ok: true, removed: false };
 	}
 	try {
-		execFn('schtasks', ['/delete', '/tn', taskName, '/f'], { stdio: 'pipe' });
+		execFn('schtasks', ['/delete', '/tn', taskName, '/f'], {
+			stdio: 'pipe',
+			timeout: PROBE_TIMEOUT_MS,
+		});
 		return { ok: true, removed: true };
 	} catch (err) {
 		return { ok: false, removed: false, error: err.message ?? String(err) };
@@ -778,6 +787,7 @@ export function getNightlyDreamingTaskRuntimeInfo({
 			{
 				stdio: 'pipe',
 				encoding: 'utf-8',
+				timeout: PROBE_TIMEOUT_MS,
 			},
 		).toString();
 		const lastRunMatch = /Last Run Time:\s*(.+)/i.exec(raw);

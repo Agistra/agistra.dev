@@ -145,6 +145,14 @@
         "dev"
       ],
       "text": "To switch projects, start a fresh session (or clear the current one), greet your agent (\"Hi Architect\"), then tell it which project to work on, for example \"Let's work on project <name>\". A clean start keeps the old project's context from leaking into the new one."
+    },
+    {
+      "id": "upgrade-error-reporting",
+      "tiers": [
+        "dev"
+      ],
+      "when": "error-report-trial-ended",
+      "text": "Upgrade to dev:sub to keep error reporting on with no time limit and get support: https://agistra.ai/pricing"
     }
   ]
 }

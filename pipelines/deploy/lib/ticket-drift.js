@@ -25,7 +25,15 @@
  *                            `github:` field; shape 5 is the inverse — it catches a
  *                            reference that should exist but was never created).
  *
- * Task files with no `github:` field are ignored by shapes 1-4 — no tracker
+ *   6. tracker-closed-local-open — the GitHub issue is CLOSED/COMPLETED but the
+ *                            local `status:` is not a closed state (a merge closed
+ *                            the issue; nobody ran `task transition <id> closed`).
+ *   7. local-closed-issue-open — a task filed under `done/` whose issue is still OPEN.
+ *
+ * The tracker reference is read from `github:` or `github-issue:` (the field
+ * the vault-hub tracker plugin writes; see task-cli.js). Both are accepted.
+ *
+ * Task files with no tracker field are ignored by shapes 1-4 — no tracker
  * reference to drift-check against for those four (consistent with
  * ticket-lifecycle-mode's Mirror Update Obligation scoping). Shape 5, below, is
  * the dedicated check for exactly those files.
@@ -38,6 +46,7 @@
  * directory happens to be co-located; the real cross-repo case always
  * requires the explicit override.
  */
+import { installCrashReporter } from './error-sources.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -52,6 +61,11 @@ import {
 import { resolveTasksRoot } from './memory-root.js';
 import { readJsonSafe } from '../wizard.js';
 import { effectiveHubType, isHubRoot } from './hub-type.js';
+import {
+	listProjectFolders,
+	projectTaskDir,
+	taskDirContext,
+} from './vault-layout.js';
 
 /**
  * Local `status:` values that represent the pre-dispatch state — i.e. no
@@ -61,7 +75,29 @@ import { effectiveHubType, isHubRoot } from './hub-type.js';
  * files in this backlog today — both are
  * treated as pre-dispatch to avoid false positives against real files.
  */
-const PRE_DISPATCH_STATES = ['state:ready-for-implementation', 'state:todo'];
+const PRE_DISPATCH_STATES = [
+	'state:ready-for-implementation',
+	'state:todo',
+	// Bare legacy `todo`: statusToInfix already maps it to the pre-dispatch
+	// infix, so treating it as dispatched here made every bare-`todo` ticket
+	// whose issue has no state:* label a false zero-label-but-dispatched.
+	'todo',
+];
+
+/**
+ * Local `status:` values that mean the task is finished. A CLOSED/COMPLETED
+ * tracker issue next to any other status is tracker-closed-local-open drift.
+ */
+const CLOSED_LOCAL_STATES = ['closed', 'done', 'state:done', 'dropped'];
+
+/**
+ * The tracker reference of a task: `github:` (repo-files hubs) or
+ * `github-issue:` (vault hubs, written by the tracker plugin). Same read as
+ * task-cli.js.
+ */
+export function trackerField(meta) {
+	return meta.github ?? meta['github-issue'];
+}
 
 /**
  * Filename infixes that correspond to pre-dispatch states. Used by the
@@ -175,12 +211,23 @@ export function scanTaskFiles(tasksDir, fsMod = fs) {
 		const filePath = path.join(tasksDir, file);
 		const raw = fsMod.readFileSync(filePath, 'utf-8');
 		const { meta } = parseFrontmatter(raw);
-		if (!meta.github) continue;
-		const githubRef = parseGithubIssueRef(meta.github);
+		const githubRef = parseGithubIssueRef(trackerField(meta));
 		if (!githubRef) continue;
 		results.push({ file, filePath, meta, githubRef });
 	}
 	return results;
+}
+
+/**
+ * Like scanTaskFiles, for the `done/` subfolder of a project's task folder.
+ * Entries carry `inDone: true`. Only the closed-vs-open checks run on them
+ * (see detectDoneEntryDrift): a finished task has no state:* label to compare.
+ */
+export function scanDoneTaskFiles(tasksDir, fsMod = fs) {
+	return scanTaskFiles(doneTasksDir(tasksDir), fsMod).map((e) => ({
+		...e,
+		inDone: true,
+	}));
 }
 
 /**
@@ -279,7 +326,7 @@ export function detectMissingTrackerRefs({
 	});
 
 	const existingRefs = parsed
-		.map(({ meta }) => parseGithubIssueRef(meta.github))
+		.map(({ meta }) => parseGithubIssueRef(trackerField(meta)))
 		.filter(Boolean);
 
 	const knownRepo = resolveKnownGithubRepo({
@@ -291,7 +338,7 @@ export function detectMissingTrackerRefs({
 
 	const drifts = [];
 	for (const { file, meta } of parsed) {
-		if (meta.github) continue;
+		if (trackerField(meta)) continue;
 		if (!TRACKED_DISPATCH_STATES.includes(meta.status)) continue;
 		drifts.push({
 			file,
@@ -345,11 +392,36 @@ export function detectEntryDrift(entry, issueState) {
 		return `${file}: filename infix "${infix}" but GitHub issue is CLOSED/COMPLETED (stale-todo)`;
 	}
 
+	// Shape 6: tracker-closed-local-open — the issue was closed as completed but
+	// the local task never moved to a closed state.
+	if (
+		issueState.state === 'CLOSED' &&
+		issueState.stateReason === 'COMPLETED' &&
+		!CLOSED_LOCAL_STATES.includes(localStatus)
+	) {
+		return `${file}: GitHub issue is CLOSED/COMPLETED but local status is "${localStatus}" (tracker-closed-local-open)`;
+	}
+
 	// Shape 2: zero-label-but-dispatched
-	if (stateLabels.length === 0 && !PRE_DISPATCH_STATES.includes(localStatus)) {
+	if (
+		stateLabels.length === 0 &&
+		!PRE_DISPATCH_STATES.includes(localStatus) &&
+		!CLOSED_LOCAL_STATES.includes(localStatus)
+	) {
 		return `${file}: local status "${localStatus}" but GitHub issue has zero state:* labels (zero-label-but-dispatched)`;
 	}
 
+	return null;
+}
+
+/**
+ * Drift for a task filed under `done/`: the only check is that its issue is
+ * not still OPEN (shape 7). Returns a description or null.
+ */
+export function detectDoneEntryDrift(entry, issueState) {
+	if (issueState.state === 'OPEN') {
+		return `${entry.file}: task is closed locally (done/) but GitHub issue is still OPEN (local-closed-issue-open)`;
+	}
 	return null;
 }
 
@@ -377,7 +449,10 @@ export function runDriftCheck({
 	fsMod = fs,
 	fetchIssue = (ref) => fetchIssueState(ref),
 }) {
-	const entries = scanTaskFiles(tasksDir, fsMod);
+	const entries = [
+		...scanTaskFiles(tasksDir, fsMod),
+		...scanDoneTaskFiles(tasksDir, fsMod),
+	];
 	const drifts = [];
 	for (const entry of entries) {
 		let issueState;
@@ -390,7 +465,9 @@ export function runDriftCheck({
 			});
 			continue;
 		}
-		const description = detectEntryDrift(entry, issueState);
+		const description = entry.inDone
+			? detectDoneEntryDrift(entry, issueState)
+			: detectEntryDrift(entry, issueState);
 		if (description) {
 			drifts.push({ file: entry.file, description });
 		}
@@ -425,6 +502,7 @@ export function formatReport(drifts) {
 	return lines.join('\n') + '\n';
 }
 
+// DEFAULT_TASKS_DIR only applies outside a hub root (e.g. the source repo).
 export const DEFAULT_TASKS_DIR = 'projects/setchin-agent-profiles';
 
 /**
@@ -475,20 +553,25 @@ export function resolveTasksRootPath({
 		return { tasksDir: projectsRootFlag, hubRoot: cwd, hubType: undefined };
 	}
 
-	if (hubRootFlag) {
-		if (!fsMod.existsSync(hubRootFlag)) {
-			throw new Error(`--hub-root not found: ${hubRootFlag}`);
+	// No flags: a cwd that is a hub root resolves like `--hub-root <cwd>` (the
+	// same default task-cli.js applies). Only a cwd that is not a hub root, such
+	// as the source repo, falls through to the cwd-relative DEFAULT_TASKS_DIR.
+	const effectiveHubRoot =
+		hubRootFlag ?? (isHubRoot(cwd, fsMod) ? cwd : undefined);
+	if (effectiveHubRoot) {
+		if (!fsMod.existsSync(effectiveHubRoot)) {
+			throw new Error(`--hub-root not found: ${effectiveHubRoot}`);
 		}
-		const hubConfigPath = path.join(hubRootFlag, 'workspace.config.json');
-		if (!isHubRoot(hubRootFlag, fsMod)) {
+		const hubConfigPath = path.join(effectiveHubRoot, 'workspace.config.json');
+		if (!isHubRoot(effectiveHubRoot, fsMod)) {
 			throw new Error(
 				`--hub-root given but no workspace.config.json found under it: ${hubConfigPath}`,
 			);
 		}
 		const hubConfig = readJsonSafe(hubConfigPath, fsMod);
-		const hubType = effectiveHubType(hubRootFlag, hubConfig, fsMod);
-		const tasksDir = resolveTasksRoot(hubRootFlag, hubType);
-		return { tasksDir, hubRoot: hubRootFlag, hubType };
+		const hubType = effectiveHubType(effectiveHubRoot, hubConfig, fsMod);
+		const tasksDir = resolveTasksRoot(effectiveHubRoot, hubType);
+		return { tasksDir, hubRoot: effectiveHubRoot, hubType, fromHub: true };
 	}
 
 	// Default: cwd-relative DEFAULT_TASKS_DIR
@@ -546,6 +629,122 @@ export function countTaskFilesInRoot(tasksDir, fsMod = fs) {
 	return count;
 }
 
+/**
+ * Turn a resolved tasks root into the list of per-project task folders to
+ * check. `tasksDir` is what resolveTasksRootPath returned.
+ *
+ *  - Hub-derived root (`fromHub`): every project folder under it, using the
+ *    folder name as the project name; the project's task folder comes from
+ *    projectTaskDir (`vault/Projects/<p>/Tasks` on vault hubs,
+ *    `projects/<p>` on the others). Projects with no task files are reported
+ *    in `skipped`, not checked.
+ *  - `--projects-root` / the source-repo default: the folder itself when it
+ *    holds task files directly; otherwise treated as a root of projects.
+ *
+ * @returns {{targets: Array<{project:string, tasksDir:string, fileCount:number}>, skipped: string[]}}
+ */
+export function listCheckTargets({ tasksDir, fromHub }, fsMod = fs) {
+	if (!fromHub && countTaskFilesInRoot(tasksDir, fsMod) > 0) {
+		return {
+			targets: [
+				{
+					project: taskDirContext(tasksDir).project,
+					tasksDir,
+					fileCount: countTaskFilesInRoot(tasksDir, fsMod),
+				},
+			],
+			skipped: [],
+		};
+	}
+	const targets = [];
+	const skipped = [];
+	for (const project of listProjectFolders(tasksDir, fsMod)) {
+		const dir = projectTaskDir(tasksDir, project);
+		const fileCount = countTaskFilesInRoot(dir, fsMod);
+		if (fileCount === 0) skipped.push(project);
+		else targets.push({ project, tasksDir: dir, fileCount });
+	}
+	return { targets, skipped };
+}
+
+/**
+ * Cache-backed issue fetcher for a whole run. A vault hub holds hundreds of
+ * finished tasks, so one `gh issue list --state all` per repo replaces one
+ * `gh issue view` per task. A number missing from the list (beyond the limit,
+ * or the list call failed) falls back to the per-issue fetch.
+ */
+export function makeCachedFetcher({
+	execFn = execFileSync,
+	fetchOne = (ref) => fetchIssueState(ref, execFn),
+} = {}) {
+	const byRepo = new Map();
+	const load = (owner, repo) => {
+		const key = `${owner}/${repo}`;
+		if (byRepo.has(key)) return byRepo.get(key);
+		let map = new Map();
+		try {
+			const out = execFn(
+				'gh',
+				[
+					'issue',
+					'list',
+					'--repo',
+					key,
+					'--state',
+					'all',
+					'--limit',
+					'5000',
+					'--json',
+					'number,labels,state,stateReason',
+				],
+				{ encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 },
+			);
+			for (const i of JSON.parse(out)) {
+				map.set(i.number, {
+					state: i.state,
+					stateReason: i.stateReason ?? null,
+					labels: (i.labels || []).map((l) => l.name),
+				});
+			}
+		} catch {
+			map = new Map();
+		}
+		byRepo.set(key, map);
+		return map;
+	};
+	return (ref) => load(ref.owner, ref.repo).get(ref.number) ?? fetchOne(ref);
+}
+
+/**
+ * Check every target. Returns { drifts, checked } where `checked` is the
+ * per-project file counts, for the summary line.
+ */
+export function runAllChecks({
+	targets,
+	workspaceConfig = null,
+	fsMod = fs,
+	fetchIssue,
+}) {
+	const drifts = [];
+	for (const t of targets) {
+		const found = runDriftCheck({
+			tasksDir: t.tasksDir,
+			projectName: t.project,
+			workspaceConfig,
+			fsMod,
+			...(fetchIssue ? { fetchIssue } : {}),
+		});
+		for (const d of found) {
+			drifts.push(
+				targets.length > 1
+					? { ...d, description: `[${t.project}] ${d.description}` }
+					: d,
+			);
+		}
+	}
+	return drifts;
+}
+
 // ── CLI entry point ────────────────────────────────────────────────────────────
 
 const isMain =
@@ -554,6 +753,7 @@ const isMain =
 		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
+	installCrashReporter({ source: 'npm-run' });
 	// Legacy --tasks-dir flag support (deprecated in favor of --projects-root/--hub-root)
 	const legacyTasksDirIdx = process.argv.indexOf('--tasks-dir');
 	let argv = process.argv.slice(2);
@@ -577,30 +777,47 @@ if (isMain) {
 	const { present: projectsRootPresent, projectsRoot: projectsRootFlag } =
 		extractProjectsRootFlag(afterHubRoot);
 
-	let tasksDir, hubRoot;
+	let resolved;
 	try {
-		({ tasksDir, hubRoot } = resolveTasksRootPath({
+		resolved = resolveTasksRootPath({
 			projectsRootFlag: projectsRootPresent ? projectsRootFlag : undefined,
 			hubRootFlag: hubRootPresent ? hubRootFlag : undefined,
-		}));
+		});
 	} catch (err) {
 		process.stderr.write(`Error: ${err.message}\n`);
 		process.exit(1);
 	}
 
-	// Count all task files in the resolved directory (including done/ and dropped/ subdirectories)
-	const taskFileCount = countTaskFilesInRoot(tasksDir);
+	const { targets, skipped } = listCheckTargets(resolved);
 
-	// Exit non-zero if no task files found at the resolved root
-	if (taskFileCount === 0) {
-		process.stderr.write(`Warning: no task files found in ${tasksDir}\n`);
+	// Never report "clean" over a folder that held nothing to check.
+	if (targets.length === 0) {
+		process.stderr.write(
+			`Error: no task files found under ${resolved.tasksDir}` +
+				(skipped.length > 0
+					? ` (project folders without tasks: ${skipped.join(', ')})`
+					: '') +
+				'. Nothing was checked. Pass --hub-root <hub> or --projects-root <tasks folder>.\n',
+		);
 		process.exit(1);
 	}
 
-	const projectName = path.basename(tasksDir);
-	const workspaceConfig = readWorkspaceConfig(hubRoot);
+	const total = targets.reduce((n, t) => n + t.fileCount, 0);
+	process.stdout.write(
+		`Checked ${total} task file(s) in ${targets.length} project(s) under ${resolved.tasksDir}: ` +
+			targets.map((t) => `${t.project} (${t.fileCount})`).join(', ') +
+			'\n',
+	);
+	if (skipped.length > 0) {
+		process.stdout.write(`Skipped (no task files): ${skipped.join(', ')}\n`);
+	}
 
-	const drifts = runDriftCheck({ tasksDir, projectName, workspaceConfig });
+	const workspaceConfig = readWorkspaceConfig(resolved.hubRoot);
+	const drifts = runAllChecks({
+		targets,
+		workspaceConfig,
+		fetchIssue: makeCachedFetcher(),
+	});
 	process.stdout.write(formatReport(drifts));
 	process.exit(computeExitCode(drifts));
 }

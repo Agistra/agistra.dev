@@ -1,6 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import {
+	execWithTimeout,
+	formatTimeout,
+	installExecOptions,
+	isInstallTimeout,
+	removePartialInstall,
+} from './npm-install.js';
 
 /**
  * Setup-time install of the hub root's own npm dependencies.
@@ -83,22 +89,38 @@ export function checkHubRootDepsCurrent({ hubRoot, fsMod = fs }) {
 export function installHubRootDeps({
 	hubRoot,
 	fsMod = fs,
-	execFn = execFileSync,
+	execFn = execWithTimeout,
 }) {
 	const useCi = fsMod.existsSync(path.join(hubRoot, 'package-lock.json'));
 	const command = useCi ? 'ci' : 'install';
+	const options = installExecOptions({ cwd: hubRoot });
+	const { missing } = checkHubRootDepsCurrent({ hubRoot, fsMod });
 	try {
 		// shell: true on Windows — same precedent this pipeline's other
 		// setup-time `npm ci` install helpers already established: npm resolves
 		// to npm.cmd on Windows, and execFileSync without a shell cannot
 		// resolve/execute a .cmd shim directly.
-		execFn('npm', [command], {
-			cwd: hubRoot,
-			stdio: 'inherit',
-			shell: process.platform === 'win32',
-		});
+		// Bounded and detached from setup's stdin: see npm-install.js.
+		execFn('npm', [command], options);
 		return { ran: true, command };
 	} catch (err) {
+		if (isInstallTimeout(err)) {
+			// Remove what the stopped install may have half-written, so the
+			// presence check cannot treat a partial dependency as installed.
+			for (const dep of missing) {
+				removePartialInstall(
+					path.join(hubRoot, 'node_modules', ...dep.split('/')),
+					fsMod,
+				);
+			}
+			return {
+				ran: false,
+				command,
+				timedOut: true,
+				timeoutMs: options.timeout,
+				error: err.message,
+			};
+		}
 		return { ran: false, command, error: err.message };
 	}
 }
@@ -131,7 +153,7 @@ export function installHubRootDeps({
 export function ensureHubRootDepsInstalled({
 	hubRoot,
 	fsMod = fs,
-	execFn = execFileSync,
+	execFn = execWithTimeout,
 	log = (s) => process.stdout.write(s),
 	installFn = installHubRootDeps,
 }) {
@@ -155,6 +177,10 @@ export function ensureHubRootDepsInstalled({
 	const result = installFn({ hubRoot, fsMod, execFn });
 	if (result.ran) {
 		log(`  Hub-root dependencies installed via npm ${result.command}.\n`);
+	} else if (result.timedOut) {
+		log(
+			`  WARNING: hub-root dependency install (npm ${result.command}) timed out after ${formatTimeout(result.timeoutMs)} and was stopped. Retry: npm run setup\n`,
+		);
 	} else {
 		log(`  WARNING: hub-root dependency install failed: ${result.error}\n`);
 		log(

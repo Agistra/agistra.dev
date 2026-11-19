@@ -6,6 +6,7 @@
  *   node pipelines/deploy/relay/telegram-relay/daemon.js --hub <hub-root>
  */
 import { loadRelayConfig, resolveHubRoot } from './config.js';
+import { installCrashReporter } from '../../lib/error-sources.js';
 import { acquireDaemonLock } from './lock.js';
 import { startPoller } from './poll.js';
 import { createHttpServer } from './http.js';
@@ -19,6 +20,8 @@ import {
 } from '../adapters/claude-code.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+
+installCrashReporter({ source: 'npm-run' });
 
 const argv = process.argv.slice(2);
 const hubRoot = resolveHubRoot(argv);

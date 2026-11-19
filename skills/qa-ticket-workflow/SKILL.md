@@ -39,9 +39,11 @@ The canonical Developer → QA handoff payload is defined in `ticket-lifecycle-m
 
 Before executing any test step:
 
+0. When the test needs the code from a branch or pull request, work in a clone made by `npm run work -- new <project> <ticket> tester [--ref <branch>]`; it prints the clone's path. Run a clean install in it; never link another checkout's `node_modules`. Never test in the team lead's checkout, a real hub, or a folder you chose yourself. Do not remove the clone: the team lead does.
 1. Confirm the environment URL matches the ticket target. Navigate to it and do not run server commands.
 2. Confirm infrastructure is ready. If a dependency is missing, surface it as BLOCKER and stop.
 3. Note the initial page and auth state as the test baseline.
+4. Check the PR's CI status (`gh pr checks`) before testing. A red required check is a FAIL whatever the local results.
 
 ## Execution Workflow
 
@@ -128,9 +130,10 @@ Do not substitute CLI queries for browser verification.
 
 ## GitHub And State Actions
 
-**The only documented path: `npm run task -- qa-report <id> <verdict> [--gaps <path>] [--findings <path>] [--evidence <path>] [--projects-root <path>]`.** This single command composes the report, posts it to the linked GitHub issue and (if an open PR is discoverable for the current branch) the PR, re-fetches the comment list to confirm each post actually landed (failing loudly, non-zero exit, if not), appends the local `## QA Report` section (and `## Gap Closure` on FAIL/PARTIAL PASS when `--gaps` is supplied), and performs the matching state transition — `state:qa-passed` on PASS, or `state:changes-requested` + the correct `qa-fail-N` label on FAIL/PARTIAL PASS. It replaces Steps 6-8 below with one call. `--evidence <path>` is a JSON array of `{claim, source, observed}` entries, posted as an Evidence block. `--projects-root <path>` reliably resolves task files regardless of which repo the CLI process itself is running from — pass it whenever the task file lives outside the CLI's own cwd (e.g. Tester running from the source repo against task files under the deployed hub's `projects/` directory).
+**The only documented path: `npm run task -- qa-report <project>#task_N <verdict> [--gaps <path>] [--findings <path>] [--evidence <path>] [--projects-root <path>]`.** This single command composes the report, posts it to the linked GitHub issue and (if an open PR is discoverable for the current branch) the PR, re-fetches the comment list to confirm each post actually landed (failing loudly, non-zero exit, if not), appends the local `## QA Report` section (and `## Gap Closure` on FAIL/PARTIAL PASS when `--gaps` is supplied), and performs the matching state transition — `state:qa-passed` on PASS, or `state:changes-requested` + the correct `qa-fail-N` label on FAIL/PARTIAL PASS. It replaces Steps 6-8 below with one call. `--evidence <path>` is a JSON array of `{claim, source, observed}` entries, posted as an Evidence block. `--projects-root <path>` reliably resolves task files regardless of which repo the CLI process itself is running from — pass it whenever the task file lives outside the CLI's own cwd (e.g. Tester running from the source repo against task files under the deployed hub's `projects/` directory).
 
 - Write findings/gap-closure content to a temp file first (avoids inline multi-line `--body` escaping), then pass its path via `--findings` and/or `--gaps`.
+- Always name the ticket as `<project>#task_N` (for example `demo#42`). A bare `task_N` that exists in more than one project is refused with `ok: false` and a list of the matching `project#task_N` forms; rerun with the one you mean. Check the `project` and `path` in the output.
 - Check the command's JSON output `ok` field and exit code. `ok: false` means the report did not verifiably land, or the transition failed — do not treat any output as success without checking `ok`.
 - **If the CLI command errors, do not fall back to manually editing the task file or the GitHub issue.** Read the JSON `error` field, fix the underlying cause (missing `--projects-root`, invalid id, `gh` auth, etc.) and retry the command. There is no manual-edit fallback path — exactly one documented path exists for this operation.
 
@@ -159,7 +162,7 @@ On a FAIL or PARTIAL PASS verdict, Tester appends a `## Gap Closure` section to 
 
 ### Format
 
-Write the section via the task CLI's `append-task-section` operation (`npm run task -- append-section <id> "Gap Closure" <content> [--projects-root <path>]`, piping multi-line content via stdin — see `ticket-lifecycle-mode` State Transition CLI section for the CLI's general usage pattern). Do not hand-edit the section with a text editor — the CLI is the only documented path; if it errors, fix the underlying cause and retry, do not bypass it with a manual `Edit`.
+Write the section via the task CLI's `append-task-section` operation (`npm run task -- append-section <project>#task_N "Gap Closure" <content> [--projects-root <path>]`, piping multi-line content via stdin — see `ticket-lifecycle-mode` State Transition CLI section for the CLI's general usage pattern). Do not hand-edit the section with a text editor — the CLI is the only documented path; if it errors, fix the underlying cause and retry, do not bypass it with a manual `Edit`.
 
 Each entry is a `### Gap N` subsection with these fields:
 
@@ -196,31 +199,6 @@ npm run task -- append-section "demo#42" "Gap Closure" "$(cat <<'EOF'
   the recent notifications refactor.
 EOF
 )"
-```
-
-Resulting section appended to the task file:
-
-```markdown
-## Gap Closure
-
-### Gap 1
-
-- **AC:** 2
-- **Observed:** Submitting the form with an empty email field shows no validation
-  message; the request is sent to the server and returns a 500.
-- **Expected:** AC 2 requires client-side validation to block submission and show
-  "Email is required" inline before any request is sent.
-- **Suspected location:** src/components/SignupForm.tsx — no onBlur/onSubmit
-  validation wired for the email field.
-
-### Gap 2
-
-- **AC:** 3
-- **Observed:** Success toast never appears after a valid submission; console shows
-  `Cannot read properties of undefined (reading 'toast')`.
-- **Expected:** AC 3 requires a visible success toast within 2s of a valid submit.
-- **Suspected location:** src/hooks/useSignup.ts — toast import likely missing after
-  the recent notifications refactor.
 ```
 
 On re-dispatch, Builder marks each gap closed directly in this section as part of the fix commit (e.g. appending `**Status:** closed — <one-line fix summary>` under each `### Gap N`) rather than deleting or rewriting the entries — this keeps the section a durable record across fail attempts.
@@ -313,4 +291,4 @@ If verdict is PASS with no defects, skip this step — Builder will see the loca
 
 ### Step 10 - Clean up
 
-Remove temp report files and summarize the final verdict in chat.
+Remove temp report files, stop your own background jobs and servers by their own job or process id only (never by a broad name or pattern), and summarize the final verdict in chat.

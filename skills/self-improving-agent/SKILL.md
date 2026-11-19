@@ -6,11 +6,11 @@ argument-hint: "Correction, unexpected error, capability gap, or recurring patte
 
 # Self-Improving Agent
 
-Adapted from [pskoett/self-improving-agent v3.0.21](https://clawhub.ai/pskoett/self-improving-agent) — MIT License. Defines the mechanics that `agent-foundations`' WAL protocol routes through automatically: the trigger table below, the log formats, and the promotion rules for turning durable learnings into permanent project memory. This is not a skill an agent separately decides to load — WAL's "Learnings routing" step already folds a matching trigger into its mandatory write, the same turn it fires. Going forward, a correction or recurring pattern gets a structured `.learnings/` entry as a matter of course, in the same motion as the agent-memory write, not as an afterthought that depends on remembering to open this file later.
+Adapted from [pskoett/self-improving-agent v3.0.21](https://clawhub.ai/pskoett/self-improving-agent) — MIT License. Defines the mechanics `agent-foundations`' WAL protocol routes through automatically: the trigger table, the log formats and the promotion rules. WAL's "Learnings routing" step folds a matching trigger into its mandatory write, the same turn it fires; an agent does not separately decide to load this skill.
 
 ## When to Log
 
-The five trigger types WAL's mandatory write scans for. When one matches, the `.learnings/` entry is written as part of that same write — not a follow-up step to schedule for later.
+When a trigger matches, write the entry as part of that same write, not as a follow-up.
 
 | Trigger | Where |
 | ------- | ----- |
@@ -20,38 +20,13 @@ The five trigger types WAL's mandatory write scans for. When one matches, the `.
 | The agent's knowledge proves outdated or incorrect | `.learnings/LEARNINGS.md` — category: `knowledge_gap` |
 | A better approach is discovered for a recurring task | `.learnings/LEARNINGS.md` — category: `best_practice` |
 
-**Storage-plugin note:** every `.learnings/*.md` path in this skill (the table above,
-First-Use Initialisation, Recurring Pattern Detection, Periodic Review) is the free-tier
-default. Before writing or reading, check for an active storage plugin file at
-`storage/*.md` — the same presence-gated check `agent-foundations`'s Memory Path Resolution
-protocol uses for Memory/Task/Document. When one is present, writes route through that
-plugin's Learnings-store `write-learning-entry(store, category, content)` operation
-(`store` is `LEARNINGS`, `ERRORS`, or `FEATURE_REQUESTS`, matching the three files below)
-instead of a literal file write, and reads (Recurring Pattern Detection's search, Periodic
-Review's pending count) route through `list-pending-learnings(store)` instead of a raw
-`grep`. On free tier (no plugin file present), the literal paths below remain correct as-is.
+**Storage:** the `.learnings/*.md` paths are the free-tier default. When a storage plugin file exists at `storage/*.md` (the presence-gated check in `agent-foundations`' Memory Path Resolution), its Learnings-store operations replace them: `write-learning-entry(store, category, content)` to log, resolve or count a recurrence, and `list-pending-learnings(store)` to read. `store` is `LEARNINGS`, `ERRORS` or `FEATURE_REQUESTS`.
 
-Also review `.learnings/` before starting a major task or entering a new codebase area — this review step is separate from the WAL-triggered logging above, and still requires the agent to actively open this file.
-
----
+Also review the store before a major task or a new codebase area. This is separate from the WAL-triggered logging and needs an active read.
 
 ## First-Use Initialisation
 
-Free-tier only — see the Storage-plugin note above; on vault-backed tiers the plugin
-provisions `Workspace/Learnings/` itself, no manual initialisation step applies. Before
-logging anything, ensure the `.learnings/` directory exists in the project root. If missing, create:
-
-```
-.learnings/LEARNINGS.md
-.learnings/ERRORS.md
-.learnings/FEATURE_REQUESTS.md
-```
-
-Never overwrite existing files.
-
-Do not log secrets, tokens, private keys, environment variables, or raw command output with sensitive data. Prefer short summaries or redacted excerpts.
-
----
+Before logging anything, ensure `.learnings/` exists in the project root. If missing, create `LEARNINGS.md`, `ERRORS.md` and `FEATURE_REQUESTS.md` in it. Never overwrite existing files.
 
 ## Log Formats
 
@@ -147,11 +122,11 @@ How this could be built
 ---
 ```
 
----
-
-## ID Format
+### ID Format
 
 `TYPE-YYYYMMDD-XXX` where TYPE is `LRN`, `ERR`, or `FEAT` and XXX is a sequential number or 3-char token.
+
+Never log secrets, tokens, private keys, environment variables, or raw command output with sensitive data. Prefer short summaries or redacted excerpts.
 
 ---
 
@@ -182,8 +157,7 @@ When a learning applies across multiple files or features, or prevents a recurri
 | Your COLD memory (the COLD section for a single note: Find and Write Your Memory in `agent-foundations`) | Project facts, conventions, verified practices |
 | `AGENTS.md` in the workspace | Workflow improvements, automation rules — applies to Codex and GitHub Copilot environments; for Claude Code the equivalent is `CLAUDE.md` |
 | `.cursor/rules/*.mdc` | Workflow improvements, automation rules — Cursor's equivalent mechanism to the `CLAUDE.md`/`AGENTS.md` row above |
-| `~/.claude/projects/.../memory/` auto-memory | Cross-project patterns and preferences — Claude-Code-only; there is no equivalent promotion target on Cursor, Codex, or GitHub Copilot |
-
+| Rules (`agent-foundations`: Rules) | A standing rule the team lead stated or confirmed, for every agent or for one. Only with the team lead's OK: propose it as a rule candidate and wait. Read on every adapter |
 
 ### Promotion threshold
 
@@ -197,13 +171,15 @@ After promoting: change `**Status**: pending` → `**Status**: promoted` and add
 
 Before logging, search: `grep -r "keyword" .learnings/`
 
-If a match exists, link entries with `See Also` and increment `Recurrence-Count`. Recurring patterns indicate missing documentation, missing automation, or an architectural problem — consider a ticket.
+If a match exists, link entries with `See Also` and increment `Recurrence-Count`.
+
+Recurring patterns indicate missing documentation, missing automation, or an architectural problem — consider a ticket.
 
 ---
 
 ## Periodic Review
 
-Review `.learnings/` at natural breakpoints: before a major task, after completing a feature, or weekly during active development.
+Review the store at natural breakpoints: before a major task, after completing a feature, or weekly during active development.
 
 ```bash
 # Count pending items

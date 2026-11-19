@@ -12,6 +12,7 @@
  *   node pipelines/deploy/doctor.js                       # defaults to cwd
  *   npm run doctor                           # deployed hub shortcut
  */
+import { PROBE_TIMEOUT_MS } from './lib/npm-install.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,9 +25,12 @@ import {
 import { resolveRouterModel, parseProfileModel } from './lib/models.js';
 import {
 	hasKeyedEntries,
+	hasKeyedTree,
 	isPlaceholderMemoryNote,
+	measureRules,
 	memoryShape,
 	scaffoldMemoryFile,
+	scaffoldRulesFiles,
 } from './lib/memory-scaffold.js';
 import {
 	isVaultBackedHubType,
@@ -35,6 +39,11 @@ import {
 } from './lib/memory-root.js';
 import { legacyVaultFolders } from './lib/vault-layout.js';
 import { withHubType } from './lib/hub-type.js';
+import {
+	AGENT_PROFILE_LOCATIONS,
+	discoverAgentIds,
+	listAdapterAgentIds,
+} from './lib/agent-discovery.js';
 import {
 	isNightlyDreamingTaskRegistered,
 	NIGHTLY_DREAMING_TASK_NAME,
@@ -56,6 +65,7 @@ import {
 } from './lib/langgraph-paths.js';
 import { checkHubRootDepsCurrent } from './lib/hub-root-install.js';
 import { buildTipFooter } from './lib/tips.js';
+import { errorReportRow, printTrialNotice } from './lib/error-report-optin.js';
 import { missingHubSettings } from './lib/hub-settings.js';
 import {
 	hasClaudeAdapter,
@@ -64,6 +74,10 @@ import {
 	detectPartialTaskCliRules,
 } from './lib/task-permission.js';
 import { hasCodexMemoryReminderHook } from './lib/codex-hooks.js';
+import {
+	installCrashReporter,
+	reportDoctorChecks,
+} from './lib/error-sources.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -89,6 +103,22 @@ export function skip(id, label, message) {
 }
 
 // ── Individual checks ──────────────────────────────────────────────────────────
+
+/** Check id of the error-report status row. It never fails or warns. */
+const CHECK_ID_ERROR_REPORTS = 36;
+
+function checkErrorReports({ hubRoot, fsMod }) {
+	const row = errorReportRow({ hubRoot, fsMod });
+	// A hub built without error reporting has no row at all.
+	if (!row) return null;
+	return {
+		id: CHECK_ID_ERROR_REPORTS,
+		label: 'Error reports',
+		status: row.status,
+		message: row.message,
+		hint: row.hint,
+	};
+}
 
 function checkWorkspaceConfig({ hubRoot, fsMod }) {
 	const p = path.join(hubRoot, 'workspace.config.json');
@@ -173,21 +203,13 @@ function checkGitattributes({ hubRoot, fsMod }) {
 
 /**
  * Derive the required agent id list for memory-file scaffolding from the
- * deployed .claude/agents/*.md basenames — the same source check 9
- * (checkAgentProfiles) already reads. Never hardcoded, never dependent on
+ * profile file names in every installed adapter's agents folder (.claude,
+ * .cursor, .github, .codex), so a hub built for one adapter still gets every
+ * agent's memory and rules files. Never hardcoded, never dependent on
  * the source profilesRoot (a deployed hub does not have it).
  */
 function discoverDeployedAgentIds({ hubRoot, fsMod }) {
-	const dir = path.join(hubRoot, '.claude', 'agents');
-	if (!fsMod.existsSync(dir)) return [];
-	try {
-		return fsMod
-			.readdirSync(dir)
-			.filter((f) => f.endsWith('.md'))
-			.map((f) => f.slice(0, -'.md'.length));
-	} catch {
-		return [];
-	}
+	return discoverAgentIds({ hubRoot, fsMod });
 }
 
 /**
@@ -223,7 +245,10 @@ function findMemoryCollisions({ memoryRoot, fsMod }) {
 			note(path.join(memoryRoot, e.name));
 	}
 	for (const e of dirents) {
-		if (!e.isDirectory() || e.name === 'archive') continue;
+		// `rules/` (free tiers) holds the permanent rules files, named like the agents'
+		// notes (`rules/builder.md`) on purpose; it is not an agent folder.
+		if (!e.isDirectory() || e.name === 'archive' || e.name === 'rules')
+			continue;
 		const dir = path.join(memoryRoot, e.name);
 		const topNote = path.join(memoryRoot, `${e.name}.md`);
 		if (
@@ -302,6 +327,23 @@ async function describeMemory({
 	return text;
 }
 
+/**
+ * True when an agent has its single note and an empty keyed tree beside it, and the
+ * note holds nothing but the placeholder lines of a starter. The shape reads as
+ * `single-note`, so the keyed command refuses every write until the note goes.
+ */
+function isUntouchedStarterBesideTree({ memoryRoot, agentId, fsMod }) {
+	const note = path.join(memoryRoot, `${agentId}.md`);
+	if (!fsMod.existsSync(note)) return false;
+	if (!hasKeyedTree({ memoryRoot, agentId, fsMod })) return false;
+	if (hasKeyedEntries({ memoryRoot, agentId, fsMod })) return false;
+	try {
+		return isPlaceholderMemoryNote(fsMod.readFileSync(note, 'utf-8'));
+	} catch {
+		return false;
+	}
+}
+
 async function checkMemoryFiles({ hubRoot, fsMod }) {
 	const agentIds = discoverDeployedAgentIds({ hubRoot, fsMod });
 	// hubType-aware: vault-backed tiers (dev:sub/ops) scaffold into
@@ -335,12 +377,25 @@ async function checkMemoryFiles({ hubRoot, fsMod }) {
 			'run the tier-specific deploy command (e.g. npm run deploy:dev:sub) to scaffold the vault-canonical memory root',
 		);
 	}
+	// Free tiers keep one note per agent, and doctor creates a missing one. Vault tiers
+	// keep a keyed tree that deploy creates (and `memory add` on first write): doctor
+	// only reports there and writes nothing under vault/Memory/.
+	const vaultTier = isVaultBackedHubType(config?.hubType);
 	const scaffolded = [];
-	for (const agentId of agentIds) {
-		if (scaffoldMemoryFile({ memoryRoot, agentId, fsMod })) {
-			scaffolded.push(`${agentId}.md`);
+	if (!vaultTier) {
+		for (const agentId of agentIds) {
+			if (scaffoldMemoryFile({ memoryRoot, agentId, fsMod })) {
+				scaffolded.push(`${agentId}.md`);
+			}
 		}
 	}
+	// Free tiers keep the permanent rules in memory/rules/ (team.md and one file per
+	// agent); create-if-absent, like the memory files above. Vault tiers write rules
+	// through `npm run memory`, so there is nothing to scaffold.
+	const rulesCreated =
+		!vaultTier && agentIds.length > 0
+			? scaffoldRulesFiles({ memoryRoot, agentIds, fsMod })
+			: [];
 	const described = await describeMemory({
 		hubRoot,
 		memoryRoot,
@@ -348,6 +403,20 @@ async function checkMemoryFiles({ hubRoot, fsMod }) {
 		hubType: config?.hubType,
 		fsMod,
 	});
+	// What an agent reads at Session Start: team rules plus its own. Past the
+	// threshold the rules cost every session; the team lead decides what to retire.
+	const bigRules = agentIds
+		.map((agentId) => ({
+			agentId,
+			...measureRules({ memoryRoot, agentId, vault: vaultTier, fsMod }),
+		}))
+		.filter((m) => m.over);
+	const rulesNote =
+		bigRules.length === 0
+			? ''
+			: `; rules over ${bigRules[0].limit} bytes (team plus own, read at every Session Start): ${bigRules.map((m) => `${m.agentId} ${m.bytes}`).join(', ')}`;
+	const rulesHint =
+		'ask the team lead which rules to merge or retire; keep each rule to one line';
 	const collisions = findMemoryCollisions({ memoryRoot, fsMod });
 	if (collisions.length > 0) {
 		const named = collisions
@@ -363,18 +432,33 @@ async function checkMemoryFiles({ hubRoot, fsMod }) {
 			`delete ${collisions.map((c) => `${displaySegment}/${c.rel}`).join(', ')} so a bare agent link resolves to the keyed memory`,
 		);
 	}
-	if (scaffolded.length === 0) {
-		return pass(
+	// A starter note left beside an empty keyed tree: the tree is the agent's memory, and
+	// the starter holds nothing of its own. Report it and name the two ways out; never delete.
+	const starters = vaultTier
+		? agentIds.filter((agentId) =>
+				isUntouchedStarterBesideTree({ memoryRoot, agentId, fsMod }),
+			)
+		: [];
+	if (starters.length > 0) {
+		const named = starters.map((id) => `${displaySegment}/${id}.md`).join(', ');
+		return warn(
 			4,
 			'memory files',
-			`all ${agentIds.length} agent memory file(s) present (${described})`,
+			`untouched starter note(s) beside an empty keyed tree: ${named} (${described})`,
+			`delete ${named} (nothing in it), or run \`npm run memory -- migrate <agent> --apply\`; until then the first \`memory add\` is refused`,
 		);
 	}
-	return pass(
-		4,
-		'memory files',
-		`${scaffolded.length} file(s) scaffolded: ${scaffolded.join(', ')} (${described})`,
-	);
+	const message =
+		(vaultTier
+			? `${agentIds.length} agent(s) checked, nothing written (${described})`
+			: scaffolded.length === 0
+				? `all ${agentIds.length} agent memory file(s) present (${described})`
+				: `${scaffolded.length} file(s) scaffolded: ${scaffolded.join(', ')} (${described})`) +
+		(rulesCreated.length > 0
+			? `; ${rulesCreated.length} rules file(s) created in ${displaySegment}/rules/`
+			: '');
+	if (rulesNote) return warn(4, 'memory files', message + rulesNote, rulesHint);
+	return pass(4, 'memory files', message);
 }
 
 function checkMcpJson({ hubRoot, fsMod }) {
@@ -551,38 +635,43 @@ function checkTelegramConfig({ hubRoot, fsMod }) {
 }
 
 function checkAgentProfiles({ hubRoot, fsMod }) {
-	const dir = path.join(hubRoot, '.claude', 'agents');
-	if (!fsMod.existsSync(dir)) {
+	// A hub built for one adapter has only that adapter's folder: pass when any
+	// installed adapter holds profiles, and fail only when none does.
+	const found = [];
+	let anyFolder = false;
+	for (const location of AGENT_PROFILE_LOCATIONS) {
+		const { present, ids } = listAdapterAgentIds({
+			hubRoot,
+			location,
+			fsMod,
+		});
+		if (!present) continue;
+		anyFolder = true;
+		if (ids.length > 0) found.push({ location, count: ids.length });
+	}
+	if (!anyFolder) {
 		return fail(
 			9,
 			'agent profiles',
-			'.claude/agents/ directory not found',
+			'no agents/ directory found (.claude, .cursor, .github or .codex)',
 			'rerun the tier-specific deploy command',
 		);
 	}
-	let entries;
-	try {
-		entries = fsMod.readdirSync(dir).filter((f) => f.endsWith('.md'));
-	} catch {
+	if (found.length === 0) {
 		return fail(
 			9,
 			'agent profiles',
-			'could not read .claude/agents/',
+			'every installed agents/ directory is empty',
 			'rerun the tier-specific deploy command',
 		);
 	}
-	if (entries.length === 0) {
-		return fail(
-			9,
-			'agent profiles',
-			'.claude/agents/ is empty',
-			'rerun the tier-specific deploy command',
-		);
-	}
+	const where = found
+		.map(({ location, count }) => `${count} in ${location.dir.join('/')}/`)
+		.join(', ');
 	return pass(
 		9,
 		'agent profiles',
-		`${entries.length} agent profile(s) found in .claude/agents/`,
+		`${discoverAgentIds({ hubRoot, fsMod }).length} agent profile(s) found (${where})`,
 	);
 }
 
@@ -636,7 +725,10 @@ function checkAutoDispatchClaude({ hubRoot, fsMod, execFn }) {
 		);
 	}
 	try {
-		execFn('claude', ['--version'], { stdio: 'pipe' });
+		execFn('claude', ['--version'], {
+			stdio: 'pipe',
+			timeout: PROBE_TIMEOUT_MS,
+		});
 		return pass(11, 'auto-dispatch: claude', '`claude` found on PATH');
 	} catch {
 		return fail(
@@ -1613,6 +1705,7 @@ export async function runChecks({
 		checkCodexMemoryReminder({ hubRoot, fsMod }),
 		checkHubSettings({ hubRoot, fsMod }),
 		checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }),
+		...[checkErrorReports({ hubRoot, fsMod })].filter(Boolean),
 		...(await checkOptionalTierReadiness({
 			hubRoot,
 			fsMod,
@@ -1731,6 +1824,7 @@ const isMain =
 		path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
+	installCrashReporter({ source: 'npm-run' });
 	const outputIdx = process.argv.indexOf('--output');
 	const hubRoot =
 		outputIdx !== -1
@@ -1742,6 +1836,9 @@ if (isMain) {
 	process.stdout.write(formatReport(checks, useColor));
 	const exitCode = computeExitCode(checks);
 	markDoctorRun(hubRoot, { exitCode });
+	// Trial reminder or end notice: terminal output only, after the report and
+	// before the tip. It ignores tips.enabled.
+	printTrialNotice({ hubRoot });
 	// Tip of the day: printed last, after the result banner. Never affects the
 	// exit code; any failure here is swallowed. Silent under --json and in CI.
 	try {
@@ -1751,6 +1848,10 @@ if (isMain) {
 	} catch {
 		// A tip is optional output.
 	}
+	// Error reports go last, after the report is printed, and never change the
+	// output or the exit code. They are sent together, so a failing run waits
+	// for one send timeout at most.
+	await reportDoctorChecks(checks, { hubRoot });
 	// Set process.exitCode instead of calling process.exit(exitCode) directly.
 	// process.exit() forces immediate, synchronous process termination, which
 	// on Windows can race libuv's teardown of any handle still mid-close (a

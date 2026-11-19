@@ -264,6 +264,47 @@ export function findTaskByQuery(projectDir, query) {
 }
 
 /**
+ * Find a task in one project folder for the id-taking `task` commands.
+ *
+ * Unlike `findTaskByQuery` this (a) also looks in the project's `done/` and
+ * `dropped/` folders, so a closed or dropped ticket still resolves, and (b) matches a numeric id
+ * exactly: `5`, `task_N` and `Task_N` match that task number exactly and never a longer one
+ * (`5` never matches task 50 or 15). Any other query is a slug fragment, as in `findTaskByQuery`.
+ * A live ticket wins over one in `done/`, and that over one in `dropped/`,
+ * if a project holds both.
+ * Returns the absolute file path, or null.
+ */
+export function findTaskInProject(projectDir, query) {
+	const needleText = String(query);
+	const idMatch = needleText.match(/^(?:task_)?(\d+)$/i);
+	const num = idMatch ? parseInt(idMatch[1], 10) : null;
+	const needle = needleText.toLowerCase();
+	for (const dir of [
+		projectDir,
+		doneTasksDir(projectDir),
+		droppedTasksDir(projectDir),
+	]) {
+		if (!fs.existsSync(dir)) continue;
+		const files = fs
+			.readdirSync(dir, { withFileTypes: true })
+			.filter((e) => e.isFile() && /^task_\d+_.+\.md$/.test(e.name))
+			.map((e) => e.name);
+		const hit =
+			num !== null
+				? files.find((f) => taskNum(f) === num)
+				: files.find((f) => f.toLowerCase().includes(needle));
+		if (hit) return path.join(dir, hit);
+	}
+	return null;
+}
+
+/** Task number of a task file name, or null when it has none. */
+export function taskNumberOf(filename) {
+	const m = path.basename(filename).match(/^task_(\d+)_/);
+	return m ? parseInt(m[1], 10) : null;
+}
+
+/**
  * Load a skill's SKILL.md content.
  * Returns the file content string, or null if the skill directory or file doesn't exist.
  */
@@ -471,6 +512,21 @@ function appendWikilinkToSubfolderHubNote(
 }
 
 /**
+ * Append a `- [[task_id_slug]]` link line to the project hub note when that
+ * note exists and does not already list the task. A missing hub note is left
+ * alone (idempotent, no invented structure).
+ */
+function appendWikilinkToProjectHubNote(projectDir, taskFilenameNoExt) {
+	const hubNotePath = projectHubNotePath(projectDir);
+	if (!fs.existsSync(hubNotePath)) return;
+	const linkLine = `- [[${taskFilenameNoExt}]]`;
+	const raw = fs.readFileSync(hubNotePath, 'utf-8');
+	if (raw.split(/\r?\n/).some((line) => line.trim() === linkLine)) return;
+	const trimmed = raw.replace(/\s+$/, '');
+	fs.writeFileSync(hubNotePath, `${trimmed}\n${linkLine}\n`, 'utf-8');
+}
+
+/**
  * Serialize frontmatter object to YAML-like string.
  */
 export function serializeFrontmatter(meta) {
@@ -574,6 +630,23 @@ export function changeTaskStatus(
 			return newPath;
 		}
 
+		// Restoring a dropped ticket: any non-terminal target state moves it
+		// back out of dropped/ into the project folder, and swaps its hub-note
+		// link from the dropped hub note back to the project hub note.
+		if (path.basename(path.dirname(taskPath)) === 'dropped') {
+			const newPath = path.join(projectDir, basename);
+			fs.writeFileSync(taskPath, newContent, 'utf-8');
+			fs.renameSync(taskPath, newPath);
+
+			const taskFilenameNoExt = basename.replace(/\.md$/, '');
+			removeWikilinkFromHubNote(
+				subfolderHubNotePath(projectDir, 'dropped'),
+				taskFilenameNoExt,
+			);
+			appendWikilinkToProjectHubNote(projectDir, taskFilenameNoExt);
+			return newPath;
+		}
+
 		fs.writeFileSync(taskPath, newContent, 'utf-8');
 		return taskPath;
 	}
@@ -645,7 +718,9 @@ export function updateTaskFields(taskPath, fields) {
 	const newBody = introducesStatus ? stripLegacyStateLine(body) : body;
 
 	for (const [key, value] of Object.entries(fields)) {
-		meta[key] = String(value);
+		// null removes the field (used to clear the optional status fields).
+		if (value === null) delete meta[key];
+		else meta[key] = String(value);
 	}
 
 	const newContent = `---\n${serializeFrontmatter(meta)}\n---\n${newBody}`;

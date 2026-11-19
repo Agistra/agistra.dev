@@ -9,6 +9,7 @@
  * Run from the source repo:   npm run setup "D:/path/to/hub"
  * Run from a deployed hub:    npm run setup
  */
+import { PROBE_TIMEOUT_MS } from './lib/npm-install.js';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import fs from 'node:fs';
@@ -29,7 +30,17 @@ import { mergeRelaySessionStartHook } from './lib/claude-hooks.js';
 import { ensureHubSettings } from './lib/hub-settings.js';
 import { ensureHubMcpJson } from './lib/hub-mcp.js';
 import { ensureVaultPluginConfig } from './lib/vault-plugin-config.js';
-import { resolveTasksRootSegment } from './lib/memory-root.js';
+import {
+	ensureVaultPlugins as ensureVaultPluginsDefault,
+	VAULT_PLUGIN_REPAIR_COMMAND,
+} from './lib/vault-plugin-install.js';
+import {
+	isVaultBackedHubType,
+	resolveMemoryRoot,
+	resolveTasksRootSegment,
+} from './lib/memory-root.js';
+import { scaffoldRulesFiles } from './lib/memory-scaffold.js';
+import { discoverAgentIds as discoverDeployedAgentIds } from './lib/agent-discovery.js';
 import {
 	NIGHTLY_DREAMING_TASK_NAME,
 	computeNightlyDreamingTaskName,
@@ -43,7 +54,16 @@ import {
 } from './lib/task-permission.js';
 import { ensureHubRootDepsInstalled as ensureHubRootDepsInstalledDefault } from './lib/hub-root-install.js';
 import { runSetupTipStep as runSetupTipStepDefault } from './lib/tips.js';
+import {
+	printTrialNotice,
+	runErrorReportOptIn,
+	runErrorReportsFlag,
+} from './lib/error-report-optin.js';
 import { offerOptionalSkillsInstall as offerOptionalSkillsInstallDefault } from './lib/optional-skills-setup.js';
+import {
+	installCrashReporter,
+	reportSetupFailure,
+} from './lib/error-sources.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -463,7 +483,8 @@ export function detectPlatforms(root) {
  *   1. agents/profiles/*-workspace directories next to this script (source-repo run) —
  *      e.g. agents/profiles/architect-workspace → id "architect".
  *   2. Deployed-hub agent directories under cliOutputRoot — .claude/agents/*.md,
- *      .cursor/agents/*.md, .github/agents/*.agent.md — whichever is present.
+ *      .cursor/agents/*.md, .github/agents/*.agent.md, .codex/agents/*.toml —
+ *      whichever are present (lib/agent-discovery.js).
  *
  * Returns a sorted, de-duplicated array of lowercase agent IDs. Empty array if
  * neither source is available (never throws).
@@ -487,23 +508,12 @@ export function discoverAgentIds(cliOutputRoot, fsMod) {
 		}
 	}
 
-	// 2. Deployed-hub agent directories
-	const deployedDirs = [
-		{ dir: path.join(cliOutputRoot, '.claude', 'agents'), suffix: '.md' },
-		{ dir: path.join(cliOutputRoot, '.cursor', 'agents'), suffix: '.md' },
-		{ dir: path.join(cliOutputRoot, '.github', 'agents'), suffix: '.agent.md' },
-	];
-	for (const { dir, suffix } of deployedDirs) {
-		if (!fsMod.existsSync(dir)) continue;
-		try {
-			for (const name of fsMod.readdirSync(dir)) {
-				if (name.endsWith(suffix)) {
-					ids.add(name.slice(0, -suffix.length).trim().toLowerCase());
-				}
-			}
-		} catch {
-			// Unreadable agents dir — skip this source
-		}
+	// 2. Deployed-hub agent directories: every installed adapter's folder
+	for (const id of discoverDeployedAgentIds({
+		hubRoot: cliOutputRoot,
+		fsMod,
+	})) {
+		ids.add(id.trim().toLowerCase());
 	}
 
 	return [...ids].sort();
@@ -524,14 +534,17 @@ export function checkGhCli(execFn = execFileSync) {
 	let installed = false;
 	let authenticated = false;
 	try {
-		execFn('gh', ['--version'], { stdio: 'pipe' });
+		execFn('gh', ['--version'], { stdio: 'pipe', timeout: PROBE_TIMEOUT_MS });
 		installed = true;
 	} catch {
 		// gh not on PATH — installed stays false
 	}
 	if (installed) {
 		try {
-			execFn('gh', ['auth', 'status'], { stdio: 'pipe' });
+			execFn('gh', ['auth', 'status'], {
+				stdio: 'pipe',
+				timeout: PROBE_TIMEOUT_MS,
+			});
 			authenticated = true;
 		} catch {
 			// gh installed but not authenticated — authenticated stays false
@@ -721,6 +734,8 @@ export const TOKEN_SENTINEL = '[token set — press Enter to keep]';
  *   lib/optional-skills-setup.js offerOptionalSkillsInstall). Tier-agnostic —
  *   see that function's own doc comment for why it differs from the
  *   dev:sub-only marketing-skills prompt it mirrors.
+ * @param {function} [deps.ensureVaultPlugins]
+ *   Injectable vault plugin install step (see lib/vault-plugin-install.js).
  * @returns {function(): Promise<void>}
  */
 export function createRun({
@@ -747,6 +762,7 @@ export function createRun({
 	askPermissions = false,
 	runTipStep = runSetupTipStepDefault,
 	offerOptionalSkillsInstall = offerOptionalSkillsInstallDefault,
+	ensureVaultPlugins = ensureVaultPluginsDefault,
 }) {
 	return async function run() {
 		// ── Hub-root npm dependencies ──────────────────────────────────────────────
@@ -788,6 +804,22 @@ export function createRun({
 		);
 		process.stdout.write('║           Agent Workspace Setup              ║\n');
 		process.stdout.write('╚══════════════════════════════════════════════╝\n');
+
+		// hubType comes from the packaged sentinel and needs no answer, so persist it
+		// before the first prompt: a run that stops early still leaves the tier set.
+		// A stored hubType is left alone here; resolveHubType() reconciles it later.
+		if (!prev.hubType) {
+			fsMod.mkdirSync(cliOutputRoot, { recursive: true });
+			fsMod.writeFileSync(
+				configPath,
+				JSON.stringify(
+					{ ...prev, hubType: readHubConfigFn()?.hubType ?? 'dev' },
+					null,
+					2,
+				) + '\n',
+				'utf-8',
+			);
+		}
 
 		line('You ');
 		const userName = await ask('Your name', prev.user?.name ?? '');
@@ -1005,6 +1037,9 @@ export function createRun({
 			...(prev.projects ? { projects: prev.projects } : {}),
 			// Preserve the tip-of-the-day settings (tips.enabled, tips.icon) across re-runs.
 			...(prev.tips ? { tips: prev.tips } : {}),
+			// Preserve the error-report opt-in across re-runs: the sender only reads
+			// it, and re-writing this file must not switch reporting off.
+			...(prev.errorReports ? { errorReports: prev.errorReports } : {}),
 			// Preserve a recorded task-CLI permission decline across re-runs of setup.
 			...(prev[TASK_PERMISSION_CONFIG_KEY]
 				? { [TASK_PERMISSION_CONFIG_KEY]: prev[TASK_PERMISSION_CONFIG_KEY] }
@@ -1017,6 +1052,28 @@ export function createRun({
 			JSON.stringify(config, null, 2) + '\n',
 			'utf-8',
 		);
+
+		// Free tiers keep permanent rules in memory/rules/ (team.md plus one file per
+		// agent). Create them now, create-if-absent, so the first Session Start finds
+		// them; `npm run doctor` repairs any that go missing. Vault tiers write rules
+		// through `npm run memory`.
+		if (!isVaultBackedHubType(hubType)) {
+			try {
+				const agentIds = discoverDeployedAgentIds({
+					hubRoot: cliOutputRoot,
+					fsMod,
+				});
+				if (agentIds.length > 0) {
+					scaffoldRulesFiles({
+						memoryRoot: resolveMemoryRoot(cliOutputRoot, hubType),
+						agentIds,
+						fsMod,
+					});
+				}
+			} catch {
+				// Not fatal: doctor creates any missing rules file.
+			}
+		}
 
 		// Warn if .gitignore does not cover the config file
 		const gitignorePath = path.join(cliOutputRoot, '.gitignore');
@@ -1039,6 +1096,7 @@ export function createRun({
 				config,
 				workspaceRoot: cliOutputRoot,
 				targets,
+				fsMod,
 			});
 			if (wrote.length > 0) {
 				for (const f of wrote) process.stdout.write(`  MCP wired → ${f}\n`);
@@ -1127,6 +1185,34 @@ export function createRun({
 				line('Vault plugin config ');
 				for (const r of results) {
 					process.stdout.write(`  ${r.file} ${r.status}\n`);
+				}
+			}
+		}
+
+		// ── Vault plugins ───────────────────────────────────────────────────────
+		// Release trees carry no plugin code. Each missing plugin is downloaded from
+		// its pinned release and checked against its pinned SHA-256; one that is
+		// already present (including an upgraded copy) is left alone. A plugin that
+		// cannot be installed is a warning, never a failed setup. No vault, no step.
+		{
+			const results = await ensureVaultPlugins({
+				hubRoot: cliOutputRoot,
+				fsMod,
+			});
+			if (results.some((r) => r.status !== 'no-vault')) {
+				line('Vault plugins ');
+				for (const r of results) {
+					const label = `${r.id} ${r.version}`;
+					if (r.status === 'installed') {
+						process.stdout.write(`  ${label} installed\n`);
+					} else if (r.status === 'present') {
+						process.stdout.write(`  ${r.id} already present, left as is\n`);
+					} else {
+						process.stdout.write(
+							`  WARNING: ${r.id} was not installed (${r.status}): ${r.detail}\n` +
+								`  Setup continues. Run "${VAULT_PLUGIN_REPAIR_COMMAND}" again to retry the install.\n`,
+						);
+					}
 				}
 			}
 		}
@@ -1326,6 +1412,18 @@ export function createRun({
 			);
 		}
 
+		// ── Error reports opt-in ─────────────────────────────────────────────────
+		// Asked once, only in an interactive run, and only while no yes or no is
+		// saved. An unattended run asks nothing and leaves reporting off.
+		await runErrorReportOptIn({
+			hubRoot: cliOutputRoot,
+			tier: hubType,
+			askYN,
+			isInteractive,
+			announce: () => line('Error reports '),
+			fsMod,
+		});
+
 		line('Done ');
 		process.stdout.write(`  Config written → ${configPath}\n`);
 
@@ -1361,6 +1459,10 @@ export function createRun({
 				'  Re-run setup and enable remote team to unlock relay skills.\n',
 			);
 		}
+
+		// Trial reminder or end notice: terminal output only. It ignores
+		// tips.enabled and prints before the tip.
+		printTrialNotice({ hubRoot: cliOutputRoot, fsMod });
 
 		// -- Tip of the day: prints last among the "normal" steps, so the tip is
 		// one of the final things the user reads. Prints and asks nothing for a
@@ -1470,32 +1572,91 @@ export function parseCliArgs(argv) {
 	return result;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-	const cliArgs = parseCliArgs(process.argv.slice(2));
-	const cliOutputRoot = cliArgs.output
-		? path.resolve(cliArgs.output)
-		: path.resolve('.');
+/**
+ * Build the ask / askYN / askSecret prompt helpers over a readline interface.
+ *
+ * Interactive (TTY) runs use rl.question() exactly as before.
+ *
+ * When stdin is not a terminal, lines are read through our own queue instead.
+ * rl.question() on a closed stdin never settles, which let Node exit 0 with
+ * setup half done, and readline drops piped lines that arrive while no
+ * question is pending. With the queue, piped answers are used in order, and
+ * once input has ended every remaining prompt resolves to its default (ask:
+ * the default value or empty; askYN: its default; askSecret: empty). Each
+ * defaulted prompt prints one "using default" line so the run is auditable.
+ *
+ * @param {object} deps
+ * @param {import('node:readline/promises').Interface} deps.rl
+ * @param {boolean} deps.isTty
+ * @param {{ write: function(string): unknown }} deps.output
+ */
+export function createPromptHelpers({ rl, isTty, output }) {
+	const queue = [];
+	let waiter = null;
+	let closed = false;
 
-	if (cliArgs['disable-nightly-dreaming']) {
-		const result = runDisableNightlyDreaming({ cliOutputRoot });
-		process.exit(result.ok ? 0 : 1);
+	if (!isTty) {
+		rl.on('line', (l) => {
+			if (waiter) {
+				const w = waiter;
+				waiter = null;
+				w(l);
+			} else {
+				queue.push(l);
+			}
+		});
+		rl.on('close', () => {
+			closed = true;
+			if (waiter) {
+				const w = waiter;
+				waiter = null;
+				w(null);
+			}
+		});
 	}
 
-	const rl = readline.createInterface({ input, output });
+	// Resolves to the next answer line, or null once piped input is exhausted.
+	function readLine(prompt) {
+		output.write(prompt);
+		if (queue.length > 0) return Promise.resolve(queue.shift());
+		if (closed) return Promise.resolve(null);
+		return new Promise((resolve) => {
+			waiter = resolve;
+		});
+	}
+
+	function noteDefault(question, shown) {
+		output.write(`\nusing default for "${question}": ${shown || '(blank)'}\n`);
+	}
 
 	function ask(question, defaultValue = '') {
 		const hint = defaultValue ? ` [${defaultValue}]` : '';
-		return rl
-			.question(`${question}${hint}: `)
-			.then((a) => a.trim() || defaultValue);
+		const prompt = `${question}${hint}: `;
+		if (isTty) return rl.question(prompt).then((a) => a.trim() || defaultValue);
+		return readLine(prompt).then((a) => {
+			if (a === null) {
+				noteDefault(question, defaultValue);
+				return defaultValue;
+			}
+			return a.trim() || defaultValue;
+		});
 	}
 
 	function askYN(question, defaultYes = false) {
 		const hint = defaultYes ? ' [Y/n]' : ' [y/N]';
-		return rl.question(`${question}${hint}: `).then((a) => {
+		const prompt = `${question}${hint}: `;
+		const parse = (a) => {
 			const v = a.trim().toLowerCase();
 			if (!v) return defaultYes;
 			return v === 'y' || v === 'yes';
+		};
+		if (isTty) return rl.question(prompt).then(parse);
+		return readLine(prompt).then((a) => {
+			if (a === null) {
+				noteDefault(question, defaultYes ? 'yes' : 'no');
+				return defaultYes;
+			}
+			return parse(a);
 		});
 	}
 
@@ -1504,6 +1665,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	// are never echoed to the terminal — only the prompt text itself is shown.
 	function askSecret(question) {
 		const prompt = `${question}: `;
+		if (!isTty) {
+			return readLine(prompt).then((a) => {
+				if (a === null) {
+					noteDefault(question, '');
+					return '';
+				}
+				return a.trim();
+			});
+		}
 		const hasMasking = typeof rl._writeToOutput === 'function';
 		if (!hasMasking) {
 			// Fallback: no masking hook available — still don't log the value anywhere.
@@ -1529,7 +1699,49 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		});
 	}
 
+	return { ask, askYN, askSecret };
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+	installCrashReporter({ source: 'npm-run' });
+	const cliArgs = parseCliArgs(process.argv.slice(2));
+	const cliOutputRoot = cliArgs.output
+		? path.resolve(cliArgs.output)
+		: path.resolve('.');
+
+	if (cliArgs['disable-nightly-dreaming']) {
+		const result = runDisableNightlyDreaming({ cliOutputRoot });
+		if (!result.ok) {
+			await reportSetupFailure(
+				{ code: 'setup-disable-nightly-dreaming' },
+				{ hubRoot: cliOutputRoot },
+			);
+		}
+		process.exit(result.ok ? 0 : 1);
+	}
+
+	if (cliArgs['error-reports'] !== undefined) {
+		const result = runErrorReportsFlag({
+			hubRoot: cliOutputRoot,
+			value: cliArgs['error-reports'],
+		});
+		(result.ok ? process.stdout : process.stderr).write(`${result.message}
+`);
+		process.exit(result.ok ? 0 : 1);
+	}
+
+	const rl = readline.createInterface({ input, output });
+	const { ask, askYN, askSecret } = createPromptHelpers({
+		rl,
+		isTty: Boolean(input.isTTY),
+		output,
+	});
+
+	// The last step setup announced. If setup stops with an error, this names the
+	// step in the error report.
+	let currentStep = '';
 	function line(label = '') {
+		currentStep = label;
 		const dashes = '─'.repeat(Math.max(0, 44 - label.length));
 		process.stdout.write(`\n── ${label}${dashes}\n\n`);
 	}
@@ -1551,9 +1763,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		.then(() => {
 			rl.close();
 		})
-		.catch((err) => {
+		.catch(async (err) => {
 			rl.close();
 			process.stderr.write(err.message + '\n');
+			await reportSetupFailure(
+				{ heading: currentStep, error: err },
+				{ hubRoot: cliOutputRoot },
+			);
 			process.exit(1);
 		});
 }

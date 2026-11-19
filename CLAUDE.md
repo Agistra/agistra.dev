@@ -8,14 +8,14 @@ This workspace uses custom agent profiles in `.claude/agents/`.
 
 When the user addresses you by an agent name, your **first action** must be to read your own profile file, then follow its own "Session Start" section in full — this is the single canonical source for your startup read sequence, so this file does not duplicate it:
 
-1. `.claude/agents/<name>.md` — behavioral contract: identity, skills catalogue, decision rules, prohibitions. It contains a "Session Start" section listing every file you must read next (memory, always-on skills, any agent-specific bootstrap step) in the exact order to read them.
+1. `.claude/agents/<name>.md` — behavioral contract: identity, skills catalogue, decision rules, prohibitions. It contains a "Session Start" section listing every file you must read next (rules, memory, always-on skills, any agent-specific bootstrap step) in the exact order to read them.
 
 Read this file first, then execute every read its "Session Start" section specifies, in the order given, before any text output or other action. Do not stop after this one file, and do not substitute a shorter sequence from anywhere else — the profile's own "Session Start" section is authoritative.
 
 **Invocation context matters.** This still applies differently depending on how you were started:
 
 - **Direct chat invocation** (the user addresses you by agent name in the chat): read your own profile file at step 1, then carry out every read its "Session Start" section specifies.
-- **Agent-tool subagent spawn** (Architect or another agent dispatches you via the Agent tool): your profile is already loaded by the harness as your system prompt from turn zero — re-reading it is redundant. However, every read your profile's "Session Start" section specifies (memory file and all always-on skills it names) still applies before starting work.
+- **Agent-tool subagent spawn** (Architect or another agent dispatches you via the Agent tool): your profile is already loaded by the harness as your system prompt from turn zero — re-reading it is redundant. However, every read your profile's "Session Start" section specifies (rules, memory file and all always-on skills it names) still applies before starting work.
 
 ## Bootstrap Self-Check
 
