@@ -75,6 +75,25 @@ function doctorCode(id) {
 	return Number.isInteger(n) && n >= 1 && n <= 999 ? String(n) : 'unknown';
 }
 
+const isEpipe = (e) => e?.code === 'EPIPE';
+
+/**
+ * A closed pipe (`... | grep -m1`) means the reader went away; it is not a
+ * crash. Swallow the stream error so the command runs to its own exit code and
+ * exits quietly. Any other stream error still throws, as before.
+ *
+ * @param {Array<{on:function, listenerCount?:function}>} [streams]
+ * @returns {function} the listener, so a test can remove it
+ */
+export function ignoreClosedPipe(streams = [process.stdout, process.stderr]) {
+	const listener = (error) => {
+		if (isEpipe(error) || error?.code === 'ERR_STREAM_DESTROYED') return;
+		throw error;
+	};
+	for (const stream of streams) stream?.on?.('error', listener);
+	return listener;
+}
+
 /**
  * Report every doctor check that ended fail or warn: one report per check per
  * run, the check id as the code. Reports are sent together, so the added wait
@@ -225,15 +244,19 @@ export function reportHookFailure(code, error, opts = {}) {
  * @param {'npm-run'|'hook'} [opts.source]
  * @param {string} [opts.hubRoot]
  * @param {function} [opts.report] test seam, replaces reportErrorSync
+ * @param {Array} [opts.streams] test seam, replaces [process.stdout, process.stderr]
  * @returns {function} the listener, so a test can remove it
  */
 export function installCrashReporter({
 	source = 'npm-run',
 	report = reportErrorSync,
+	streams,
 	...rest
 } = {}) {
+	if (source === 'npm-run') ignoreClosedPipe(streams);
 	const listener = (error, origin) => {
 		try {
+			if (isEpipe(error)) return;
 			const kind =
 				origin === 'unhandledRejection'
 					? 'unhandled-rejection'

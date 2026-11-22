@@ -1,5 +1,27 @@
 import path from 'node:path';
 import { loadSkillCatalog, installSkillFromCatalog } from './skill-sources.js';
+import { defineQuestion } from './setup-questions.js';
+
+function optionalSkillsQuestion(catalog) {
+	const names = catalog.map((entry) => entry.name).join(', ');
+	return defineQuestion({
+		id: 'optional_skills',
+		prompt: `Install optional skills for Builder/Architect (${names})?`,
+		type: 'yes/no',
+		default: false,
+	});
+}
+
+/**
+ * The question offerOptionalSkillsInstall would ask, or null when the catalog
+ * has no optional skills.
+ *
+ * @returns {object|null}
+ */
+export function optionalSkillsInstallQuestion({ catalogPath }) {
+	const catalog = loadSkillCatalog(catalogPath);
+	return catalog.length === 0 ? null : optionalSkillsQuestion(catalog);
+}
 
 /**
  * Interactive opt-in installer for every entry in skill-catalog.json — the
@@ -41,11 +63,8 @@ export async function offerOptionalSkillsInstall({
 	const catalog = loadSkillCatalog(catalogPath);
 	if (catalog.length === 0) return { installed, errors };
 
-	const names = catalog.map((entry) => entry.name).join(', ');
-	const wantsInstall = await askYN(
-		`Install optional skills for Builder/Architect (${names})?`,
-		false,
-	);
+	const question = optionalSkillsQuestion(catalog);
+	const wantsInstall = await askYN(question.prompt, question.default, question);
 	if (!wantsInstall) return { installed, errors };
 
 	log('  Installing optional skills...\n');

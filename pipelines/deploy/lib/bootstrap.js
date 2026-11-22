@@ -19,7 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readHubConfig } from '../setup.js';
+import { readHubConfig } from './hub-tier.js';
 import { parseVersion } from './version.js';
 import { LAYOUT_PROJECTS, workspaceFolderRel } from './vault-layout.js';
 

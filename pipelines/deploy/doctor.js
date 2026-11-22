@@ -11,6 +11,7 @@
  *   node pipelines/deploy/doctor.js --output <hub-root>   # check the given hub
  *   node pipelines/deploy/doctor.js                       # defaults to cwd
  *   npm run doctor                           # deployed hub shortcut
+ *   node pipelines/deploy/doctor.js --json   # one JSON object on stdout, same rows and exit code
  */
 import { PROBE_TIMEOUT_MS } from './lib/npm-install.js';
 import fs from 'node:fs';
@@ -50,6 +51,7 @@ import {
 	getNightlyDreamingTaskRuntimeInfo,
 	findMostRecentArchiveDate,
 } from './lib/nightly-dreaming.js';
+import { classifyTaskRunState } from './lib/scheduled-task-state.js';
 import { markDoctorRun } from './lib/bootstrap.js';
 import {
 	discoverProfileDirs,
@@ -78,6 +80,7 @@ import {
 	installCrashReporter,
 	reportDoctorChecks,
 } from './lib/error-sources.js';
+import { CANONICAL_HUB_TYPES } from './lib/tier-descriptor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -921,7 +924,7 @@ function checkHubType({ hubRoot, fsMod }) {
 	const agentIds = discoverDeployedAgentIds({ hubRoot, fsMod });
 	const agentSet = new Set(agentIds);
 
-	if (!hubType || !['dev', 'dev:graph', 'ops', 'dev:sub'].includes(hubType)) {
+	if (!hubType || !CANONICAL_HUB_TYPES.includes(hubType)) {
 		// Warn and fall back to dev checks
 		const missingDev = HUB_TYPE_DEV_REQUIRED.filter((a) => !agentSet.has(a));
 		if (missingDev.length > 0) {
@@ -1152,11 +1155,27 @@ function checkNightlyDreamingConsolidationFreshness({
 		taskName,
 		execFn,
 	});
-	if (!lastRunTime || /^(N\/A|Never)$/i.test(lastRunTime)) {
+	const runState = classifyTaskRunState({ lastRunTime, lastResult });
+	if (!lastRunTime || runState.state === 'not-run') {
 		return skip(
 			19,
 			'nightly dreaming freshness',
 			'Scheduled Task not registered or has not run yet — see check 18',
+		);
+	}
+	if (runState.state === 'running') {
+		return skip(
+			19,
+			'nightly dreaming freshness',
+			'Scheduled Task is running now — freshness is checked after it finishes',
+		);
+	}
+	if (runState.state === 'failed') {
+		return warn(
+			19,
+			'nightly dreaming freshness',
+			`Scheduled Task last run failed with result ${runState.codeText} (${lastRunTime})`,
+			`inspect logs/nightly-dreaming-<date>.log; re-run manually via: schtasks /run /tn ${taskName}`,
 		);
 	}
 
@@ -1310,7 +1329,7 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
 }
 
 /**
- * Check 22: hub-root npm dependency install.
+ * Check 37: hub-root npm dependency install.
  *
  * buildPackageJson() (lib/extras.js) writes outputRoot/package.json
  * unconditionally on every hub tier, and a package-lock.json ships alongside
@@ -1332,10 +1351,10 @@ function checkLangGraphCompileTarget({ hubRoot, fsMod, profilesRoot }) {
  * the underlying content is universal" precedent checkLangGraphCompileTarget
  * above already established.
  *
- * id 22 (not 20): a tier plugin discovered by checkOptionalTierReadiness
- * below already owns id 20 for its own vault-content sampling check — 22 is
- * the next id past checkLangGraphCompileTarget (21), the highest numbered
- * check in this file.
+ * id 37: doctor check ids are unique across core checks and every tier
+ * plugin (see doctor-check-ids.test.js). This check used 22, which the
+ * model-provider plugin (bedrock.doctor-plugin.js) also owns, so it moved to
+ * the first id past the highest one in use.
  *
  * Generic like checkHubRootDepsCurrent() itself: reads whichever
  * dependencies package.json actually declares rather than hardcoding a
@@ -1346,7 +1365,7 @@ function checkHubRootDependencies({ hubRoot, fsMod }) {
 	const pkgPath = path.join(hubRoot, 'package.json');
 	if (!fsMod.existsSync(pkgPath)) {
 		return skip(
-			22,
+			37,
 			'hub-root dependencies',
 			'package.json not found — nothing to check',
 		);
@@ -1354,20 +1373,20 @@ function checkHubRootDependencies({ hubRoot, fsMod }) {
 	const { declared, missing } = checkHubRootDepsCurrent({ hubRoot, fsMod });
 	if (declared.length === 0) {
 		return pass(
-			22,
+			37,
 			'hub-root dependencies',
 			'no runtime dependencies declared in package.json',
 		);
 	}
 	if (missing.length === 0) {
 		return pass(
-			22,
+			37,
 			'hub-root dependencies',
 			`all ${declared.length} declared dependenc${declared.length === 1 ? 'y' : 'ies'} present in node_modules/`,
 		);
 	}
 	return fail(
-		22,
+		37,
 		'hub-root dependencies',
 		`node_modules/ missing ${missing.length} declared dependenc${missing.length === 1 ? 'y' : 'ies'}: ${missing.join(', ')}`,
 		'run: npm install',
@@ -1438,7 +1457,7 @@ function checkTaskPermission({ hubRoot, fsMod }) {
 }
 
 /**
- * Check 27: the hub's .claude/settings.json carries the baseline hooks.
+ * Check 26: the hub's .claude/settings.json carries the baseline hooks.
  *
  * Warns (never fails) when the file is missing or lacks a baseline hook; the
  * fix is `npm run setup`, which restores them. Doctor never writes the file.
@@ -1447,7 +1466,7 @@ function checkTaskPermission({ hubRoot, fsMod }) {
 function checkHubSettings({ hubRoot, fsMod }) {
 	if (!hasClaudeAdapter(hubRoot, fsMod)) {
 		return skip(
-			27,
+			26,
 			'hub settings',
 			'not applicable — no Claude Code adapter deployed',
 		);
@@ -1457,7 +1476,7 @@ function checkHubSettings({ hubRoot, fsMod }) {
 	const hint = 'run `npm run setup` to restore them';
 	if (read.status === 'unusable') {
 		return warn(
-			27,
+			26,
 			'hub settings',
 			`.claude/settings.json cannot be read (${read.reason}); hub hooks cannot be checked`,
 			'repair the file by hand; setup will not overwrite it',
@@ -1465,7 +1484,7 @@ function checkHubSettings({ hubRoot, fsMod }) {
 	}
 	if (read.status === 'absent') {
 		return warn(
-			27,
+			26,
 			'hub settings',
 			'.claude/settings.json is missing — the hub hooks (secret-scan gate, memory hooks, relay start) are not active',
 			hint,
@@ -1474,7 +1493,7 @@ function checkHubSettings({ hubRoot, fsMod }) {
 	const missing = missingHubSettings(read.settings);
 	if (missing.length > 0) {
 		return warn(
-			27,
+			26,
 			'hub settings',
 			`.claude/settings.json is missing: ${missing.join(', ')}`,
 			hint,
@@ -1816,6 +1835,31 @@ export function formatReport(checks, useColor = false) {
 	return lines.join('\n');
 }
 
+// ── buildJsonReport (exported for testing) ────────────────────────────────────
+
+/**
+ * Build the `--json` report from the same rows formatReport() prints. Every
+ * row is kept in order, including rows that share an id (a plugin can return
+ * several rows under one id), so the JSON matches the text report row for row.
+ *
+ * @param {Array} checks Results from runChecks, plugin arrays already flattened.
+ * @returns {{status: 'ready'|'not-ready', exitCode: 0|1|2, checks: Array<{id: number, name: string, status: string, message: string, hint: string|null}>}}
+ */
+export function buildJsonReport(checks) {
+	const exitCode = computeExitCode(checks);
+	return {
+		status: exitCode === 0 ? 'ready' : 'not-ready',
+		exitCode,
+		checks: checks.map((check) => ({
+			id: check.id,
+			name: check.label,
+			status: check.status,
+			message: check.message,
+			hint: check.hint ?? null,
+		})),
+	};
+}
+
 // ── CLI entry point ────────────────────────────────────────────────────────────
 
 const isMain =
@@ -1830,21 +1874,29 @@ if (isMain) {
 		outputIdx !== -1
 			? path.resolve(process.argv[outputIdx + 1])
 			: process.cwd();
+	// --json replaces the text report with one JSON object on stdout. Only the
+	// printed report changes: markDoctorRun and the exit code still run.
+	const json = process.argv.includes('--json');
 
 	const checks = await runChecks({ hubRoot });
-	const useColor = Boolean(process.stdout.isTTY);
-	process.stdout.write(formatReport(checks, useColor));
+	if (json) {
+		process.stdout.write(
+			`${JSON.stringify(buildJsonReport(checks), null, 2)}\n`,
+		);
+	} else {
+		const useColor = Boolean(process.stdout.isTTY);
+		process.stdout.write(formatReport(checks, useColor));
+	}
 	const exitCode = computeExitCode(checks);
 	markDoctorRun(hubRoot, { exitCode });
 	// Trial reminder or end notice: terminal output only, after the report and
-	// before the tip. It ignores tips.enabled.
-	printTrialNotice({ hubRoot });
+	// before the tip. It ignores tips.enabled. Suppressed under --json, and not
+	// called at all so the end notice is not marked shown when nobody saw it.
+	if (!json) printTrialNotice({ hubRoot });
 	// Tip of the day: printed last, after the result banner. Never affects the
 	// exit code; any failure here is swallowed. Silent under --json and in CI.
 	try {
-		process.stdout.write(
-			buildTipFooter({ hubRoot, json: process.argv.includes('--json') }),
-		);
+		process.stdout.write(buildTipFooter({ hubRoot, json }));
 	} catch {
 		// A tip is optional output.
 	}

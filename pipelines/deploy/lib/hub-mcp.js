@@ -13,6 +13,12 @@
  * the file from the template when missing, and otherwise syncs only the
  * template's servers into it (lib/mcp-managed-servers.js); operator-added
  * servers and other top-level keys stay.
+ *
+ * An existing entry keeps its `env` values (an operator's custom
+ * OBSIDIAN_BASE_URL port, the API key reference) while command, args and any
+ * other non-env field are refreshed from the template. The Local REST API
+ * plugin's own port (vault data.json) is what Obsidian listens on, so when
+ * the obsidian entry's URL disagrees with it, the URL is made to agree.
  */
 
 import fs from 'node:fs';
@@ -21,6 +27,17 @@ import {
 	syncManagedMcpServers,
 	reportMcpServerChanges,
 } from './mcp-managed-servers.js';
+
+// The Local REST API plugin data file (the vault tiers' credentials module
+// keeps the same path); not imported from it, as that module is not shipped
+// to the free tiers and this one is.
+const REST_API_DATA_JSON = path.join(
+	'vault',
+	'.obsidian',
+	'plugins',
+	'obsidian-local-rest-api',
+	'data.json',
+);
 
 export const HUB_MCP_TEMPLATE_REL = [
 	'pipelines',
@@ -35,6 +52,65 @@ export function hubMcpTemplatePath(hubRoot) {
 
 function isObject(value) {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The URL with its port set to the plugin's port for that scheme (https ->
+ * `port`, http -> `insecurePort`), or null when it already matches or the
+ * URL / plugin data cannot be compared.
+ */
+function urlWithPluginPort(url, pluginData) {
+	let parsed;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return null;
+	}
+	const secure = parsed.protocol === 'https:';
+	if (!secure && parsed.protocol !== 'http:') return null;
+	const wanted = secure ? pluginData?.port : pluginData?.insecurePort;
+	if (!Number.isInteger(wanted) || wanted < 1 || wanted > 65535) return null;
+	const current = Number(parsed.port || (secure ? 443 : 80));
+	if (current === wanted) return null;
+	const pathPart = parsed.pathname === '/' ? '' : parsed.pathname;
+	return {
+		from: current,
+		to: wanted,
+		url: `${parsed.protocol}//${parsed.hostname}:${wanted}${pathPart}${parsed.search}`,
+	};
+}
+
+/**
+ * Make the obsidian entry's OBSIDIAN_BASE_URL port agree with the Local REST
+ * API plugin's data.json. Nothing is read or printed beyond the two ports.
+ *
+ * @returns {{ mcpServers: object, change: {from: number, to: number}|null }}
+ */
+function reconcileObsidianPort(mcpServers, hubRoot, fsMod) {
+	const current = mcpServers.obsidian?.env?.OBSIDIAN_BASE_URL;
+	const dataPath = path.join(hubRoot, REST_API_DATA_JSON);
+	if (typeof current !== 'string' || !fsMod.existsSync(dataPath)) {
+		return { mcpServers, change: null };
+	}
+	let pluginData;
+	try {
+		pluginData = JSON.parse(fsMod.readFileSync(dataPath, 'utf-8'));
+	} catch {
+		return { mcpServers, change: null };
+	}
+	const fix = urlWithPluginPort(current, pluginData);
+	if (!fix) return { mcpServers, change: null };
+	const obsidian = mcpServers.obsidian;
+	return {
+		mcpServers: {
+			...mcpServers,
+			obsidian: {
+				...obsidian,
+				env: { ...obsidian.env, OBSIDIAN_BASE_URL: fix.url },
+			},
+		},
+		change: { from: fix.from, to: fix.to },
+	};
 }
 
 /**
@@ -110,12 +186,26 @@ export function ensureHubMcpJson({ hubRoot, fsMod = fs, log = () => {} }) {
 			reason: 'root and mcpServers must be JSON objects',
 		};
 	}
-	const { mcpServers, changed } = syncManagedMcpServers(
+	const synced = syncManagedMcpServers(
 		existing.mcpServers ?? {},
 		templateServers,
+		{ keepEnv: true },
 	);
-	if (changed.length === 0) return { status: 'unchanged', mcpPath };
+	const { changed } = synced;
+	const { mcpServers, change: portChange } = reconcileObsidianPort(
+		synced.mcpServers,
+		hubRoot,
+		fsMod,
+	);
+	if (changed.length === 0 && !portChange) {
+		return { status: 'unchanged', mcpPath };
+	}
 	reportMcpServerChanges(changed, mcpPath, log);
+	if (portChange) {
+		log(
+			`[mcp.json] obsidian OBSIDIAN_BASE_URL port changed from ${portChange.from} to ${portChange.to} to match the Local REST API plugin (${REST_API_DATA_JSON.split(path.sep).join('/')})`,
+		);
+	}
 	fsMod.writeFileSync(
 		mcpPath,
 		JSON.stringify({ ...existing, mcpServers }, null, '\t') + '\n',

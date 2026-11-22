@@ -7,7 +7,11 @@ import {
 	generateTasks,
 } from './lib/scanner.js';
 import { registerProject } from './lib/bootstrap.js';
-import { loadCliPlugins, scanPlugin } from './lib/cli-plugins.js';
+import {
+	loadCliPlugins,
+	runAfterScanHooks,
+	scanPlugin,
+} from './lib/cli-plugins.js';
 
 const SCORE_BAR = (s) => {
 	const filled = Math.round(s * 10);
@@ -238,8 +242,8 @@ export function scan({
 
 /**
  * Scan entry point used by the command line. Runs scan(), or hands the run to
- * a tier's CLI plugin when the hub ships one (see lib/cli-plugins.js). With no
- * plugin this is exactly scan().
+ * a tier's CLI plugin when the hub ships one, then runs the plugins' afterScan
+ * hooks (see lib/cli-plugins.js). With no plugin this is exactly scan().
  *
  * @param {object} options
  * @param {object} [options.args]     parsed command line, passed to a plugin handler
@@ -253,10 +257,23 @@ export async function runScan({
 	scanFn = scan,
 	...scanOptions
 }) {
-	const handler = scanPlugin(plugins ?? (await loadCliPlugins()));
-	if (!handler) {
+	const pluginList = plugins ?? (await loadCliPlugins());
+	const handler = scanPlugin(pluginList);
+	let result;
+	if (handler) {
+		result = await handler.run({ args, scanOptions, scanFn });
+	} else {
 		scanFn(scanOptions);
-		return { ok: true };
+		result = { ok: true };
 	}
-	return handler.run({ args, scanOptions, scanFn });
+	if (result?.ok !== false) {
+		await runAfterScanHooks(pluginList, {
+			hubRoot: scanOptions.hubRoot,
+			projectRoot: scanOptions.projectRoot,
+			projectName: scanOptions.projectName,
+			dryRun: scanOptions.dryRun === true,
+			args,
+		});
+	}
+	return result;
 }

@@ -12,6 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { defineQuestion } from './setup-questions.js';
 import {
 	readSettingsForMerge,
 	stringifySettings,
@@ -182,6 +183,32 @@ function writeDeclineRecord({ hubRoot, fsMod, declined }) {
 	);
 }
 
+const TASK_PERMISSION_QUESTION = defineQuestion({
+	id: 'task_cli_permissions',
+	prompt: 'Allow the task CLI commands in .claude/settings.json?',
+	type: 'yes/no',
+	default: true,
+});
+
+/**
+ * The question `offerTaskCliPermissions` would ask for this hub, or null when
+ * it asks nothing (rules already present, a recorded decline, no Claude Code
+ * settings, or a settings file it cannot merge into).
+ *
+ * @returns {object|null}
+ */
+export function taskPermissionQuestion({ hubRoot, fsMod = fs, reAsk = false }) {
+	const state = readTaskPermissionState({ hubRoot, fsMod });
+	if (state === TASK_PERMISSION_STATES.NOT_APPLICABLE) return null;
+	if (state === TASK_PERMISSION_STATES.ENABLED) return null;
+	if (state === TASK_PERMISSION_STATES.DECLINED && !reAsk) return null;
+	const read = readSettingsForMerge(
+		path.join(hubRoot, '.claude', 'settings.json'),
+		{ fsMod, expect: SETTINGS_SHAPE.permissions },
+	);
+	return read.status === 'unusable' ? null : TASK_PERMISSION_QUESTION;
+}
+
 /**
  * Setup step: offer the task-CLI allow rules once.
  *
@@ -245,8 +272,9 @@ export async function offerTaskCliPermissions({
 			'  Nothing broader than "npm run task --" is allowed; no gh rules are added.\n',
 	);
 	const yes = await askYN(
-		'Allow the task CLI commands in .claude/settings.json?',
-		true,
+		TASK_PERMISSION_QUESTION.prompt,
+		TASK_PERMISSION_QUESTION.default,
+		TASK_PERMISSION_QUESTION,
 	);
 	if (yes) {
 		applyTaskCliPermissions({ hubRoot, fsMod });

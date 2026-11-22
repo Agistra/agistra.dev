@@ -1,0 +1,126 @@
+{
+  "entries": [
+    {
+      "id": "github",
+      "name": "GitHub",
+      "group": "service",
+      "purpose": "Links tasks to GitHub issues; agents open PRs with `gh`.",
+      "tiers": {
+        "dev": "optional"
+      },
+      "enable": "Answer yes to the GitHub workflows question in `npm run setup`, install `gh` and run `gh auth login`.",
+      "docs": "https://cli.github.com/manual/"
+    },
+    {
+      "id": "telegram-relay",
+      "name": "Telegram relay",
+      "group": "service",
+      "purpose": "Relays messages between your agents and a Telegram group.",
+      "tiers": {
+        "dev": "optional"
+      },
+      "enable": "Answer yes to the remote team and Telegram questions in `npm run setup`, then run `npm run relay`.",
+      "docs": "docs/relay-setup.md"
+    },
+    {
+      "id": "graphify",
+      "name": "Graphify",
+      "group": "service",
+      "purpose": "Builds a navigable graph of your codebase for the agents.",
+      "tiers": {
+        "dev": "add-on"
+      },
+      "enable": "Buy the Graph add-on, run `npm run setup`, then `npm run graph:generate <project>`.",
+      "docs": "https://github.com/Graphify-Labs/graphify"
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "group": "works-in",
+      "purpose": "Agents and skills load from `.claude/`.",
+      "tiers": {
+        "dev": "built-in"
+      },
+      "enable": "Included. Open the hub folder in Claude Code.",
+      "docs": "https://docs.claude.com/en/docs/claude-code"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "group": "works-in",
+      "purpose": "Agents and rules load from `.cursor/`.",
+      "tiers": {
+        "dev": "built-in"
+      },
+      "enable": "Included. Open the hub folder in Cursor.",
+      "docs": "https://cursor.com"
+    },
+    {
+      "id": "github-copilot",
+      "name": "GitHub Copilot",
+      "group": "works-in",
+      "purpose": "Agents load from `.github/agents/`.",
+      "tiers": {
+        "dev": "built-in"
+      },
+      "enable": "Included. Open the hub folder in VS Code with GitHub Copilot.",
+      "docs": "https://github.com/features/copilot"
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "group": "works-in",
+      "purpose": "Agents load from `.codex/`.",
+      "tiers": {
+        "dev": "built-in"
+      },
+      "enable": "Included. Open the hub folder in Codex.",
+      "docs": "https://github.com/openai/codex"
+    },
+    {
+      "id": "agents",
+      "name": "Agents",
+      "group": "feature",
+      "purpose": "Architect, Builder, Tester and Router work as a team.",
+      "tiers": {
+        "dev": "built-in"
+      },
+      "enable": "Included. Run `npm run setup`.",
+      "docs": "docs/ARCHITECT.md"
+    },
+    {
+      "id": "memory",
+      "name": "Memory",
+      "group": "feature",
+      "purpose": "Agent memory and tasks that persist across sessions: files in your repo on Free, a vault on Sub and Ops.",
+      "tiers": {
+        "dev": "built-in"
+      },
+      "enable": "Included. Run `npm run setup`.",
+      "docs": "INSTALL.md"
+    },
+    {
+      "id": "codebase-graph",
+      "name": "Codebase graph",
+      "group": "feature",
+      "purpose": "A navigable graph of your codebase for the agents.",
+      "tiers": {
+        "dev": "add-on"
+      },
+      "enable": "Buy the Graph add-on, run `npm run setup`, then `npm run graph:generate <project>`.",
+      "docs": "https://github.com/Graphify-Labs/graphify"
+    },
+    {
+      "id": "hub-error-reports",
+      "name": "Hub error reports",
+      "group": "feature",
+      "buildFlag": "error-reports",
+      "purpose": "Sends hub tool errors to Agistra, never your code or files; 90-day trial on Free.",
+      "tiers": {
+        "dev": "optional"
+      },
+      "enable": "`npm run setup` asks once; off unless you say yes.",
+      "docs": "INSTALL.md"
+    }
+  ]
+}

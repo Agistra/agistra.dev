@@ -9,6 +9,9 @@
  *   - a registered project's git worktree that sits outside the workspaces root
  *   - a root bigger than workspaces.maxSizeMb (only checked when that is set)
  *   - a registered entry untouched for workspaces.staleDays (default 14)
+ *
+ * A worktree git marks prunable (its folder is already gone) never warns. Each
+ * project with such entries gets one hint line naming `git worktree prune`.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -101,15 +104,25 @@ export async function check({
 	const git = workGit ?? defaultDeps.git;
 	const now = (workNow ?? defaultDeps.now)();
 	const problems = [];
+	const hints = [];
 
 	for (const [name, info] of Object.entries(config.projects ?? {})) {
 		if (!info?.repoPath || !fs.existsSync(info.repoPath)) continue;
 		const [, ...others] = listWorktrees(git, path.resolve(info.repoPath));
-		const outside = others.filter((w) => !isInside(root, w.path));
+		// A prunable entry has no folder on disk: it is git bookkeeping to clear,
+		// not a worktree that can sit outside the root, so it never warns.
+		const gone = others.filter((w) => w.prunable).length;
+		const outside = others.filter(
+			(w) => !w.prunable && !isInside(root, w.path),
+		);
 		if (outside.length > 0) {
-			const stale = outside.filter((w) => w.prunable).length;
 			problems.push(
-				`${name}: ${outside.length} worktree(s) outside ${root}${stale ? ` (${stale} already gone from disk)` : ''}, e.g. ${summarise(outside.map((w) => w.path))}`,
+				`${name}: ${outside.length} worktree(s) outside ${root}, e.g. ${summarise(outside.map((w) => w.path))}`,
+			);
+		}
+		if (gone > 0) {
+			hints.push(
+				`${name}: ${gone} stale worktree entr${gone === 1 ? 'y' : 'ies'}, folder gone: run git -C ${info.repoPath} worktree prune`,
 			);
 		}
 	}
@@ -151,17 +164,21 @@ export async function check({
 			);
 	}
 
-	if (problems.length > 0) {
-		return warn(
-			CHECK_ID,
-			CHECK_LABEL,
-			problems.join('. '),
-			'create new working copies with npm run work -- new; npm run work -- list shows them, and the team lead removes merged ones with npm run work -- clean --merged',
-		);
-	}
-	return pass(
-		CHECK_ID,
-		CHECK_LABEL,
-		`root ${root}, ${entries.length} workspace(s), none outside it`,
-	);
+	const main =
+		problems.length > 0
+			? warn(
+					CHECK_ID,
+					CHECK_LABEL,
+					problems.join('. '),
+					'create new working copies with npm run work -- new; npm run work -- list shows them, and the team lead removes merged ones with npm run work -- clean --merged',
+				)
+			: pass(
+					CHECK_ID,
+					CHECK_LABEL,
+					`root ${root}, ${entries.length} workspace(s), none outside it`,
+				);
+	if (hints.length === 0) return main;
+	// One hint row per project. A row carries a single message, so each stale
+	// project gets its own line; the check itself stays as the main row says.
+	return [main, ...hints.map((line) => pass(CHECK_ID, CHECK_LABEL, line))];
 }

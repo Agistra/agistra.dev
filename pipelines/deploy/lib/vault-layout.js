@@ -29,9 +29,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { effectiveHubType } from './hub-type.js';
+import { hubTypesWith } from './tier-descriptor.js';
 
 /** Hub tiers whose canonical memory record lives in the vault, not plain repo files. */
-export const VAULT_BACKED_HUB_TYPES = ['dev:sub', 'ops'];
+export const VAULT_BACKED_HUB_TYPES = hubTypesWith('vaultBacked');
 
 export function isVaultBackedHubType(hubType) {
 	return VAULT_BACKED_HUB_TYPES.includes(hubType);

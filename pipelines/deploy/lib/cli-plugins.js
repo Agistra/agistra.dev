@@ -27,6 +27,12 @@
  *                  scanFn runs the scan itself.
  *
  * Only one plugin's `scan` handler is used (the first by filename).
+ *
+ *   afterScan({ hubRoot, projectRoot, projectName, dryRun, args }) -> Promise<void>
+ *     Runs after a scan that did not fail, in every plugin that exports it
+ *     (filename order), whether or not that plugin owns the `scan` handler.
+ *     For read-only follow-ups to a scan. Must not throw into the scan; the
+ *     caller catches and reports anything it does throw on stderr.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -80,4 +86,23 @@ export function scanHelp(plugins) {
 	const scan = scanPlugin(plugins);
 	if (!scan?.usage) return null;
 	return { usage: scan.usage, description: scan.description ?? '' };
+}
+
+/**
+ * Run every plugin's `afterScan` hook. A hook that throws is reported on
+ * stderr and does not stop the others or change the scan's result.
+ *
+ * @param {object[]} plugins
+ * @param {object} ctx  { hubRoot, projectRoot, projectName, dryRun, args }
+ */
+export async function runAfterScanHooks(plugins, ctx) {
+	for (const plugin of plugins) {
+		if (typeof plugin.afterScan !== 'function') continue;
+		try {
+			await plugin.afterScan(ctx);
+		} catch (err) {
+			process.stderr.write(`[scan] follow-up skipped: ${err.message}
+`);
+		}
+	}
 }

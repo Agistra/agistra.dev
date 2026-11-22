@@ -30,6 +30,7 @@
  * `clean`. Exit 0 on success, 1 on a refusal or error.
  */
 import { installCrashReporter } from './error-sources.js';
+import { isSameOrInside } from './path-inside.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -85,8 +86,7 @@ export function normalisePath(p) {
 
 /** True when `child` is `parent` or sits somewhere below it. */
 export function isInside(parent, child) {
-	const rel = path.relative(normalisePath(parent), normalisePath(child));
-	return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+	return isSameOrInside(normalisePath(parent), normalisePath(child));
 }
 
 function sameVolume(a, b) {
@@ -345,7 +345,7 @@ export function workNew(opts, deps = defaultDeps) {
 			throw new WorkError(`git worktree add failed: ${added.stderr}`);
 		}
 	} else {
-		branch = opts.ref ?? defaultBranch;
+		branch = opts.ref ?? opts.branch ?? defaultBranch;
 		const cloneArgs = ['clone', '--local'];
 		if (!sameVolume(repoPath, target)) cloneArgs.push('--no-hardlinks');
 		cloneArgs.push(repoPath, target);
@@ -371,8 +371,10 @@ export function workNew(opts, deps = defaultDeps) {
 			);
 		}
 		if (!checked.ok) {
+			// The clone is ours (the path was absent or empty); remove it so a retry is not blocked.
+			fs.rmSync(target, { recursive: true, force: true });
 			throw new WorkError(
-				`created ${target} but could not check out ${branch}: ${checked.stderr}`,
+				`branch "${branch}" was not found on origin or in ${repoPath}, so no tester copy was created (${checked.stderr.split('\n')[0]})`,
 			);
 		}
 	}

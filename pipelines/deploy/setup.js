@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
 	wireRelayMcp,
 	readJsonSafe,
@@ -50,20 +50,40 @@ import {
 } from './lib/nightly-dreaming.js';
 import {
 	offerTaskCliPermissions as offerTaskCliPermissionsDefault,
+	taskPermissionQuestion,
 	TASK_PERMISSION_CONFIG_KEY,
 } from './lib/task-permission.js';
+import { defineQuestion, stampSetupCompleted } from './lib/setup-questions.js';
+import { failuresOf, warningsOf } from './lib/setup-step-result.js';
+import {
+	readHubConfig,
+	resolveHubType,
+	hubTypeQuestion,
+} from './lib/hub-tier.js';
+
+// Re-exported: these used to live here, and callers import them from setup.js.
+export { readHubConfig, resolveHubType };
+import { createMaskableOutput } from './lib/masked-output.js';
 import { ensureHubRootDepsInstalled as ensureHubRootDepsInstalledDefault } from './lib/hub-root-install.js';
-import { runSetupTipStep as runSetupTipStepDefault } from './lib/tips.js';
+import {
+	runSetupTipStep as runSetupTipStepDefault,
+	tipQuestion,
+} from './lib/tips.js';
 import {
 	printTrialNotice,
 	runErrorReportOptIn,
 	runErrorReportsFlag,
+	errorReportQuestion,
 } from './lib/error-report-optin.js';
-import { offerOptionalSkillsInstall as offerOptionalSkillsInstallDefault } from './lib/optional-skills-setup.js';
+import {
+	offerOptionalSkillsInstall as offerOptionalSkillsInstallDefault,
+	optionalSkillsInstallQuestion,
+} from './lib/optional-skills-setup.js';
 import {
 	installCrashReporter,
 	reportSetupFailure,
 } from './lib/error-sources.js';
+import { hubTypesWith } from './lib/tier-descriptor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,7 +116,11 @@ const __dirname = path.dirname(__filename);
  * @param {object} [deps]
  * @param {string} [deps.libDir]  Directory to scan for "*.setup-plugin.js" files.
  *   Defaults to this file's own lib/ dir (production). Overridable for testing.
- * @returns {Promise<void>}
+ * @returns {Promise<{failures: Array<{step: string, message: string}>, warnings: Array<{step: string, message: string, summary: string}>}>}
+ *   The steps that failed and the advisory warnings, across every plugin (each
+ *   plugin's run() returns a result; see lib/setup-step-result.js). Both are
+ *   empty when every step finished. A plugin that returns nothing is treated as
+ *   having neither.
  */
 export async function defaultSetupTierPlugin(
 	opts,
@@ -111,10 +135,50 @@ export async function defaultSetupTierPlugin(
 	} catch {
 		pluginFiles = [];
 	}
+	const failures = [];
+	const warnings = [];
 	for (const file of pluginFiles) {
 		const mod = await import(pathToFileURL(path.join(libDir, file)).href);
-		await mod.run(opts);
+		const result = await mod.run(opts);
+		failures.push(...failuresOf(result));
+		warnings.push(...warningsOf(result));
 	}
+	return { failures, warnings };
+}
+
+/**
+ * The questions every discovered "*.setup-plugin.js" would ask, in the same
+ * order defaultSetupTierPlugin() runs the plugins. A plugin describes its own
+ * questions by exporting `questions(opts)` (opts is the same object its run()
+ * receives, minus the prompt helpers); a plugin that asks nothing exports none.
+ * setup.js never names a plugin's questions.
+ *
+ * @param {object} opts
+ * @param {object} [deps]
+ * @param {string} [deps.libDir]
+ * @returns {Promise<object[]>}
+ */
+export async function defaultSetupTierPluginQuestions(
+	opts,
+	{ libDir = path.join(__dirname, 'lib') } = {},
+) {
+	let pluginFiles;
+	try {
+		pluginFiles = fs
+			.readdirSync(libDir)
+			.filter((f) => f.endsWith('.setup-plugin.js'))
+			.sort();
+	} catch {
+		pluginFiles = [];
+	}
+	const out = [];
+	for (const file of pluginFiles) {
+		const mod = await import(pathToFileURL(path.join(libDir, file)).href);
+		if (typeof mod.questions === 'function') {
+			out.push(...(await mod.questions(opts)));
+		}
+	}
+	return out;
 }
 // Source-repo agents/profiles/ dir, relative to this script's own location (not cliOutputRoot).
 // Present when running `npm run setup` from inside the profiles source repository itself.
@@ -244,6 +308,47 @@ export function isAgistraStatusline(
 	);
 }
 
+const STATUSLINE_INSTALL_QUESTION = defineQuestion({
+	id: 'statusline_install',
+	prompt:
+		'Install the Claude Code statusline (context/rate-limit/cost visibility in your terminal)?',
+	type: 'yes/no',
+	default: true,
+});
+
+function statuslineOverwriteQuestion(existingStatusLine) {
+	return defineQuestion({
+		id: 'statusline_overwrite',
+		prompt: `  An existing statusLine command is already configured (${JSON.stringify(existingStatusLine)}). Overwrite it with the Agistra statusline?`,
+		type: 'yes/no',
+		default: false,
+		when: { id: 'statusline_install', equals: true },
+	});
+}
+
+/**
+ * The questions maybeInstallStatusline would ask for this home directory: none
+ * when the settings file is unusable or the statusline is already installed.
+ *
+ * @returns {object[]}
+ */
+export function statuslineQuestions({
+	fsMod,
+	homeDir,
+	platform = process.platform,
+}) {
+	const settingsRead = readSettingsForMerge(
+		path.join(homeDir, '.claude', 'settings.json'),
+		{ fsMod },
+	);
+	if (settingsRead.status === 'unusable') return [];
+	const existing = settingsRead.settings?.statusLine;
+	if (isAgistraStatusline(existing, homeDir, platform)) return [];
+	return existing
+		? [STATUSLINE_INSTALL_QUESTION, statuslineOverwriteQuestion(existing)]
+		: [STATUSLINE_INSTALL_QUESTION];
+}
+
 /**
  * Interactive install/refresh step for the Claude Code statusline feature —
  * tier-agnostic, called unconditionally for every hubType (same "applies
@@ -313,15 +418,18 @@ export async function maybeInstallStatusline({
 	// the same yes/no question on every rerun.
 	if (!alreadyInstalledByThisMechanism) {
 		const wantsInstall = await askYN(
-			'Install the Claude Code statusline (context/rate-limit/cost visibility in your terminal)?',
-			true,
+			STATUSLINE_INSTALL_QUESTION.prompt,
+			STATUSLINE_INSTALL_QUESTION.default,
+			STATUSLINE_INSTALL_QUESTION,
 		);
 		if (!wantsInstall) return { installed: false };
 
 		if (existingStatusLine) {
+			const overwriteQuestion = statuslineOverwriteQuestion(existingStatusLine);
 			const overwrite = await askYN(
-				`  An existing statusLine command is already configured (${JSON.stringify(existingStatusLine)}). Overwrite it with the Agistra statusline?`,
-				false,
+				overwriteQuestion.prompt,
+				overwriteQuestion.default,
+				overwriteQuestion,
 			);
 			if (!overwrite) {
 				log(
@@ -377,87 +485,6 @@ export function ensureProjectsDir({ hubRoot, fsMod = fs }) {
 	if (fsMod.existsSync(dir)) return `projects/ already present → ${dir}`;
 	fsMod.mkdirSync(dir, { recursive: true });
 	return `projects/ created → ${dir}`;
-}
-
-/**
- * Read the static hub-type config file injected into the archive by the packaging
- * profile (e.g. package-dev-graph.js → pipelines/deploy/.hub-config.json).
- * Returns the parsed object, or null if absent or unparseable.
- *
- * Used by setup.js to determine the hub tier on first run (before
- * workspace.config.json exists and prev.hubType is set).
- *
- * @param {string} [deployDir]  Directory containing .hub-config.json (defaults to __dirname).
- * @returns {{ hubType?: string }|null}
- */
-export function readHubConfig(deployDir = __dirname) {
-	const p = path.join(deployDir, '.hub-config.json');
-	if (!fs.existsSync(p)) return null;
-	try {
-		return JSON.parse(fs.readFileSync(p, 'utf-8'));
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Resolve the hubType to write into workspace.config.json, reconciling a
- * previously-stored hubType (from an existing workspace.config.json) against
- * the packaged tier sentinel (.hub-config.json, read via readHubConfig()).
- *
- * A stored hubType is trusted as-is when there is nothing to compare it
- * against (no packaged sentinel — e.g. a "dev" hub) or when it agrees with
- * the packaged value (the common no-op rerun case — no prompt, no output).
- * When the two disagree, the customer is warned and asked whether to correct
- * hubType to the packaged value. Neither value is ever silently applied over
- * the other: a stored hubType is never overridden without asking, and a
- * disagreeing packaged value is never ignored without saying so.
- *
- * This reconciliation closes the gap where a stale
- * workspace.config.json — e.g. left over from an earlier "dev" setup run in
- * the same target directory, which a fresh archive's unzip-merge never
- * removes because the archive itself never ships workspace.config.json —
- * silently locked in the wrong tier forever with no way to recover except
- * hand-editing the file.
- *
- * @param {object} deps
- * @param {string|undefined} deps.prevHubType      hubType from an existing workspace.config.json, if any.
- * @param {string|undefined} deps.packagedHubType  hubType from readHubConfig(), if any.
- * @param {function(string, boolean=): Promise<boolean>} deps.askYN
- * @param {function(string): void} deps.warn        Writer for warning lines (e.g. process.stdout.write).
- * @returns {Promise<string>} the resolved hubType to store.
- */
-export async function resolveHubType({
-	prevHubType,
-	packagedHubType,
-	askYN,
-	warn,
-}) {
-	if (!prevHubType) {
-		// First run (or an unparsable/absent previous config) — trust the
-		// packaged sentinel if present, else fall back to the free "dev" tier.
-		return packagedHubType ?? 'dev';
-	}
-	if (!packagedHubType || packagedHubType === prevHubType) {
-		// No packaged sentinel to compare against, or it agrees with the
-		// stored value — nothing to reconcile, no prompt.
-		return prevHubType;
-	}
-	// Mismatch: a stored hubType exists and disagrees with this package's own
-	// tier. Never silently let either value win — warn and ask.
-	warn(
-		`\n  WARNING: stored hub type "${prevHubType}" does not match this package's hub type "${packagedHubType}".\n` +
-			'  This can happen if an old workspace.config.json survived from a previous setup in this same directory.\n',
-	);
-	const acceptPackaged = await askYN(
-		`Correct hubType to the packaged value ("${packagedHubType}")?`,
-		true,
-	);
-	if (acceptPackaged) return packagedHubType;
-	warn(
-		`  Keeping stored hubType "${prevHubType}". Re-run setup later if this was unintentional.\n`,
-	);
-	return prevHubType;
 }
 
 // ── Pure helpers (exported for testing) ───────────────────────────────────────
@@ -598,7 +625,7 @@ export function buildPersonalisationContent(config) {
 
 		if (rt.telegram) {
 			lines.push(
-				'- **Telegram bot token:** see workspace.config.json → remoteTeam.telegram.botToken',
+				'- **Telegram bot token:** see workspace.config.json → telegram.bot_token',
 			);
 		}
 	}
@@ -656,15 +683,295 @@ export function generateGithubCopilotInstructions(root, config) {
 	);
 }
 
-// ── Token sentinel (exported for testing) ─────────────────────────────────────
+// ── Setup questions (exported for `--questions`, `--answers` and tests) ───────
+
+function nightlyDreamingQuestion(prevEnabled) {
+	return defineQuestion({
+		id: 'nightly_dreaming',
+		prompt: 'Enable nightly automated end-of-day memory consolidation?',
+		type: 'yes/no',
+		default: prevEnabled,
+	});
+}
 
 /**
- * Sentinel value shown in the bot-token prompt when a token is already stored.
- * If the user presses Enter without typing, ask() returns this string.
- * setup.run() checks for equality: if the returned value matches, the existing
- * token is preserved silently. If the user types anything else, that replaces it.
+ * Store the Telegram bot token the way setup records it: in
+ * workspace.config.json under `telegram.bot_token`.
  */
-export const TOKEN_SENTINEL = '[token set — press Enter to keep]';
+function storeTelegramBotToken({ hubRoot, fsMod = fs }, value) {
+	const configPath = path.join(hubRoot, 'workspace.config.json');
+	let config = {};
+	try {
+		config = JSON.parse(fsMod.readFileSync(configPath, 'utf-8'));
+	} catch {
+		// No readable config yet: start one that holds only the token.
+	}
+	fsMod.mkdirSync(hubRoot, { recursive: true });
+	fsMod.writeFileSync(
+		configPath,
+		JSON.stringify(
+			{ ...config, telegram: { ...(config.telegram ?? {}), bot_token: value } },
+			null,
+			2,
+		) + '\n',
+		'utf-8',
+	);
+}
+
+/**
+ * The questions setup.js itself asks before the tier plugins run, keyed by name.
+ * run() takes its prompt text and default from these objects, so the interactive
+ * wizard and the question listing cannot drift apart.
+ *
+ * @param {object} o
+ * @param {object} [o.prev]      The existing workspace.config.json, if any.
+ * @param {string[]} [o.agentIds]
+ */
+export function buildCoreQuestions({ prev = {}, agentIds = [] } = {}) {
+	const prevRemoteTeam = prev.remoteTeam ?? {};
+	const remote = { id: 'remote_team', equals: true };
+	const telegram = [remote, { id: 'remote_telegram', equals: true }];
+	return {
+		userName: defineQuestion({
+			id: 'user_name',
+			prompt: 'Your name',
+			default: prev.user?.name ?? '',
+			required: true,
+		}),
+		userRole: defineQuestion({
+			id: 'user_role',
+			prompt: 'Your role (e.g. Technical Lead)',
+			default: prev.user?.role ?? 'Technical Lead',
+		}),
+		org: defineQuestion({
+			id: 'org_name',
+			prompt: 'Organisation or team name',
+			default: prev.org ?? '',
+			required: true,
+		}),
+		agentNames: agentIds.map((id) =>
+			Object.assign(
+				defineQuestion({
+					id: `agent_display_name_${id}`,
+					prompt: `Display name for ${id} (optional)`,
+					default: prev.agents?.[id]?.displayName ?? '',
+				}),
+				{ agentId: id },
+			),
+		),
+		remoteTeam: defineQuestion({
+			id: 'remote_team',
+			prompt: 'Do you work with a remote team?',
+			type: 'yes/no',
+			default: prevRemoteTeam.enabled === true,
+		}),
+		remoteTeamName: defineQuestion({
+			id: 'remote_team_name',
+			prompt: 'Remote team name',
+			default: prevRemoteTeam.name ?? 'Remote Team',
+			when: remote,
+		}),
+		remoteAgentName: defineQuestion({
+			id: 'remote_agent_name',
+			prompt: 'Remote agent name',
+			default: prevRemoteTeam.agentName ?? 'Remote Agent',
+			when: remote,
+		}),
+		remoteTelegram: defineQuestion({
+			id: 'remote_telegram',
+			prompt: 'Does the remote team use Telegram?',
+			type: 'yes/no',
+			default: prevRemoteTeam.telegram != null,
+			when: remote,
+		}),
+		telegramHandle: defineQuestion({
+			id: 'telegram_handle',
+			prompt: 'Telegram bot handle (e.g. @mybot)',
+			default: prevRemoteTeam.telegram?.handle ?? '',
+			required: true,
+			when: telegram,
+		}),
+		telegramToken: defineQuestion({
+			id: 'telegram_bot_token',
+			prompt: 'Telegram bot token (from @BotFather)',
+			secret: true,
+			when: telegram,
+			store: storeTelegramBotToken,
+		}),
+		telegramKeepToken: defineQuestion({
+			id: 'telegram_keep_stored_token',
+			prompt: 'Telegram bot token already stored. Keep it?',
+			type: 'yes/no',
+			default: true,
+			when: telegram,
+		}),
+		telegramGroupId: defineQuestion({
+			id: 'telegram_group_id',
+			prompt: 'Relay group ID (e.g. -1001234567890)',
+			default: prev.telegram?.relay_group_id ?? '',
+			required: true,
+			when: telegram,
+		}),
+		githubWorkflows: defineQuestion({
+			id: 'github_workflows',
+			prompt:
+				'Do you intend to use GitHub-based workflows (PR creation via Builder/Tester)?',
+			type: 'yes/no',
+			default: (prev.githubWorkflows ?? {}).enabled === true,
+		}),
+		cursorRule: defineQuestion({
+			id: 'cursor_identity_rule',
+			prompt: 'Generate Cursor workspace identity rule?',
+			type: 'yes/no',
+			default: true,
+		}),
+		copilotInstructions: defineQuestion({
+			id: 'github_copilot_instructions',
+			prompt: 'Generate GitHub Copilot instructions?',
+			type: 'yes/no',
+			default: true,
+		}),
+		relayTrackingIssue: defineQuestion({
+			id: 'relay_tracking_issue',
+			prompt: 'Relay tracking issue (owner/repo#N)',
+			default: (prev.relay ?? {}).github?.trackingIssue ?? '',
+			when: remote,
+		}),
+	};
+}
+
+/**
+ * Every question `npm run setup` can ask on this hub, in prompt order: the core
+ * questions, then each tier plugin's own (via the plugin interface), then the
+ * tier-agnostic steps that close the run. A question that applies only for some
+ * answers carries a `when`; a step this hub's environment never reaches (no
+ * Cursor directory, a non-Windows machine, an unusable settings file) is left
+ * out. Reads only; writes nothing.
+ *
+ * @param {object} deps
+ * @param {string} deps.cliOutputRoot
+ * @param {Record<string, unknown>} [deps.answers]  Resolves answer-dependent
+ *   steps, such as which hubType the plugins see.
+ * @param {boolean} [deps.allSecrets]  Also list every secret a plugin could ask
+ *   for, whatever this hub's current state (used by `--secret <id>`).
+ * @returns {Promise<object[]>}
+ */
+export async function listSetupQuestions({
+	cliOutputRoot,
+	fsMod = fs,
+	cliArgs = {},
+	platform = process.platform,
+	homeDir = os.homedir(),
+	readHubConfig: readHubConfigFn = readHubConfig,
+	tierPluginQuestions = defaultSetupTierPluginQuestions,
+	tierPluginPort,
+	isNightlyDreamingTaskRegistered = isNightlyDreamingTaskRegisteredDefault,
+	env = process.env,
+	answers = {},
+	allSecrets = false,
+}) {
+	let prev = {};
+	try {
+		prev = JSON.parse(
+			fsMod.readFileSync(
+				path.join(cliOutputRoot, 'workspace.config.json'),
+				'utf-8',
+			),
+		);
+	} catch {
+		// No readable config: a fresh hub.
+	}
+	const platforms = detectPlatforms(cliOutputRoot);
+	const packagedHubType = readHubConfigFn()?.hubType;
+	const cq = buildCoreQuestions({
+		prev,
+		agentIds: discoverAgentIds(cliOutputRoot, fsMod),
+	});
+
+	const list = [
+		cq.userName,
+		cq.userRole,
+		cq.org,
+		...cq.agentNames,
+		cq.remoteTeam,
+		cq.remoteTeamName,
+		cq.remoteAgentName,
+		cq.remoteTelegram,
+		cq.telegramHandle,
+		...(prev.telegram?.bot_token ? [cq.telegramKeepToken] : []),
+		cq.telegramToken,
+		cq.telegramGroupId,
+		cq.githubWorkflows,
+	];
+	if (platforms.cursor) list.push(cq.cursorRule);
+	if (platforms.github)
+		list.push(cq.copilotInstructions, cq.relayTrackingIssue);
+
+	let hubType;
+	if (!prev.hubType) {
+		hubType = packagedHubType ?? 'dev';
+	} else if (!packagedHubType || packagedHubType === prev.hubType) {
+		hubType = prev.hubType;
+	} else {
+		list.push(hubTypeQuestion(packagedHubType));
+		hubType =
+			answers.correct_hub_type === false ? prev.hubType : packagedHubType;
+	}
+
+	if (platforms.claude) {
+		const permission = taskPermissionQuestion({
+			hubRoot: cliOutputRoot,
+			fsMod,
+			reAsk: Boolean(cliArgs['ask-permissions']),
+		});
+		if (permission) list.push(permission);
+	}
+
+	if (hubTypesWith('tierPluginQuestions').includes(hubType)) {
+		list.push(
+			...(await tierPluginQuestions({
+				hubRoot: cliOutputRoot,
+				portOverride: tierPluginPort,
+				platforms,
+				hubType,
+				readJsonSafe: (p) => readJsonSafe(p, fsMod),
+				writeJsonSafe: (p, v) => writeJsonSafe(p, v, fsMod),
+				cliArgs,
+				allSecrets,
+			})),
+		);
+	}
+
+	list.push(...statuslineQuestions({ fsMod, homeDir, platform }));
+
+	if (platform === 'win32') {
+		const prevNightly = prev.nightlyDreaming ?? {};
+		const enabled = prevNightly.enabled === true;
+		const live = enabled
+			? isNightlyDreamingTaskRegistered({
+					taskName: prevNightly.taskName ?? NIGHTLY_DREAMING_TASK_NAME,
+				})
+			: false;
+		if (!(enabled && live)) list.push(nightlyDreamingQuestion(enabled));
+	}
+
+	for (const q of [
+		errorReportQuestion({ hubRoot: cliOutputRoot, tier: hubType, fsMod }),
+		tipQuestion({ hubRoot: cliOutputRoot, fsMod, env, hubType }),
+		optionalSkillsInstallQuestion({
+			catalogPath: path.join(cliOutputRoot, 'skill-catalog.json'),
+		}),
+	]) {
+		if (q) list.push(q);
+	}
+
+	const seen = new Set();
+	for (const q of list) {
+		if (seen.has(q.id)) throw new Error(`Duplicate setup question id: ${q.id}`);
+		seen.add(q.id);
+	}
+	return list;
+}
 
 // ── Testable run factory (exported for unit tests) ─────────────────────────────
 
@@ -736,6 +1043,9 @@ export const TOKEN_SENTINEL = '[token set — press Enter to keep]';
  *   dev:sub-only marketing-skills prompt it mirrors.
  * @param {function} [deps.ensureVaultPlugins]
  *   Injectable vault plugin install step (see lib/vault-plugin-install.js).
+ * @param {string} [deps.setupVersion]
+ *   Version recorded as bootstrap.setupVersion on success. Defaults to the
+ *   hub's own version (see readSetupVersion in lib/setup-questions.js).
  * @returns {function(): Promise<void>}
  */
 export function createRun({
@@ -763,6 +1073,7 @@ export function createRun({
 	runTipStep = runSetupTipStepDefault,
 	offerOptionalSkillsInstall = offerOptionalSkillsInstallDefault,
 	ensureVaultPlugins = ensureVaultPluginsDefault,
+	setupVersion,
 }) {
 	return async function run() {
 		// ── Hub-root npm dependencies ──────────────────────────────────────────────
@@ -788,14 +1099,21 @@ export function createRun({
 		}
 
 		const prev = existingConfig ?? {};
-		const prevRemoteTeam = prev.remoteTeam ?? {};
 		const prevTelegram = prev.telegram ?? {};
-		const prevTgHandle = prevRemoteTeam.telegram?.handle ?? '';
-		const prevTgGroupId = prevTelegram.relay_group_id ?? '';
 		const prevBotToken = prevTelegram.bot_token ?? '';
 		const prevRelay = prev.relay ?? {};
-		const prevTrackingIssue = prevRelay.github?.trackingIssue ?? '';
-		const prevGithubWorkflows = prev.githubWorkflows ?? {};
+		const cq = buildCoreQuestions({
+			prev,
+			agentIds: discoverAgentIds(cliOutputRoot, fsMod),
+		});
+		// A secret question always goes through the masked prompt, so a new one
+		// cannot be added with an echoing prompt by accident.
+		const askQ = (q, defaultValue = q.default) =>
+			q.secret
+				? askSecret(q.prompt, q)
+				: q.type === 'yes/no'
+					? askYN(q.prompt, defaultValue, q)
+					: ask(q.prompt, defaultValue, q);
 
 		// ── Prompts ────────────────────────────────────────────────────────────────
 
@@ -822,67 +1140,45 @@ export function createRun({
 		}
 
 		line('You ');
-		const userName = await ask('Your name', prev.user?.name ?? '');
-		const userRole = await ask(
-			'Your role (e.g. Technical Lead)',
-			prev.user?.role ?? 'Technical Lead',
-		);
+		const userName = await askQ(cq.userName);
+		const userRole = await askQ(cq.userRole);
 
 		line('Organisation ');
-		const orgName = await ask('Organisation or team name', prev.org ?? '');
+		const orgName = await askQ(cq.org);
 
 		line('Agent display names ');
-		const prevAgents = prev.agents ?? {};
-		const agentIds = discoverAgentIds(cliOutputRoot, fsMod);
 		const agents = {};
-		for (const id of agentIds) {
-			const prevDisplayName = prevAgents[id]?.displayName ?? '';
-			const displayName = await ask(
-				`Display name for ${id} (optional)`,
-				prevDisplayName,
-			);
+		for (const q of cq.agentNames) {
+			const displayName = await askQ(q);
 			if (displayName) {
-				agents[id] = { displayName };
+				agents[q.agentId] = { displayName };
 			}
 		}
 
 		line('Remote team ');
-		const hasRemoteTeam = await askYN(
-			'Do you work with a remote team?',
-			prevRemoteTeam.enabled === true,
-		);
+		const hasRemoteTeam = await askQ(cq.remoteTeam);
 
 		let remoteTeam = { enabled: false };
 		let telegramMcp = null;
 		if (hasRemoteTeam) {
-			const remoteTeamName = await ask(
-				'Remote team name',
-				prevRemoteTeam.name ?? 'Remote Team',
-			);
-			const remoteAgentName = await ask(
-				'Remote agent name',
-				prevRemoteTeam.agentName ?? 'Remote Agent',
-			);
-			const hasTelegram = await askYN(
-				'Does the remote team use Telegram?',
-				prevRemoteTeam.telegram != null,
-			);
+			const remoteTeamName = await askQ(cq.remoteTeamName);
+			const remoteAgentName = await askQ(cq.remoteAgentName);
+			const hasTelegram = await askQ(cq.remoteTelegram);
 			if (hasTelegram) {
-				const telegramHandle = await ask(
-					'Telegram bot handle (e.g. @mybot)',
-					prevTgHandle,
-				);
-				const tokenDefault = prevBotToken ? TOKEN_SENTINEL : '';
-				const tokenAnswer = await ask(
-					'Telegram bot token (from @BotFather)',
-					tokenDefault,
-				);
-				const telegramToken =
-					tokenAnswer === TOKEN_SENTINEL ? prevBotToken : tokenAnswer;
-				const telegramGroupId = await ask(
-					'Relay group ID (e.g. -1001234567890)',
-					prevTgGroupId,
-				);
+				const telegramHandle = await askQ(cq.telegramHandle);
+				// Same pattern as the Graphify key: offer to keep a stored token
+				// without printing it, and read a new one with the masked prompt.
+				const keepToken = prevBotToken
+					? await askYN(
+							cq.telegramKeepToken.prompt,
+							cq.telegramKeepToken.default,
+							cq.telegramKeepToken,
+						)
+					: false;
+				const telegramToken = keepToken
+					? prevBotToken
+					: await askQ(cq.telegramToken);
+				const telegramGroupId = await askQ(cq.telegramGroupId);
 				remoteTeam = {
 					enabled: true,
 					name: remoteTeamName,
@@ -904,10 +1200,7 @@ export function createRun({
 		}
 
 		line('GitHub workflows ');
-		const wantsGithubWorkflows = await askYN(
-			'Do you intend to use GitHub-based workflows (PR creation via Builder/Tester)?',
-			prevGithubWorkflows.enabled === true,
-		);
+		const wantsGithubWorkflows = await askQ(cq.githubWorkflows);
 		let githubWorkflows = { enabled: false };
 		if (wantsGithubWorkflows) {
 			const { installed, authenticated } = checkGh();
@@ -943,28 +1236,19 @@ export function createRun({
 
 		if (platforms.cursor) {
 			line('Cursor ');
-			configureCursor = await askYN(
-				'Generate Cursor workspace identity rule?',
-				true,
-			);
+			configureCursor = await askQ(cq.cursorRule);
 		}
 
 		if (platforms.github) {
 			line('GitHub ');
-			configureGithub = await askYN(
-				'Generate GitHub Copilot instructions?',
-				true,
-			);
+			configureGithub = await askQ(cq.copilotInstructions);
 		}
 
 		let relayBlock = { ...prevRelay };
 
 		if (platforms.github && remoteTeam.enabled) {
 			line('GitHub relay ');
-			const trackingIssue = await ask(
-				'Relay tracking issue (owner/repo#N)',
-				prevTrackingIssue,
-			);
+			const trackingIssue = await askQ(cq.relayTrackingIssue);
 			if (trackingIssue) {
 				relayBlock.github = { trackingIssue };
 			}
@@ -1272,6 +1556,27 @@ export function createRun({
 			cliArgs,
 		};
 
+		// Steps a plugin reported as failed. Setup still runs its remaining steps,
+		// but a run with any failure is not recorded as a completed setup.
+		const failedSteps = [];
+		// Advisory steps that did not finish: listed at the end, never blocking.
+		const warnings = [];
+		const collectPluginFailures = (outcome) => {
+			if (Array.isArray(outcome)) {
+				failedSteps.push(...outcome);
+			} else if (
+				outcome &&
+				outcome.ok === undefined &&
+				(Array.isArray(outcome.failures) || Array.isArray(outcome.warnings))
+			) {
+				failedSteps.push(...(outcome.failures ?? []));
+				warnings.push(...(outcome.warnings ?? []));
+			} else {
+				failedSteps.push(...failuresOf(outcome));
+				warnings.push(...warningsOf(outcome));
+			}
+		};
+
 		if (config.hubType === 'dev:sub') {
 			line('Knowledge retrieval ');
 			// The tier plugin (dev:sub-only, discovered generically above) owns
@@ -1283,7 +1588,7 @@ export function createRun({
 			// plugin can prompt for a prior-hub migration using the same
 			// injectable I/O as the rest of setup — mirroring how the
 			// dev:graph tier plugin already receives them.
-			await setupTierPlugin(tierPluginOpts);
+			collectPluginFailures(await setupTierPlugin(tierPluginOpts));
 		}
 
 		if (config.hubType === 'dev:graph') {
@@ -1292,7 +1597,7 @@ export function createRun({
 			// ask/askYN/askSecret are passed so the plugin can prompt the user
 			// interactively using the same injectable I/O as the rest of setup.
 			// askSecret masks the API key input — it is never echoed to the terminal.
-			await setupTierPlugin(tierPluginOpts);
+			collectPluginFailures(await setupTierPlugin(tierPluginOpts));
 		}
 
 		if (config.hubType === 'ops') {
@@ -1303,7 +1608,7 @@ export function createRun({
 			// provisioning) — a pre-existing, separately-flagged gap, not this
 			// ticket's scope. ask/askYN are passed through the same way the
 			// dev:graph/dev:sub tier plugins already receive them.
-			await setupTierPlugin(tierPluginOpts);
+			collectPluginFailures(await setupTierPlugin(tierPluginOpts));
 		}
 
 		// ── Claude Code statusline ────────────────────────────────────────────────
@@ -1356,9 +1661,11 @@ export function createRun({
 				);
 				nightlyDreaming = { enabled: true, taskName: prevNightlyTaskName };
 			} else {
+				const nightlyQuestion = nightlyDreamingQuestion(prevNightlyEnabled);
 				const enableNightlyDreaming = await askYN(
-					'Enable nightly automated end-of-day memory consolidation?',
-					prevNightlyEnabled,
+					nightlyQuestion.prompt,
+					nightlyQuestion.default,
+					nightlyQuestion,
 				);
 
 				if (enableNightlyDreaming) {
@@ -1483,8 +1790,51 @@ export function createRun({
 			askYN,
 		});
 
+		// A failed plugin step means setup did not finish its job: no stamp, so the
+		// first-start flow does not take this hub for a completed setup. The caller
+		// turns the result into a non-zero exit. A re-run that succeeds stamps.
+		const warningLines = warnings.map((w) => `  - ${w.summary}\n`).join('');
+		if (failedSteps.length > 0) {
+			process.stdout.write(
+				'\n  Setup did not complete. Failed step(s): ' +
+					failedSteps.map((f) => f.step).join(', ') +
+					'\n  Fix the problem above, then re-run: npm run setup\n' +
+					(warnings.length > 0
+						? `  Also ${warnings.length} warning(s):\n${warningLines}`
+						: '') +
+					'\n',
+			);
+			return { ok: false, failedSteps, warnings };
+		}
+
+		// A run that got this far finished every step. Only now is it recorded as a
+		// completed setup; a run that fails or is stopped earlier leaves no stamp.
+		stampSetupCompleted({
+			hubRoot: cliOutputRoot,
+			fsMod,
+			...(setupVersion ? { version: setupVersion } : {}),
+		});
+
+		if (warnings.length > 0) {
+			process.stdout.write(
+				`\nSetup complete, with ${warnings.length} warning(s):\n${warningLines}`,
+			);
+		}
+
 		process.stdout.write('\n');
+		return { ok: true, failedSteps: [], warnings };
 	};
+}
+
+/**
+ * The process exit code for what run() returned: 1 when a plugin step failed
+ * (run() returns `{ ok: false }`), else 0. A run that throws never gets here.
+ *
+ * @param {{ok?: boolean}|undefined} outcome
+ * @returns {number}
+ */
+export function setupExitCode(outcome) {
+	return outcome && outcome.ok === false ? 1 : 0;
 }
 
 /**
@@ -1660,9 +2010,12 @@ export function createPromptHelpers({ rl, isTty, output }) {
 		});
 	}
 
-	// Masked/non-echoing prompt for secrets (e.g. API keys). Temporarily
-	// intercepts the readline interface's output writer so typed characters
-	// are never echoed to the terminal — only the prompt text itself is shown.
+	// Masked/non-echoing prompt for secrets (API keys, the Telegram bot token).
+	// On a terminal, `output` must be the maskable output the readline interface
+	// was created with (lib/masked-output.js): readline echoes by writing to it,
+	// and for the length of one question only the prompt and the newline get
+	// through. Without one we cannot hide the echo, so we refuse to read a secret
+	// rather than show it.
 	function askSecret(question) {
 		const prompt = `${question}: `;
 		if (!isTty) {
@@ -1674,29 +2027,21 @@ export function createPromptHelpers({ rl, isTty, output }) {
 				return a.trim();
 			});
 		}
-		const hasMasking = typeof rl._writeToOutput === 'function';
-		if (!hasMasking) {
-			// Fallback: no masking hook available — still don't log the value anywhere.
-			return rl.question(prompt).then((a) => a.trim());
+		if (
+			typeof output?.beginMask !== 'function' ||
+			typeof output?.endMask !== 'function'
+		) {
+			return Promise.reject(
+				new Error(
+					'Cannot read a secret on a terminal without a maskable output (see lib/masked-output.js).',
+				),
+			);
 		}
-		const originalWrite = rl._writeToOutput.bind(rl);
-		let promptWritten = false;
-		rl._writeToOutput = function (str) {
-			if (!promptWritten) {
-				originalWrite(str); // let the initial prompt text render once
-				promptWritten = str.includes(prompt) || promptWritten;
-				return;
-			}
-			if (str === '\r\n' || str === '\n') {
-				originalWrite(str);
-				return;
-			}
-			// Suppress echo of typed characters.
-		};
-		return rl.question(prompt).then((answer) => {
-			rl._writeToOutput = originalWrite;
-			return answer.trim();
-		});
+		output.beginMask(prompt);
+		return rl
+			.question(prompt)
+			.then((answer) => answer.trim())
+			.finally(() => output.endMask());
 	}
 
 	return { ask, askYN, askSecret };
@@ -1730,11 +2075,56 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		process.exit(result.ok ? 0 : 1);
 	}
 
-	const rl = readline.createInterface({ input, output });
+	if (
+		cliArgs.questions !== undefined ||
+		cliArgs.answers !== undefined ||
+		cliArgs.secret !== undefined
+	) {
+		// Machine output: stdout carries only the final JSON. Child processes the
+		// setup steps start (npm install, uv) inherit file descriptor 1, so the
+		// mode re-runs itself with fd 1 pointed at stderr and the real stdout
+		// passed down as fd 3, which only the JSON is written to.
+		const jsonFd = process.env.AGISTRA_SETUP_JSON_FD;
+		if (!jsonFd) {
+			const child = spawnSync(process.execPath, process.argv.slice(1), {
+				stdio: [0, 2, 2, 1],
+				env: { ...process.env, AGISTRA_SETUP_JSON_FD: '3' },
+			});
+			process.exit(child.status ?? 1);
+		}
+		const { runSetupCliMode, writeAllSync } =
+			await import('./lib/setup-cli-modes.js');
+		let outcome;
+		try {
+			outcome = await runSetupCliMode({
+				cliArgs,
+				cliOutputRoot,
+				setup: { createRun, createPromptHelpers, listSetupQuestions },
+			});
+		} catch (err) {
+			outcome = {
+				exitCode: 1,
+				error: err,
+				json: { ok: false, error: 'setup-failed', message: err.message },
+			};
+		}
+		if (outcome.error) {
+			await reportSetupFailure(
+				{ heading: outcome.step ?? '', error: outcome.error },
+				{ hubRoot: cliOutputRoot },
+			);
+		}
+		writeAllSync(Number(jsonFd), JSON.stringify(outcome.json, null, 2) + '\n');
+		process.exit(outcome.exitCode);
+	}
+
+	// The gate lets askSecret hide what readline echoes (see lib/masked-output.js).
+	const gate = createMaskableOutput(output);
+	const rl = readline.createInterface({ input, output: gate });
 	const { ask, askYN, askSecret } = createPromptHelpers({
 		rl,
 		isTty: Boolean(input.isTTY),
-		output,
+		output: gate,
 	});
 
 	// The last step setup announced. If setup stops with an error, this names the
@@ -1760,8 +2150,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	});
 
 	run()
-		.then(() => {
+		.then((outcome) => {
 			rl.close();
+			const code = setupExitCode(outcome);
+			if (code !== 0) process.exit(code);
 		})
 		.catch(async (err) => {
 			rl.close();

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { walkDir } from './scan-utils.js';
+import { relativeInside } from './path-inside.js';
 
 // ── JS/TS dependency-graph engine ───────────────────────────────────────────
 //
@@ -65,9 +66,9 @@ function resolveRelative(spec, fromFile, root) {
 	for (const candidate of candidates) {
 		try {
 			if (fs.statSync(candidate).isFile()) {
-				const rel = toPosix(path.relative(root, candidate));
-				if (rel.startsWith('..')) return null;
-				return rel;
+				const rel = relativeInside(root, candidate);
+				if (rel === null) return null;
+				return toPosix(rel);
 			}
 		} catch {
 			// candidate doesn't exist — try the next one

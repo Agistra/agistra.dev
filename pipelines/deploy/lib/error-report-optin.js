@@ -25,6 +25,7 @@ import {
 	errorReportStatus,
 } from './error-report.js';
 import { effectiveHubType } from './hub-type.js';
+import { defineQuestion } from './setup-questions.js';
 
 export const UPGRADE_URL = 'https://agistra.ai/pricing';
 
@@ -210,6 +211,28 @@ export function answerLine(saved) {
 
 // ── Setup question ───────────────────────────────────────────────────────────
 
+function buildQuestion(kind) {
+	return defineQuestion({
+		id: 'error_reports',
+		prompt: kind === 'free' ? FREE_QUESTION : PAID_QUESTION,
+		type: 'yes/no',
+		default: false,
+	});
+}
+
+/**
+ * The opt-in question setup would ask on this hub, or null when it asks
+ * nothing (unknown tier, or a yes or no already saved).
+ *
+ * @returns {object|null}
+ */
+export function errorReportQuestion({ hubRoot, tier, fsMod = fs }) {
+	const kind = tierKind(tier);
+	if (!kind) return null;
+	if (!choiceIsAbsent(readConfig(hubRoot, fsMod))) return null;
+	return buildQuestion(kind);
+}
+
 /**
  * Ask the opt-in question once. Asks only in an interactive run, on a hub
  * whose tier is known, when no yes or no is saved yet. An unattended run
@@ -233,10 +256,8 @@ export async function runErrorReportOptIn({
 	if (!choiceIsAbsent(readConfig(hubRoot, fsMod))) return { asked: false };
 	announce();
 	write(`${kind === 'free' ? FREE_PROMPT : PAID_PROMPT}\n`);
-	const yes = await askYN(
-		kind === 'free' ? FREE_QUESTION : PAID_QUESTION,
-		false,
-	);
+	const question = buildQuestion(kind);
+	const yes = await askYN(question.prompt, question.default, question);
 	const saved = saveErrorReportChoice({
 		hubRoot,
 		choice: yes ? 'yes' : 'no',

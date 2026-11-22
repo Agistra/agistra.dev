@@ -46,6 +46,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withHubType } from './hub-type.js';
 import { upgradeTipEligible } from './error-report-optin.js';
+import { defineQuestion } from './setup-questions.js';
+import { hubTypesWith } from './tier-descriptor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -54,12 +56,9 @@ export const DEFAULT_TIPS_DATA_PATH = path.join(__dirname, TIPS_DATA_FILENAME);
 export const TIPS_STATE_FILENAME = '.tips-state.json';
 
 /** Hub types that carry tips. Any other hub type prints no tip. */
-export const TIP_HUB_TYPES = Object.freeze([
-	'dev',
-	'dev:graph',
-	'dev:sub',
-	'dev:sub:graph',
-]);
+export const TIP_HUB_TYPES = Object.freeze(
+	hubTypesWith('tips', { canonicalOnly: false }),
+);
 
 const BULB_PREFIX = '\u{1F4A1} Tip:';
 const PLAIN_PREFIX = 'Tip:';
@@ -296,6 +295,45 @@ export function supportsEmoji({
 	return true;
 }
 
+/** The setup question shown after the tip, for the current on/off state. */
+function tipQuestionFor(wasEnabled) {
+	return defineQuestion({
+		id: 'tips_enabled',
+		prompt: wasEnabled
+			? 'Keep the tip of the day on in doctor and setup? (`npm run show:tip` keeps working either way)'
+			: 'Tips are off in doctor and setup. Turn them back on?',
+		type: 'yes/no',
+		default: wasEnabled,
+	});
+}
+
+/**
+ * The tip-step question setup would ask, or null when the step asks nothing
+ * (CI, or a hub type with no tips).
+ *
+ * @param {object} options  Same shape as runSetupTipStep's, plus `hubType`.
+ * @returns {object|null}
+ */
+export function tipQuestion({
+	hubRoot,
+	fsMod = fs,
+	env = process.env,
+	dataPath,
+	hasGraphifyInstaller,
+	hubType,
+}) {
+	if (isCi(env)) return null;
+	const { tip, config } = getTipForHub({
+		hubRoot,
+		fsMod,
+		dataPath,
+		hasGraphifyInstaller,
+		hubType,
+	});
+	if (!tip) return null;
+	return tipQuestionFor(tipsEnabled(config));
+}
+
 /**
  * Format one tip as a single line. The word "Tip" always stays next to the
  * icon.
@@ -328,6 +366,7 @@ export function formatOnRequestLines() {
  * @param {() => number} [options.rng]
  * @param {() => boolean} [options.hasGraphifyInstaller]
  * @param {Date} [options.now]               Clock for tips with a `when` condition.
+ * @param {string} [options.hubType]         Tier to use when the config on disk has none yet.
  * @returns {{tip: object|null, tipHubType: string|undefined, config: object|null, remember: () => void}}
  *   `remember()` saves the rotation state; callers invoke it only when the tip
  *   is actually printed.
@@ -339,13 +378,19 @@ export function getTipForHub({
 	rng = Math.random,
 	hasGraphifyInstaller,
 	now,
+	hubType,
 }) {
 	const config = readWorkspaceConfig(hubRoot, fsMod);
 	// A copy with the packaged tier filled in, so a hub that has not run setup
 	// yet still gets its tier's tips; `config` itself stays as read from disk.
-	const tipHubType = resolveHubTipHubType(withHubType(hubRoot, config, fsMod), {
-		hasGraphifyInstaller,
-	});
+	const tipHubType = resolveHubTipHubType(
+		withHubType(
+			hubRoot,
+			config?.hubType || !hubType ? config : { ...(config ?? {}), hubType },
+			fsMod,
+		),
+		{ hasGraphifyInstaller },
+	);
 	const eligible = filterTipsByCondition(
 		filterTipsForHubType(loadTips(dataPath), tipHubType),
 		{ hubRoot, now, fsMod },
@@ -466,12 +511,8 @@ export async function runSetupTipStep({
 		shown = true;
 	}
 
-	const keep = await askYN(
-		wasEnabled
-			? 'Keep the tip of the day on in doctor and setup? (`npm run show:tip` keeps working either way)'
-			: 'Tips are off in doctor and setup. Turn them back on?',
-		wasEnabled,
-	);
+	const question = tipQuestionFor(wasEnabled);
+	const keep = await askYN(question.prompt, question.default, question);
 	if (keep !== wasEnabled || config?.tips?.enabled === undefined) {
 		const onDisk = readWorkspaceConfig(hubRoot, fsMod) ?? {};
 		const next = {

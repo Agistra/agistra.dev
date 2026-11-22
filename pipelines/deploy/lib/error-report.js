@@ -39,6 +39,12 @@ import https from 'node:https';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { effectiveHubType } from './hub-type.js';
+import { relativeInside } from './path-inside.js';
+import {
+	ALL_HUB_TYPE_NAMES,
+	TIER_DESCRIPTORS,
+	hubTypesWith,
+} from './tier-descriptor.js';
 
 /**
  * The Sentry project DSN. Public by design: it can only
@@ -53,7 +59,7 @@ export const SENTRY_DSN =
  * Highest doctor check id that has a catalogue entry. Doctor check ids are
  * small integers shared by the core checks and the tier plugins.
  */
-export const DOCTOR_CHECK_ID_MAX = 36;
+export const DOCTOR_CHECK_ID_MAX = 39;
 
 /** Setup step codes. Each step is announced by one setup heading. */
 export const SETUP_MESSAGES = {
@@ -159,9 +165,69 @@ export const MEMORY_MESSAGES = {
 };
 
 /**
+ * Memory result codes that reject what the operator typed or supplied: the
+ * tool worked and said no. They are logged locally and never sent. Every code
+ * in MEMORY_MESSAGES sits on exactly one of this list and MEMORY_TOOL_CODES;
+ * a test fails when a new code is on neither.
+ */
+export const MEMORY_INPUT_CODES = [
+	'agent-not-keyed',
+	'ambiguous-id',
+	'duplicate-key',
+	'entry-too-large',
+	'hot-over-ceiling',
+	'invalid-agent',
+	'invalid-field',
+	'invalid-key',
+	'invalid-promotion-target',
+	'invalid-summary',
+	'invalid-tier',
+	'invalid-usage',
+	'key-archived',
+	'not-found',
+	'path-outside-memory',
+	'protected-entry',
+	'read-only',
+	'reserved-agent',
+	'rule-exists',
+	'secret-detected',
+	'section-not-found',
+	'single-note-agent',
+	'supersedes-not-found',
+	'team-lead-required',
+	'test-hook-refused',
+];
+
+/** Memory result codes that mean the tool or the hub's own state failed. Still sent. */
+export const MEMORY_TOOL_CODES = [
+	'archive-exists',
+	'entry-unreadable',
+	'index-not-generated',
+	'invalid-config',
+	'invalid-entry',
+	'mixed-agent',
+	'mixed-state',
+	'not-adoptable',
+	'not-vault-tier',
+	'note-unreadable',
+	'read-failed',
+	'round-trip-failed',
+	'target-exists',
+	'unexpected-error',
+	'unspecified',
+	'unsupported-shape',
+	'write-failed',
+	'write-verify-failed',
+];
+
+/** A report id as setup writes it: a version-4 UUID. Anything else is a placeholder. */
+export const REPORT_ID_V4 =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
  * Fixed message text per error code. Placeholders only, never real values.
  *
- *   doctor      "1" to "35", the check id (shared by core checks and plugins)
+ *   doctor      "1" to "39", the check id (shared by core checks and plugins)
  *   setup       setup-<step>, the setup step that stopped
  *   self-check  blocked
  *   memory      the result code of the failed memory command
@@ -204,8 +270,10 @@ export const SEND_TIMEOUT_MS = 3000;
 export const TRIAL_DAYS = 90;
 export const LOG_RELATIVE_PATH = path.join('logs', 'error-reports.log');
 
-export const PAID_TIERS = ['dev:sub', 'dev:sub:graph', 'ops', 'ops:graph'];
-export const FREE_TIERS = ['dev', 'dev:graph'];
+export const PAID_TIERS = hubTypesWith('paid', { canonicalOnly: false });
+export const FREE_TIERS = ALL_HUB_TYPE_NAMES.filter(
+	(name) => !TIER_DESCRIPTORS[name].paid,
+);
 export const SOURCES = [
 	'doctor',
 	'setup',
@@ -227,6 +295,7 @@ export const EVENT_KEYS = {
 		'tags',
 		'contexts',
 		'exception',
+		'fingerprint',
 	],
 	tags: ['source', 'code', 'tier', 'adapter', 'report_id'],
 	contexts: ['os', 'runtime'],
@@ -353,8 +422,8 @@ function toHubRelative(file, hubRoot) {
 	const f = file.startsWith('file://') ? safeFileUrl(file) : file;
 	if (!f) return null;
 	if (f.startsWith('node:')) return /^node:[\w/.-]{1,40}$/.test(f) ? f : null;
-	const rel = path.relative(hubRoot, path.resolve(f));
-	if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+	const rel = relativeInside(hubRoot, path.resolve(f));
+	if (!rel) return null;
 	const norm = rel.split(path.sep).join('/');
 	// Dependencies are not our code and their names may reveal choices.
 	if (norm.startsWith('node_modules/')) return null;
@@ -438,6 +507,8 @@ export function buildEvent(
 			os: { name: process.platform, version: os.release() },
 			runtime: { name: 'node', version: process.versions.node },
 		},
+		// One Sentry issue per source, code and tier. All three are already sent.
+		fingerprint: [src, cd, tier ?? 'unknown'],
 		exception: {
 			values: [
 				{
@@ -547,13 +618,34 @@ function post(parsed, body, timeoutMs) {
 	});
 }
 
+/** Why a report is logged but not sent, or null when it may be sent. */
+function skipReason(input, reportId, opts) {
+	const explicitDsn = opts.dsn !== undefined && opts.dsn !== null;
+	const testCtx = (opts.env ?? process.env)?.NODE_TEST_CONTEXT;
+	if (!explicitDsn && typeof testCtx === 'string' && testCtx !== '')
+		return 'test-context';
+	if (typeof reportId !== 'string' || !REPORT_ID_V4.test(reportId))
+		return 'placeholder-report-id';
+	if (
+		input?.source === 'memory' &&
+		typeof input.code === 'string' &&
+		MEMORY_INPUT_CODES.includes(input.code)
+	)
+		return 'operator-input';
+	return null;
+}
+
 /**
  * Report an error. Never throws. Resolves within SEND_TIMEOUT_MS.
  *
  * @param {{source:string, code:string, message?:string, error?:Error}} input
- * @param {object} [opts]  test seams: hubRoot, dsn, timeoutMs, now. The
+ * Not sent, but still logged locally: under the Node test runner
+ * (NODE_TEST_CONTEXT set) unless the caller passed opts.dsn; when the report id
+ * is not a version-4 UUID; and for memory codes that reject operator input.
+ *
+ * @param {object} [opts]  test seams: hubRoot, dsn, timeoutMs, now, env. The
  *   destination is opts.dsn, else AGISTRA_ERROR_REPORTS_DSN, else SENTRY_DSN.
- * @returns {Promise<{state:string, logged:boolean, sent:boolean}>}
+ * @returns {Promise<{state:string, logged:boolean, sent:boolean, skipped?:string}>}
  */
 export async function reportError(input, opts = {}) {
 	const result = { state: 'off', logged: false, sent: false };
@@ -580,6 +672,11 @@ export async function reportError(input, opts = {}) {
 			result.logged = true;
 		} catch {
 			// a log failure must not block the caller
+		}
+		const skipped = skipReason(input, status.reportId, opts);
+		if (skipped) {
+			result.skipped = skipped;
+			return result;
 		}
 		const dsn = resolveDsn({ ...opts, hubRoot });
 		const parsed = parseDsn(dsn);

@@ -127,6 +127,8 @@ function mirrorHub(hubRoot, tmp, memoryRoot, agent) {
 	copyIf(path.join('pipelines', 'deploy', 'wizard.js'));
 	copyIf(path.join('pipelines', 'deploy', 'lib', 'memory-root.js'));
 	copyIf(path.join('pipelines', 'deploy', 'lib', 'vault-layout.js'));
+	// vault-layout.js derives its tier list from the tier descriptor.
+	copyIf(path.join('pipelines', 'deploy', 'lib', 'tier-descriptor.js'));
 	// The tier sentinel stands in for workspace.config.json before setup has run.
 	copyIf(path.join('pipelines', 'deploy', 'lib', 'hub-type.js'));
 	copyIf(path.join('pipelines', 'deploy', '.hub-config.json'));

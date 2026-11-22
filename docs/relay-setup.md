@@ -9,7 +9,7 @@ Unified inter-team relay: Telegram group I/O via a local daemon, agent tools via
 - Telegram bot from [@BotFather](https://t.me/BotFather) (token + handle)
 - Bot added as **admin** to your relay group
 - Node.js 20+ (same as hub)
-- The profiles source repository cloned (daemon runs from profiles; hub holds config + inbox queue)
+- The relay ships inside the hub (`pipelines/deploy/relay/`); the hub holds the config and the inbox queue
 
 ---
 
@@ -25,7 +25,7 @@ npm run setup
 When prompted:
 
 - **Enable remote team:** Yes
-- **Telegram bot handle / token / relay group ID:** your values
+- **Telegram bot handle / token / relay group ID:** your values. The interactive token prompt is masked, so nothing you type is shown. When a token is already stored, setup asks whether to keep it and does not print it. `npm.cmd run setup -- --secret telegram_bot_token` enters it on its own.
 - **Router display name** (e.g. `Atlas`) — inbound salutation filter
 - **Remote agent name** (e.g. `Max`) — outbound prefix
 
@@ -34,7 +34,7 @@ The wizard writes:
 - `workspace.config.json` (gitignored) — credentials + relay settings
 - `mcpServers.relay` in `~/.claude/settings.json` and/or `<hub>/.cursor/mcp.json`
 
-Re-run setup after changing tokens or MCP targets.
+Re-run setup after changing tokens or MCP targets. The bot token is stored as `telegram.bot_token`; to replace only the token, run `npm.cmd run setup -- --secret telegram_bot_token`. There is no `.env` file for the relay.
 
 ---
 
